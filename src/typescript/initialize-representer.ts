@@ -1,5 +1,5 @@
-import State, { PartialState } from './types/state';
-import CozalEvent from './types/cozal-event'
+import State, { PartialState } from './types/state.ts';
+import CozalEvent from './types/cozal-event.ts'
 
 // this is the logic of Cozal's real time interpretation of your context.
 // this includes things like declarative rendering and hitsound playing.

@@ -1,9 +1,9 @@
 import PriorityQueue from "./utilities/immutable-priority-queue.ts";
 import Stack from "./utilities/immutable-stack.ts";
-import State from "./types/state";
+import State from "./types/state.ts";
 import initializeLogic from "./initialize-logic.ts";
 import initializeRepresenter from "./initialize-representer.ts";
-import CozalEvent from "./types/cozal-event";
+import CozalEvent from "./types/cozal-event.ts";
 import CozalSystemEvent from "./types/cozal-system-event.ts";
 
 interface CozalFrame {

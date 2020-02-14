@@ -1,5 +1,5 @@
-import CozalEvent from './types/cozal-event';
-import State, { PartialState } from './types/state';
+import CozalEvent from './types/cozal-event.ts';
+import State, { PartialState } from './types/state.ts';
 
 interface LogicContext<S extends State, E extends CozalEvent> {
     setState(partialState: PartialState<S>): void;
