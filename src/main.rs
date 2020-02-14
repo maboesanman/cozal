@@ -10,11 +10,11 @@ fn main() {
 }
 
 async fn async_main() {
-    let js_source = include_str!("test.js");
+    let js_source = include_str!("cozal.js");
 
     let startup_data = StartupData::Script(Script {
         source: js_source,
-        filename: "test.js",
+        filename: "cozal.js",
     });
 
     let isolate = deno_core::Isolate::new(startup_data, false);
