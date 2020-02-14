@@ -290,31 +290,4 @@ export default class PriorityQueue<T> {
 
         return this.Root.count;
     }
-
-    public printHeap(): void {
-        const bfsqueue: HeapNode<T>[] = [];
-        bfsqueue.push(this.Root);
-        let count = 0;
-        let rowLength = 1;
-        let currentItems = [];
-        while(bfsqueue.length != 0) {
-            const currentNode = bfsqueue.shift();
-            if(currentNode !== undefined) {
-                bfsqueue.push(currentNode.left);
-                bfsqueue.push(currentNode.right);
-                currentItems.push(currentNode.keys);
-                count = count + 1;
-                if(count == rowLength) {
-                    console.log(currentItems);
-                    count = 0;
-                    rowLength = rowLength * 2;
-                    currentItems = []
-                }
-            }
-        }
-        if(currentItems.length != 0) {
-            console.log(currentItems);
-        }
-        console.log("------------------------------------------");
-    }
 }
