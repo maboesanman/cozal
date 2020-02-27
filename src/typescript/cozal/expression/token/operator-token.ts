@@ -16,7 +16,11 @@ export enum FloatOperatorToken {
   AddFloat = 0b1011_0001_0000_0000,
   SubtractFloat = 0b1011_0001_0000_0001,
   MultiplyFloat = 0b1011_0001_0000_0010,
-  DivideFloat = 0b1011_0001_0000_0011
+  DivideFloat = 0b1011_0001_0000_0011,
+
+  Sin = 0b1011_0001_0001_0000,
+  Cos = 0b1011_0001_0001_0001,
+  Tan = 0b1011_0001_0001_0010
 }
 export enum StringOperatorToken {
   // 0b1100... string operators

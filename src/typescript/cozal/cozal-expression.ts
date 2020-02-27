@@ -17,7 +17,7 @@ import {
   subtract,
   multiply,
   divide
-} from "./expression/math/binary-operations";
+} from "./expression/math/binary-operators";
 
 const ExpressionAPI = {
   fromConstBoolean,

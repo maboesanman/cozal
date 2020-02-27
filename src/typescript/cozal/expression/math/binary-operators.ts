@@ -1,6 +1,10 @@
-import Exp, { IntegerExpression as IntExp, FloatExpression as FloatExp,
-  isIntegerExpression, fromOperator,
-  isFloatExpression } from "../expression.ts";
+import Exp, {
+  IntegerExpression as IntExp,
+  FloatExpression as FloatExp,
+  isIntegerExpression,
+  fromOperator,
+  isFloatExpression
+} from "../expression.ts";
 import Token from "../token/token.ts";
 
 export function add<S>(arg1: IntExp<S>, arg2: IntExp<S>): IntExp<S>;
