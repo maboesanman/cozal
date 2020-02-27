@@ -1,4 +1,4 @@
-import Token, { getTokenType, getTokenReturnType } from "./token";
+import Token, { getTokenType, getTokenReturnType } from "./token.ts";
 
 // 0b0100... string operands
 export enum StateStringOperandToken {
