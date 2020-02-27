@@ -11,13 +11,18 @@ import {
   fromSystemFloat,
   fromSystemInteger,
   fromSystemString
-} from "./expression/expression";
+} from "./expression/expression.ts";
 import {
   add,
   subtract,
   multiply,
   divide
-} from "./expression/math/binary-operators";
+} from "./expression/math/binary-operators.ts";
+import {
+  sin,
+  cos,
+  tan
+} from "./expression/math/unary-operators.ts";
 
 const ExpressionAPI = {
   fromConstBoolean,
@@ -36,7 +41,10 @@ const ExpressionAPI = {
     add,
     subtract,
     multiply,
-    divide
+    divide,
+    sin,
+    cos,
+    tan
   }
 };
 

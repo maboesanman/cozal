@@ -1,8 +1,8 @@
-import BooleanOperandToken from "./boolean-operand-token";
-import IntegerOperandToken from "./integer-operand-token";
-import FloatOperandToken from "./float-operand-token";
-import StringOperandToken from "./string-operand-token";
-import Token, { getTokenType } from "./token";
+import BooleanOperandToken from "./boolean-operand-token.ts";
+import IntegerOperandToken from "./integer-operand-token.ts";
+import FloatOperandToken from "./float-operand-token.ts";
+import StringOperandToken from "./string-operand-token.ts";
+import Token, { getTokenType } from "./token.ts";
 
 // 0b0...
 export const OperandToken = {

@@ -13,11 +13,11 @@ import OperatorToken, {
 import BooleanOperandToken, { SystemBooleanOperandToken,
   isBooleanOperandToken } from "./token/boolean-operand-token.ts";
 import IntegerOperandToken, { SystemIntegerOperandToken,
-  isIntegerOperandToken } from "./token/integer-operand-token";
+  isIntegerOperandToken } from "./token/integer-operand-token.ts";
 import FloatOperandToken, { SystemFloatOperandToken,
-  isFloatOperandToken } from "./token/float-operand-token";
+  isFloatOperandToken } from "./token/float-operand-token.ts";
 import StringOperandToken, { SystemStringOperandToken,
-  isStringOperandToken } from "./token/string-operand-token";
+  isStringOperandToken } from "./token/string-operand-token.ts";
 
 interface Expression<State> {
   // list of tokens in reverse polish

@@ -37,11 +37,11 @@ const CozalInternal = {
   }
 };
 
-const Cozal = {
+const Cozal = Object.freeze({
   initializeCore,
   initializeRenderer,
   Expression: ExpressionAPI
-};
+});
 
 export default Cozal;
 

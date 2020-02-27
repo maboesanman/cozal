@@ -1,4 +1,4 @@
-import Token, { getTokenType, getTokenReturnType } from "./token";
+import Token, { getTokenType, getTokenReturnType } from "./token.ts";
 
 // 0b1...
 export enum BooleanOperatorToken {
