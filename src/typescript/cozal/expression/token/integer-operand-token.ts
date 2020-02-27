@@ -1,10 +1,12 @@
-// 0x0001... Integer operands
+import Token, { getTokenType, getTokenReturnType } from "./token";
+
+// 0b0001... Integer operands
 export enum StateIntegerOperandToken {
-  StateInteger = 0x0010_0000_0000_0000
+  StateInteger = 0b0010_0000_0000_0000
 }
 
 export enum ConstantIntegerOperandToken {
-  ConstantInteger = 0x0010_0000_0000_0001
+  ConstantInteger = 0b0010_0000_0000_0001
 }
 
 export enum SystemIntegerOperandToken {
@@ -19,5 +21,12 @@ export const IntegerOperandToken = {
 export type IntegerOperandToken = StateIntegerOperandToken
   | ConstantIntegerOperandToken
   | SystemIntegerOperandToken;
+
+export function isIntegerOperandToken(token:
+  Token): token is IntegerOperandToken
+{
+  return getTokenType(token) === "operand" &&
+    getTokenReturnType(token) === "float";
+}
 
 export default IntegerOperandToken;

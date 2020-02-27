@@ -1,10 +1,12 @@
-// 0x0001... boolean operands
+import Token, { getTokenType, getTokenReturnType } from "./token";
+
+// 0b0001... boolean operands
 export enum StateBooleanOperandToken {
-  StateBoolean = 0x0001_0000_0000_0000
+  StateBoolean = 0b0001_0000_0000_0000
 }
 
 export enum ConstantBooleanOperandToken {
-  ConstantBoolean = 0x0001_0000_0000_0001
+  ConstantBoolean = 0b0001_0000_0000_0001
 }
 
 export enum SystemBooleanOperandToken {
@@ -19,5 +21,12 @@ export const BooleanOperandToken = {
 export type BooleanOperandToken = StateBooleanOperandToken
   | ConstantBooleanOperandToken
   | SystemBooleanOperandToken;
+
+export function isBooleanOperandToken(token:
+  Token): token is BooleanOperandToken
+{
+  return getTokenType(token) === "operand" &&
+    getTokenReturnType(token) === "boolean";
+}
 
 export default BooleanOperandToken;

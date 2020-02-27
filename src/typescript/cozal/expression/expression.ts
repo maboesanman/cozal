@@ -5,11 +5,19 @@ import OperatorToken, {
   IntegerOperatorToken,
   FloatOperatorToken,
   StringOperatorToken,
+  isBooleanOperatorToken,
+  isIntegerOperatorToken,
+  isFloatOperatorToken,
+  isStringOperatorToken
 } from "./token/operator-token.ts";
-import BooleanOperandToken, { SystemBooleanOperandToken } from "./token/boolean-operand-token.ts";
-import IntegerOperandToken, { SystemIntegerOperandToken } from "./token/integer-operand-token";
-import FloatOperandToken, { SystemFloatOperandToken } from "./token/float-operand-token";
-import StringOperandToken, { SystemStringOperandToken } from "./token/string-operand-token";
+import BooleanOperandToken, { SystemBooleanOperandToken,
+  isBooleanOperandToken } from "./token/boolean-operand-token.ts";
+import IntegerOperandToken, { SystemIntegerOperandToken,
+  isIntegerOperandToken } from "./token/integer-operand-token";
+import FloatOperandToken, { SystemFloatOperandToken,
+  isFloatOperandToken } from "./token/float-operand-token";
+import StringOperandToken, { SystemStringOperandToken,
+  isStringOperandToken } from "./token/string-operand-token";
 
 interface Expression<State> {
   // list of tokens in reverse polish
@@ -39,7 +47,47 @@ export interface StringExpression<State> extends Expression<State> {
   tokens: [StringOperandToken | StringOperatorToken, ...Token[]];
 }
 
-export function FromOperator<State>(
+export function isBooleanExpression<S>(exp:
+  Expression<S>): exp is BooleanExpression<S>
+{
+  if (exp.tokens.length === 0) {
+    return false;
+  }
+  return isBooleanOperandToken(exp.tokens[0]) ||
+    isBooleanOperatorToken(exp.tokens[0]);
+}
+
+export function isIntegerExpression<S>(exp:
+  Expression<S>): exp is IntegerExpression<S>
+{
+  if (exp.tokens.length === 0) {
+    return false;
+  }
+  return isIntegerOperandToken(exp.tokens[0]) ||
+    isIntegerOperatorToken(exp.tokens[0]);
+}
+
+export function isFloatExpression<S>(exp:
+  Expression<S>): exp is FloatExpression<S>
+{
+  if (exp.tokens.length === 0) {
+    return false;
+  }
+  return isFloatOperandToken(exp.tokens[0]) ||
+    isFloatOperatorToken(exp.tokens[0]);
+}
+
+export function isStringExpression<S>(exp:
+  Expression<S>): exp is StringExpression<S>
+{
+  if (exp.tokens.length === 0) {
+    return false;
+  }
+  return isStringOperandToken(exp.tokens[0]) ||
+    isStringOperatorToken(exp.tokens[0]);
+}
+
+export function fromOperator<State>(
   token: OperatorToken,
   ...args: Expression<State>[]
 ): Expression<State> {
@@ -138,8 +186,8 @@ export function fromStateBoolean<State>(path:
   return {
     ...emptyExpression,
     tokens: [Token.StateBoolean],
-    stateValues: [path],
-  }
+    stateValues: [path]
+  };
 }
 
 export function fromStateInteger<State>(path:
@@ -148,8 +196,8 @@ export function fromStateInteger<State>(path:
   return {
     ...emptyExpression,
     tokens: [Token.StateInteger],
-    stateValues: [path],
-  }
+    stateValues: [path]
+  };
 }
 
 export function fromStateFloat<State>(path:
@@ -158,8 +206,8 @@ export function fromStateFloat<State>(path:
   return {
     ...emptyExpression,
     tokens: [Token.StateFloat],
-    stateValues: [path],
-  }
+    stateValues: [path]
+  };
 }
 
 export function fromStateString<State>(path:
@@ -168,8 +216,8 @@ export function fromStateString<State>(path:
   return {
     ...emptyExpression,
     tokens: [Token.StateString],
-    stateValues: [path],
-  }
+    stateValues: [path]
+  };
 }
 
 export default Expression;

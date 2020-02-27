@@ -1,14 +1,16 @@
-// 0x0011... float operands
+import Token, { getTokenType, getTokenReturnType } from "./token";
+
+// 0b0011... float operands
 export enum StateFloatOperandToken {
-  StateFloat = 0x0011_0000_0000_0000
+  StateFloat = 0b0011_0000_0000_0000
 }
 
 export enum ConstantFloatOperandToken {
-  ConstantFloat = 0x0011_0000_0000_0001
+  ConstantFloat = 0b0011_0000_0000_0001
 }
 
 export enum SystemFloatOperandToken {
-  Time = 0x0011_0100_0000_0000
+  Time = 0b0011_0100_0000_0000
 }
 
 export const FloatOperandToken = {
@@ -20,5 +22,10 @@ export const FloatOperandToken = {
 export type FloatOperandToken = StateFloatOperandToken
   | ConstantFloatOperandToken
   | SystemFloatOperandToken;
+
+export function isFloatOperandToken(token: Token): token is FloatOperandToken {
+  return getTokenType(token) === "operand" &&
+    getTokenReturnType(token) === "float";
+}
 
 export default FloatOperandToken;

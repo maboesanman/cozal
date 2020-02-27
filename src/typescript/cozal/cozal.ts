@@ -5,7 +5,7 @@ import initializeCore from "./initialize-core.ts";
 import initializeRenderer from "./initialize-renderer.ts";
 import CozalEvent from "./types/cozal-event.ts";
 import CozalSystemEvent from "./types/cozal-system-event.ts";
-import ExpressionAPI from "./cozel-expression.ts";
+import ExpressionAPI from "./cozal-expression.ts";
 
 interface CozalFrame {
   event: CozalSystemEvent;
