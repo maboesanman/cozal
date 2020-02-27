@@ -16,7 +16,7 @@ import {
   add,
   subtract,
   multiply,
-  divide,
+  divide
 } from "./expression/math/binary-operations";
 
 const ExpressionAPI = {
@@ -36,7 +36,7 @@ const ExpressionAPI = {
     add,
     subtract,
     multiply,
-    divide,
+    divide
   }
 };
 
