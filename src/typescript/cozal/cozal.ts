@@ -5,7 +5,7 @@ import initializeCore from "./initialize-core.ts";
 import initializeRenderer from "./initialize-renderer.ts";
 import CozalEvent from "./types/cozal-event.ts";
 import CozalSystemEvent from "./types/cozal-system-event.ts";
-import ExpressionAPI from "./cozal-expression.ts";
+import CozalExpression from "./cozal-expression.ts";
 
 interface CozalFrame {
   event: CozalSystemEvent;
@@ -40,7 +40,7 @@ const CozalInternal = {
 const Cozal = Object.freeze({
   initializeCore,
   initializeRenderer,
-  Expression: ExpressionAPI
+  Expression: CozalExpression
 });
 
 export default Cozal;

@@ -7,6 +7,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-futures = "0.3.2"
-tokio = { version = "0.2", features = ["full"] }
-deno_core = "0.32.0"
+futures = "0.3.5"
+tokio = { version = "0.2.21", features = ["time"] }
+im = "15.0.0"
+pin-utils = "0.1.0"
+winit = "0.22.2"
+# deno_core = "0.32.0"
