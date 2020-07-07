@@ -1,7 +1,9 @@
 use std::time::Duration;
 use std::cmp::Ordering;
+use core::fmt::Debug;
+use std::fmt;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct EventTimestamp {
     // this is the duration since the initialization of the owning container.
     pub time: Duration,
@@ -33,18 +35,32 @@ impl PartialEq for EventTimestamp {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Event<T: Clone> {
     // so we can add/remove these after creating them.
     pub id: usize,
+    pub content: EventContent<T>,
+}
+
+#[derive(Clone)]
+pub struct EventContent<T: Clone> {
     pub timestamp: EventTimestamp,
     pub payload: EventPayload<T>,
 }
 
+impl<T: Debug + Clone> Debug for EventContent<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Point")
+         .field("timestamp", &self.timestamp)
+         .field("payload", &self.payload)
+         .finish()
+    }
+}
+
 impl<T: Clone> Ord for Event<T> {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.timestamp != other.timestamp {
-            return self.timestamp.cmp(&other.timestamp);
+        if self.content.timestamp != other.content.timestamp {
+            return self.content.timestamp.cmp(&other.content.timestamp);
         }
 
         // there should be no two events with the same id.
@@ -75,12 +91,8 @@ impl<T: Clone> PartialEq for Event<T> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum EventPayload<T: Clone> {
-    Start,
-    End,
-    Input,
-    Rollback,
     Custom(T),
 }
 
@@ -94,8 +106,8 @@ pub enum ScheduleEvent<Ext: Clone, Int: Clone> {
 impl<Ext: Clone, Int: Clone> ScheduleEvent<Ext, Int> {
     pub fn timestamp(&self) -> EventTimestamp {
         match self {
-            ScheduleEvent::External(e) => e.timestamp,
-            ScheduleEvent::Internal(e) => e.timestamp,
+            ScheduleEvent::External(e) => e.content.timestamp,
+            ScheduleEvent::Internal(e) => e.content.timestamp,
         }
     }
 
@@ -112,11 +124,6 @@ impl<Ext: Clone, Int: Clone> Ord for ScheduleEvent<Ext, Int> {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.timestamp() != other.timestamp() {
             return self.timestamp().cmp(&other.timestamp());
-        }
-
-        // there should be no two events with the same id.
-        if self.id() == other.id() {
-            panic!();
         }
         
         // fall back to the order the events are created.
