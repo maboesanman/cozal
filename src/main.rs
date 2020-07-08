@@ -2,11 +2,13 @@
 extern crate lazy_static;
 
 use futures::stream::StreamExt;
-// use winit::{
-//     event::{Event, WindowEvent, DeviceEvent},
-//     event_loop::{ControlFlow, EventLoop},
-//     window::WindowBuilder,
-// };
+use winit::{
+    // event::{Event, WindowEvent, DeviceEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
+};
+use tokio::runtime::Runtime;
+use std::thread;
 
 mod core;
 mod example_game;
@@ -15,42 +17,32 @@ use crate::example_game::MyUpdater;
 use crate::core::event_factory::EventFactory;
 use crate::core::game::Game;
 use crate::core::debug_sink::DebugSink;
+use crate::core::channel_stream::channel_stream;
 
 lazy_static! {
     static ref EVENT_FACTORY: EventFactory = EventFactory::new();
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let game: Game<(), (), usize, MyUpdater, ()> = core::game::Game::new(&EVENT_FACTORY);
 
-    let debug = DebugSink {};
+    let fut1 = game.forward(DebugSink::new());
+    // print!("{:?}", result);
 
-    let result = game.forward(debug).await;
-    print!("{:?}", result);
-    // let event_loop = EventLoop::new();
-    // let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let (sink, stream) = channel_stream();
+    let fut2 = stream.forward(DebugSink::new());
 
-    // event_loop.run(move |event, _, control_flow| {
-    //     *control_flow = ControlFlow::Wait;
+    thread::spawn(move || {
+        let mut rt = Runtime::new().unwrap();
+        rt.block_on(fut2);
+    });
 
-    //     println!("{:?}", event);
-    //     match event {
-    //         Event::WindowEvent {
-    //             event: WindowEvent::CloseRequested,
-    //             window_id,
-    //         } => {
-    //             if window_id == window.id() {
-    //                 *control_flow = ControlFlow::Exit
-    //             }
-    //         }
-    //         Event::DeviceEvent {
-    //             event: DeviceEvent::Key(_),
-    //             device_id: _device_id,
-    //         } =>{
-    //             // println!("{:?}", event)
-    //         }
-    //         _ => {}
-    //     }
-    // });
+    let event_loop = EventLoop::new();
+    let _window = WindowBuilder::new().build(&event_loop).unwrap();
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Wait;
+        if let Some(e) = event.to_static() {
+            sink.enque(e);
+        }
+    });
 }
