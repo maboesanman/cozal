@@ -45,7 +45,7 @@ pub struct Event<T: Clone> {
 #[derive(Clone)]
 pub struct EventContent<T: Clone> {
     pub timestamp: EventTimestamp,
-    pub payload: EventPayload<T>,
+    pub payload: T,
 }
 
 impl<T: Debug + Clone> Debug for EventContent<T> {
@@ -90,12 +90,6 @@ impl<T: Clone> PartialEq for Event<T> {
         false
     }
 }
-
-#[derive(Clone, Debug)]
-pub enum EventPayload<T: Clone> {
-    Custom(T),
-}
-
 
 #[derive(Clone)]
 pub enum ScheduleEvent<Ext: Clone, Int: Clone> {
