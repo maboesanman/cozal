@@ -55,7 +55,7 @@ fn main() {
             // Ok(Some(e: Event<()>))
         });
 
-        let game: Game<MyUpdater, _, ()> = Game::new(space_presses, &EVENT_FACTORY);
+        let game: Game<MyUpdater, _> = Game::new(space_presses, &EVENT_FACTORY);
         let mut rt = Runtime::new().unwrap();
         let fut1 = game.forward(DebugSink::new());
         rt.block_on(fut1);

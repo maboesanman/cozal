@@ -1,6 +1,5 @@
 use crate::core::event_factory::EventFactory;
 use std::collections::VecDeque;
-use core::marker::PhantomData;
 use core::pin::Pin;
 use futures::{Future, Stream};
 use futures::task::{Poll, Context};
@@ -24,8 +23,7 @@ enum WaitingFor<U: Updater> {
 
 pub struct Game<
     U: Updater,
-    S: Stream<Item = Event<U::In>> + Unpin + Send,
-    Err: Unpin + Clone + Send,
+    S: Stream<Item = Event<U::In>> + Unpin + Send
 > {
     ef: &'static EventFactory,
     input_stream: S,
@@ -38,15 +36,12 @@ pub struct Game<
     last_event: Option<ScheduleEvent<U::In, U::Internal>>,
     waiting_for: WaitingFor<U>,
     output_buffer: VecDeque<Event<U::Out>>,
-
-    phantom: PhantomData<Err>,
 }
 
 impl<
     U: Updater,
-    S: Stream<Item = Event<U::In>> + Unpin + Send,
-    Err: Unpin + Clone + Send,
-> Game<U, S, Err> {
+    S: Stream<Item = Event<U::In>> + Unpin + Send
+> Game<U, S> {
     pub fn new(input_stream: S, ef: &'static EventFactory) -> Self {
         Game {
             ef,
@@ -56,8 +51,7 @@ impl<
             start: Instant::now(),
             last_event: None,
             waiting_for: WaitingFor::Init(U::init(ef)),
-            output_buffer: VecDeque::new(),
-            phantom: PhantomData,
+            output_buffer: VecDeque::new()
         }
     }
     fn get_waiting_for_from_schedule(&self) -> WaitingFor<U> {
@@ -153,10 +147,9 @@ impl<
 
 impl<
     U: Updater,
-    S: Stream<Item = Event<U::In>> + Unpin + Send,
-    Err: Unpin + Clone + Send,
-> Stream for Game<U, S, Err> {
-    type Item = Result<Event<U::Out>, Err>;
+    S: Stream<Item = Event<U::In>> + Unpin + Send
+> Stream for Game<U, S> {
+    type Item = Event<U::Out>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let self_mut = self.get_mut();
