@@ -16,13 +16,13 @@ impl MyUpdater {
     async fn initialize_internal(ef: &'static EventFactory) -> InitResult<Self> {
         InitResult {
             new_updater: MyUpdater { count: 0 },
-            new_events: vec![ScheduleEvent::Internal(ef.new_event(EventContent {
+            new_events: vec![EventContent {
                     timestamp: EventTimestamp {
                         time: Duration::from_secs(0),
                         priority: 1,
                     },
                     payload: (),
-                }))],
+                }],
             emitted_events: vec![],
         }
     }
@@ -33,21 +33,21 @@ impl MyUpdater {
             ScheduleEvent::External(_) => self.count -= 1,
             ScheduleEvent::Internal(_) => {
                 self.count += 1;
-                let new_in_event = ScheduleEvent::Internal(ef.new_event(EventContent {
+                let new_in_event = EventContent {
                     timestamp: EventTimestamp {
                         time: event.timestamp().time + Duration::from_secs(1),
                         priority: 1,
                     },
                     payload: (),
-                }));
+                };
                 new_events = vec![new_in_event];
-                let new_out_event = ef.new_event(EventContent {
+                let new_out_event = EventContent {
                     timestamp: EventTimestamp {
                         time: event.timestamp().time + Duration::from_secs(1),
                         priority: 1,
                     },
                     payload: self.count,
-                });
+                };
                 emitted_events = vec![new_out_event];
             },
         };

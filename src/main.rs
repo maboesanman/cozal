@@ -30,36 +30,37 @@ lazy_static! {
 fn main() {
     let (sender, receiver) = unbounded();
     
-    thread::spawn(move || {
-        let space_presses = receiver.filter_map(|e: Event<winit::event::Event<'_, ()>>| async move {
-            todo!()
-            // match e.content.payload {
-            //     // winit::event::Event::WindowEvent { 
-            //     //     window_id,
-            //     //     event,
-            //     // } => match event {
+    // thread::spawn(move || {
+    //     let space_presses = receiver.filter_map(|e: Event<winit::event::Event<'_, ()>>| async move {
+    //         // todo!()
+    //         None
+    //         // match e.content.payload {
+    //         //     // winit::event::Event::WindowEvent { 
+    //         //     //     window_id,
+    //         //     //     event,
+    //         //     // } => match event {
 
-            //     //     Ok(None)
-            //     // },
-            //     winit::event::Event::DeviceEvent {
-            //         device_id,
-            //         event,
-            //     } => {
-            //         match event {
-            //             winit::event::DeviceEvent::Key(_) => Ok(Some(())),
-            //             _ => Ok(None)
-            //         }
-            //     }
-            //     _ => Ok(None)
-            // }
-            // Ok(Some(e: Event<()>))
-        });
+    //         //     //     Ok(None)
+    //         //     // },
+    //         //     winit::event::Event::DeviceEvent {
+    //         //         device_id,
+    //         //         event,
+    //         //     } => {
+    //         //         match event {
+    //         //             winit::event::DeviceEvent::Key(_) => Ok(Some(())),
+    //         //             _ => Ok(None)
+    //         //         }
+    //         //     }
+    //         //     _ => Ok(None)
+    //         // }
+    //         // Ok(Some(e: Event<()>))
+    //     });
 
-        let game: Game<MyUpdater, _> = Game::new(space_presses, &EVENT_FACTORY);
-        let mut rt = Runtime::new().unwrap();
-        let fut1 = game.forward(DebugSink::new());
-        rt.block_on(fut1);
-    });
+    //     let game: Game<MyUpdater, _> = Game::new(space_presses, &EVENT_FACTORY);
+    //     let mut rt = Runtime::new().unwrap();
+    //     let fut1 = game.forward(DebugSink::new());
+    //     rt.block_on(fut1);
+    // });
 
     let event_loop = EventLoop::new();
     let _window = WindowBuilder::new().build(&event_loop).unwrap();

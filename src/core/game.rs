@@ -10,7 +10,7 @@ use super::{
     updater::{InitResult, Updater, UpdateResult},
     event::{
         Event, 
-        ScheduleEvent
+        ScheduleEvent, EventContent
     }
 };
 
@@ -45,7 +45,7 @@ impl<
     pub fn new(input_stream: S, ef: &'static EventFactory) -> Self {
         Game {
             ef,
-            input_stream: input_stream,
+            input_stream,
             schedule: OrdSet::new(),
             updater: None,
             start: Instant::now(),
@@ -64,6 +64,17 @@ impl<
                 WaitingFor::NewEvent
             }
         }
+    }
+
+    fn schedule_event(&mut self, event: EventContent<U::Internal>) {
+        let event = self.ef.new_event(event);
+        let event = ScheduleEvent::Internal(event);
+        self.schedule = self.schedule.update(event);
+    }
+
+    fn emit_event(&mut self, event: EventContent<U::Out>) {
+        let event = self.ef.new_event(event);
+        self.output_buffer.push_back(event);
     }
 
     fn poll_schedule(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -92,26 +103,28 @@ impl<
                 match Pin::new(future).poll(cx) {
                     Poll::Ready(update_result) => {
                         self.updater = Some(update_result.new_updater);
-                        let t = update_result.trigger;
+                        let trigger = update_result.trigger;
                         for e in update_result.expired_events.iter() {
-                            if e < &t {
-                                panic!()
-                            }
-                            self.schedule = self.schedule.without(e);
+                            todo!()
+                            // if e.timestamp() < &t {
+                            //     panic!()
+                            // }
+                            // self.schedule.
+                            // self.schedule = self.schedule.without(e);
                         }
                         for e in update_result.new_events.into_iter() {
-                            if e < t {
+                            if e.timestamp < trigger.timestamp() {
                                 panic!()
                             }
-                            self.schedule = self.schedule.update(e);
+                            self.schedule_event(e);
                         }
                         for e in update_result.emitted_events.into_iter() {
-                            if e.content.timestamp < t.timestamp() {
+                            if e.timestamp < trigger.timestamp() {
                                 panic!()
                             }
-                            self.output_buffer.push_back(e);
+                            self.emit_event(e);
                         }
-                        self.last_event = Some(t);
+                        self.last_event = Some(trigger);
                         self.waiting_for = self.get_waiting_for_from_schedule();
 
                         Poll::Ready(())
@@ -126,10 +139,10 @@ impl<
                     Poll::Ready(init_result) => {
                         self.updater = Some(init_result.new_updater);
                         for e in init_result.new_events.into_iter() {
-                            self.schedule = self.schedule.update(e);
+                            self.schedule_event(e);
                         }
                         for e in init_result.emitted_events.into_iter() {
-                            self.output_buffer.push_back(e);
+                            self.emit_event(e);
                         }
                         self.waiting_for = self.get_waiting_for_from_schedule();
 
@@ -155,7 +168,7 @@ impl<
         let self_mut = self.get_mut();
         loop {
             match self_mut.output_buffer.pop_front() {
-                Some(event) => break Poll::Ready(Some(Ok(event))),
+                Some(event) => break Poll::Ready(Some(event)),
                 None => match self_mut.waiting_for {
                     WaitingFor::Init(_) | WaitingFor::Update(_) => {
                         match self_mut.poll_updater(cx) {
