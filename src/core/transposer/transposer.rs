@@ -1,14 +1,15 @@
-use super::event::{EventContent, ScheduleEvent};
+use crate::core::event::event::EventContent;
+use super::schedule_event::ScheduleEvent;
 use futures::Future;
 use std::pin::Pin;
 
-pub struct InitResult<U: Updater> {
+pub struct InitResult<U: Transposer> {
     pub new_updater: U,
     pub new_events: Vec<EventContent<U::Internal>>,
     pub emitted_events: Vec<EventContent<U::Out>>,
 }
 
-pub struct UpdateResult<U: Updater> {
+pub struct UpdateResult<U: Transposer> {
     pub new_updater: U,
     pub trigger: ScheduleEvent<U::In, U::Internal>,
     // all these events must be in the future
@@ -17,7 +18,7 @@ pub struct UpdateResult<U: Updater> {
     pub emitted_events: Vec<EventContent<U::Out>>,
 }
 
-pub trait Updater: Clone + Unpin + Send {
+pub trait Transposer: Clone + Unpin + Send {
     type In: Clone + Unpin + Send;
     type Internal: Clone + Unpin + Send;
     type Out: Clone + Unpin + Send;

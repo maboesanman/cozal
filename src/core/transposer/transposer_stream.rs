@@ -1,4 +1,4 @@
-use crate::core::event_factory::EventFactory;
+// use crate::core::event_factory::EventFactory;
 use core::pin::Pin;
 use futures::{
     stream::Fuse,
@@ -11,32 +11,35 @@ use std::collections::VecDeque;
 use tokio::time::{delay_until, Delay, Instant};
 
 use super::{
-    event::{Event, EventContent, ScheduleEvent},
-    updater::{InitResult, UpdateResult, Updater},
+    // event::{Event, EventContent, EventTimestamp},
+    transposer::{InitResult, UpdateResult, Transposer}, schedule_event::ScheduleEvent,
 };
+use crate::core::event::{event::{EventContent, Event}, event_factory::EventFactory};
 
-enum WaitingFor<U: Updater> {
-    Init(Pin<Box<dyn Future<Output = InitResult<U>>>>),
-    Update(Pin<Box<dyn Future<Output = UpdateResult<U>>>>),
+enum WaitingFor<T: Transposer> {
+    Init(Pin<Box<dyn Future<Output = InitResult<T>>>>),
+    Update(Pin<Box<dyn Future<Output = UpdateResult<T>>>>),
     Scheduled(Delay),
     NewEvent,
 }
 
-pub struct Game<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> {
+
+
+pub struct Game<T: Transposer, S: Stream<Item = Event<T::In>> + Unpin + Send> {
     ef: &'static EventFactory,
     input_stream: Fuse<S>,
 
     // replace this a history of updaters.
-    schedule: OrdSet<ScheduleEvent<U::In, U::Internal>>,
-    updater: Option<U>,
+    schedule: OrdSet<ScheduleEvent<T::In, T::Internal>>,
+    updater: Option<T>,
 
     start: Instant,
-    last_event: Option<ScheduleEvent<U::In, U::Internal>>,
-    waiting_for: WaitingFor<U>,
-    output_buffer: VecDeque<Event<U::Out>>,
+    last_event: Option<ScheduleEvent<T::In, T::Internal>>,
+    waiting_for: WaitingFor<T>,
+    output_buffer: VecDeque<Event<T::Out>>,
 }
 
-impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Game<U, S> {
+impl<T: Transposer, S: Stream<Item = Event<T::In>> + Unpin + Send> Game<T, S> {
     pub fn new(input_stream: S, ef: &'static EventFactory) -> Self {
         Game {
             ef,
@@ -45,11 +48,11 @@ impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Game<U, S> {
             updater: None,
             start: Instant::now(),
             last_event: None,
-            waiting_for: WaitingFor::Init(U::init()),
+            waiting_for: WaitingFor::Init(T::init()),
             output_buffer: VecDeque::new(),
         }
     }
-    fn get_waiting_for_from_schedule(&self) -> WaitingFor<U> {
+    fn get_waiting_for_from_schedule(&self) -> WaitingFor<T> {
         match self.schedule.get_min() {
             Some(event) => {
                 let time = self.start + event.timestamp().time;
@@ -59,13 +62,13 @@ impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Game<U, S> {
         }
     }
 
-    fn schedule_event(&mut self, event: EventContent<U::Internal>) {
+    fn schedule_event(&mut self, event: EventContent<T::Internal>) {
         let event = self.ef.new_event(event);
         let event = ScheduleEvent::Internal(event);
         self.schedule = self.schedule.update(event);
     }
 
-    fn emit_event(&mut self, event: EventContent<U::Out>) {
+    fn emit_event(&mut self, event: EventContent<T::Out>) {
         let event = self.ef.new_event(event);
         self.output_buffer.push_back(event);
     }
@@ -167,8 +170,8 @@ impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Game<U, S> {
     }
 }
 
-impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Stream for Game<U, S> {
-    type Item = Event<U::Out>;
+impl<T: Transposer, S: Stream<Item = Event<T::In>> + Unpin + Send> Stream for Game<T, S> {
+    type Item = Event<T::Out>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let self_mut = self.get_mut();
