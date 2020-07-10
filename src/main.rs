@@ -1,52 +1,82 @@
-use deno_core::*;
-use futures::executor::block_on;
-use std::option::Option;
-use futures::future::FutureExt;
-use futures::future;
+#[macro_use]
+extern crate lazy_static;
+
+use crate::core::event::EventContent;
+use flume::unbounded;
+use futures::future::ready;
+use futures::stream::StreamExt;
+use std::thread;
+use tokio::runtime::Runtime;
+use tokio::time::Instant;
+use winit::{
+    // event::{Event, WindowEvent, DeviceEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
+};
+
+mod core;
+mod example_game;
+
+use crate::core::debug_sink::DebugSink;
+use crate::core::event::*;
+use crate::core::event_factory::EventFactory;
+use crate::core::game::Game;
+use crate::example_game::MyUpdater;
+
+lazy_static! {
+    static ref EVENT_FACTORY: EventFactory = EventFactory::new();
+}
 
 fn main() {
-    let future = async_main();
-    block_on(future);
-}
+    let (sender, receiver) = unbounded();
 
-async fn async_main() {
-    let js_source = include_str!("cozal.js");
+    thread::spawn(move || {
+        let key_presses = receiver.filter_map(move |e: Event<winit::event::Event<'_, ()>>| {
+            // todo!()
+            // print!("{:?}", e.content.payload);
+            ready(match e.content.payload {
+                winit::event::Event::WindowEvent {
+                    window_id: _,
+                    event,
+                } => match event {
+                    winit::event::WindowEvent::ReceivedCharacter(_) => {
+                        let event = EventContent {
+                            timestamp: e.content.timestamp,
+                            payload: (),
+                        };
+                        let event = EVENT_FACTORY.new_event(event);
+                        Some(event)
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            // Ok(Some(e: Event<()>))
+        });
 
-    let startup_data = StartupData::Script(Script {
-        source: js_source,
-        filename: "cozal.js",
+        let game: Game<MyUpdater, _> = Game::new(key_presses, &EVENT_FACTORY);
+        let game = game.map(move |event| Ok(event));
+        let mut rt = Runtime::new().unwrap();
+        let fut1 = game.forward(DebugSink::new());
+        rt.block_on(fut1).unwrap();
     });
 
-    let isolate = deno_core::Isolate::new(startup_data, false);
-    let _op_id = isolate.register_op("printSync", print_from_rust_sync_op);
-    let _op_id = isolate.register_op("printAsync", print_from_rust_async_op);
-  
-    let result = isolate.await;
-    js_check(result);
-}
-
-fn js_check(r: Result<(), ErrBox>) {
-    if let Err(e) = r {
-        panic!(e.to_string());
-    }
-}
-
-fn print_from_rust_sync_op(_control: &[u8], _zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
-    let vec = vec![42u8, 0, 0, 0];
-    let buf = vec.into_boxed_slice();
-    Op::Sync(buf)
-}
-
-fn print_from_rust_async_op(control: &[u8], _zero_copy: Option<ZeroCopyBuf>) -> CoreOp {
-    // control should contain param small enough for cloning, so just do it.
-    // control buf is temporary borrowed from Deno here, so to keep a reference
-    // of it async, we have copy it.
-    // async fn requires ownership or static lifetime of reference anyways. 
-    let future = print_from_rust(control.to_owned(), _zero_copy);
-    let future = future.then(|x| future::ready(x.map(|v| v.into_boxed_slice())));
-    Op::Async(future.boxed())
-}
-
-async fn print_from_rust(_control: Vec<u8>, _zero_copy: Option<ZeroCopyBuf>) -> Result<Vec<u8>, CoreError> {
-    Ok(vec![43u8, 0, 0, 0])
+    let event_loop = EventLoop::new();
+    let _window = WindowBuilder::new().build(&event_loop).unwrap();
+    let start = Instant::now();
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Wait;
+        if let Some(e) = event.to_static() {
+            let t = Instant::now();
+            let e = EventContent {
+                timestamp: EventTimestamp {
+                    time: t - start,
+                    priority: 0,
+                },
+                payload: e,
+            };
+            let e = EVENT_FACTORY.new_event(e);
+            sender.send(e).unwrap();
+        }
+    });
 }
