@@ -1,9 +1,9 @@
-use core::task::{Context, Poll};
-use core::pin::Pin;
-use futures::Sink;
 use core::fmt::Debug;
+use core::pin::Pin;
+use core::task::{Context, Poll};
+use futures::Sink;
 
-pub struct DebugSink { }
+pub struct DebugSink {}
 
 impl DebugSink {
     pub fn new() -> Self {
@@ -19,7 +19,6 @@ impl<T: Clone + Debug> Sink<T> for DebugSink {
     }
 
     fn start_send(self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
-        // here is where rollbacks happen
         println!("{:?}", item);
         Ok(())
     }

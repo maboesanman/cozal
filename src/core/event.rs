@@ -1,7 +1,7 @@
-use std::time::Duration;
-use std::cmp::Ordering;
 use core::fmt::Debug;
+use std::cmp::Ordering;
 use std::fmt;
+use std::time::Duration;
 
 #[derive(Copy, Clone, Debug)]
 pub struct EventTimestamp {
@@ -27,7 +27,7 @@ impl PartialOrd for EventTimestamp {
     }
 }
 
-impl Eq for EventTimestamp { }
+impl Eq for EventTimestamp {}
 
 impl PartialEq for EventTimestamp {
     fn eq(&self, other: &Self) -> bool {
@@ -51,9 +51,9 @@ pub struct EventContent<T: Clone> {
 impl<T: Debug + Clone> Debug for EventContent<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Point")
-         .field("timestamp", &self.timestamp)
-         .field("payload", &self.payload)
-         .finish()
+            .field("timestamp", &self.timestamp)
+            .field("payload", &self.payload)
+            .finish()
     }
 }
 
@@ -67,7 +67,7 @@ impl<T: Clone> Ord for Event<T> {
         if self.id == other.id {
             panic!();
         }
-        
+
         // fall back to the order the events are created.
         self.id.cmp(&other.id)
     }
@@ -79,7 +79,7 @@ impl<T: Clone> PartialOrd for Event<T> {
     }
 }
 
-impl<T: Clone> Eq for Event<T> { }
+impl<T: Clone> Eq for Event<T> {}
 
 impl<T: Clone> PartialEq for Event<T> {
     fn eq(&self, other: &Self) -> bool {
@@ -95,6 +95,15 @@ impl<T: Clone> PartialEq for Event<T> {
 pub enum ScheduleEvent<Ext: Clone, Int: Clone> {
     External(Event<Ext>),
     Internal(Event<Int>),
+}
+
+impl<Ext: Debug + Clone, Int: Debug + Clone> Debug for ScheduleEvent<Ext, Int> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ScheduleEvent::External(e) => e.fmt(f),
+            ScheduleEvent::Internal(e) => e.fmt(f),
+        }
+    }
 }
 
 impl<Ext: Clone, Int: Clone> ScheduleEvent<Ext, Int> {
@@ -113,13 +122,12 @@ impl<Ext: Clone, Int: Clone> ScheduleEvent<Ext, Int> {
     }
 }
 
-
 impl<Ext: Clone, Int: Clone> Ord for ScheduleEvent<Ext, Int> {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.timestamp() != other.timestamp() {
             return self.timestamp().cmp(&other.timestamp());
         }
-        
+
         // fall back to the order the events are created.
         self.id().cmp(&other.id())
     }
@@ -131,7 +139,7 @@ impl<Ext: Clone, Int: Clone> PartialOrd for ScheduleEvent<Ext, Int> {
     }
 }
 
-impl<Ext: Clone, Int: Clone> Eq for ScheduleEvent<Ext, Int> { }
+impl<Ext: Clone, Int: Clone> Eq for ScheduleEvent<Ext, Int> {}
 
 impl<Ext: Clone, Int: Clone> PartialEq for ScheduleEvent<Ext, Int> {
     fn eq(&self, other: &Self) -> bool {

@@ -1,8 +1,6 @@
-
+use super::event::{EventContent, ScheduleEvent};
 use futures::Future;
 use std::pin::Pin;
-use super::{event_factory::EventFactory, event::{ScheduleEvent, EventContent}};
-
 
 pub struct InitResult<U: Updater> {
     pub new_updater: U,
@@ -24,6 +22,9 @@ pub trait Updater: Clone + Unpin + Send {
     type Internal: Clone + Unpin + Send;
     type Out: Clone + Unpin + Send;
 
-    fn init(ef: &'static EventFactory) -> Pin<Box<dyn Future<Output = InitResult<Self>>>>;
-    fn update(&self, event: ScheduleEvent<Self::In, Self::Internal>, ef: &'static EventFactory) -> Pin<Box<dyn Future<Output = UpdateResult<Self>>>>;
+    fn init() -> Pin<Box<dyn Future<Output = InitResult<Self>>>>;
+    fn update(
+        &self,
+        event: ScheduleEvent<Self::In, Self::Internal>,
+    ) -> Pin<Box<dyn Future<Output = UpdateResult<Self>>>>;
 }

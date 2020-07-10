@@ -1,6 +1,6 @@
-use core::sync::atomic::Ordering::Relaxed;
-use core::sync::atomic::AtomicUsize;
 use super::event::{Event, EventContent};
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering::Relaxed;
 
 pub struct EventFactory {
     current_id: AtomicUsize,
