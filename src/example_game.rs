@@ -34,7 +34,7 @@ impl ExampleTransposer {
                     payload: self.count,
                 };
                 UpdateResult {
-                    new_updater: self,
+                    new_updater: Some(self),
                     trigger: event,
                     expired_events: vec![],
                     new_events: vec![],
@@ -58,7 +58,7 @@ impl ExampleTransposer {
                     payload: self.count,
                 };
                 UpdateResult {
-                    new_updater: self,
+                    new_updater: Some(self),
                     trigger: event,
                     expired_events: vec![],
                     new_events: vec![new_in_event],

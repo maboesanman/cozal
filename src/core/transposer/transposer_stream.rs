@@ -120,7 +120,9 @@ impl<T: Transposer, S: Stream<Item = Event<T::In>> + Unpin + Send> Game<T, S> {
             WaitingFor::Update(future) => {
                 match Pin::new(future).poll(cx) {
                     Poll::Ready(update_result) => {
-                        self.updater = Some(update_result.new_updater);
+                        if let Some(u) = update_result.new_updater {
+                            self.updater = Some(u);
+                        }
                         let trigger = update_result.trigger;
                         for _ in update_result.expired_events.iter() {
                             todo!()
