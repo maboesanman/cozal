@@ -4,7 +4,7 @@ use winit::{
     window::WindowBuilder,
 };
 use std::time::Instant;
-use crate::core::event::{event_factory::EventFactory, event::{EventTimestamp, EventContent, Event}};
+use crate::core::event::{event_factory::EventFactory, event::{EventTimestamp, EventContent, Event, EventPayload}};
 
 pub struct WinitLoop {
     ef: &'static EventFactory,
@@ -42,7 +42,7 @@ impl WinitLoop {
                         time: t - start,
                         priority: 0,
                     },
-                    payload: e,
+                    payload: EventPayload::Payload(e),
                 };
                 let e = ef.new_event(e);
                 sender.send(e).unwrap();

@@ -1,7 +1,7 @@
 use futures::{Future, FutureExt};
 use std::pin::Pin;
 use std::time::Duration;
-use crate::core::{event::event::{EventTimestamp, EventContent}, transposer::{schedule_event::ScheduleEvent, transposer::{UpdateResult, InitResult, Transposer}}};
+use crate::core::{event::event::{EventTimestamp, EventContent, EventPayload}, transposer::{schedule_event::ScheduleEvent, transposer::{UpdateResult, InitResult, Transposer}}};
 
 #[derive(Clone)]
 pub struct ExampleTransposer {
@@ -17,7 +17,7 @@ impl ExampleTransposer {
                     time: Duration::from_secs(0),
                     priority: 0,
                 },
-                payload: (),
+                payload: EventPayload::Payload(()),
             }],
             emitted_events: vec![],
         }
@@ -31,7 +31,7 @@ impl ExampleTransposer {
                         time: event.timestamp().time + Duration::from_secs(1),
                         priority: 0,
                     },
-                    payload: self.count,
+                    payload: EventPayload::Payload(self.count),
                 };
                 UpdateResult {
                     new_updater: Some(self),
@@ -48,14 +48,14 @@ impl ExampleTransposer {
                         time: event.timestamp().time + Duration::from_secs(1),
                         priority: 0,
                     },
-                    payload: (),
+                    payload: EventPayload::Payload(()),
                 };
                 let new_out_event = EventContent {
                     timestamp: EventTimestamp {
                         time: event.timestamp().time + Duration::from_secs(1),
                         priority: 0,
                     },
-                    payload: self.count,
+                    payload: EventPayload::Payload(self.count),
                 };
                 UpdateResult {
                     new_updater: Some(self),

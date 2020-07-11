@@ -7,7 +7,7 @@ use std::thread;
 use tokio::runtime::Runtime;
 
 use crate::example_game::ExampleTransposer;
-use crate::core::event::event::{Event, EventContent};
+use crate::core::event::event::{Event, EventContent, EventPayload};
 use crate::core::event::event_factory::EventFactory;
 use crate::core::transposer::transposer_stream::Game;
 use crate::utilities::debug_sink::DebugSink;
@@ -27,14 +27,14 @@ fn main() {
     thread::spawn(move || {
         let key_presses = receiver.filter_map(move |e: Event<winit::event::Event<'_, ()>>| {
             ready(match e.content.payload {
-                winit::event::Event::WindowEvent {
+                EventPayload::Payload(winit::event::Event::WindowEvent {
                     window_id: _,
                     event,
-                } => match event {
+                }) => match event {
                     winit::event::WindowEvent::ReceivedCharacter(_) => {
                         let event = EventContent {
                             timestamp: e.content.timestamp,
-                            payload: (),
+                            payload: EventPayload::Payload(()),
                         };
                         let event = EVENT_FACTORY.new_event(event);
                         Some(event)

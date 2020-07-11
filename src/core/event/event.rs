@@ -45,7 +45,14 @@ pub struct Event<T: Clone> {
 #[derive(Clone)]
 pub struct EventContent<T: Clone> {
     pub timestamp: EventTimestamp,
-    pub payload: T,
+    pub payload: EventPayload<T>,
+}
+
+
+#[derive(Clone, Debug)]
+pub enum EventPayload<T> {
+    Payload(T),
+    Rollback,
 }
 
 impl<T: Debug + Clone> Debug for EventContent<T> {
