@@ -9,7 +9,7 @@ use tokio::runtime::Runtime;
 use crate::example_game::ExampleTransposer;
 use crate::core::event::event::{Event, EventContent, EventPayload};
 use crate::core::event::event_factory::EventFactory;
-use crate::core::transposer::transposer_stream::Game;
+use crate::core::transposer::transposer_stream::TransposerStream;
 use crate::utilities::debug_sink::DebugSink;
 use utilities::winit::WinitLoop;
 
@@ -46,7 +46,7 @@ fn main() {
             })
         });
 
-        let game: Game<ExampleTransposer, _> = Game::new(key_presses, &EVENT_FACTORY);
+        let game: TransposerStream<ExampleTransposer, _> = TransposerStream::new(key_presses, &EVENT_FACTORY);
         let game = game.map(move |event| Ok(event));
         let mut rt = Runtime::new().unwrap();
         let fut1 = game.forward(DebugSink::new());

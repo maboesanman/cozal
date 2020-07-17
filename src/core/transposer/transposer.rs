@@ -1,21 +1,44 @@
-use crate::core::event::event::{Event, EventContent};
+use crate::core::event::{event_factory::EventFactory, event::{Event, EventContent, EventTimestamp}};
 use super::schedule_event::ScheduleEvent;
 use futures::Future;
 use std::pin::Pin;
 
-pub struct InitResult<U: Transposer> {
-    pub new_updater: U,
-    pub new_events: Vec<EventContent<U::Internal>>,
-    pub emitted_events: Vec<EventContent<U::Out>>,
+pub struct InitResult<T: Transposer> {
+    pub new_updater: T,
+    pub new_events: Vec<EventContent<T::Internal>>,
+    pub emitted_events: Vec<EventContent<T::Out>>,
 }
 
-pub struct UpdateResult<U: Transposer> {
-    pub new_updater: Option<U>,
-    pub trigger: ScheduleEvent<U::In, U::Internal>,
+pub struct UpdateResult<T: Transposer> {
+    pub new_updater: Option<T>,
+    pub trigger: ScheduleEvent<T::In, T::Internal>,
     // all these events must be in the future
-    pub expired_events: Vec<usize>,
-    pub new_events: Vec<EventContent<U::Internal>>,
-    pub emitted_events: Vec<EventContent<U::Out>>,
+    pub expired_events: Vec<u64>,
+    pub new_events: Vec<NewUpdateEvent<T::Internal>>,
+    pub emitted_events: Vec<EventContent<T::Out>>,
+}
+
+pub enum NewUpdateEvent<T: Clone> {
+    Event(Event<T>),
+    Content(EventContent<T>),
+}
+
+impl<T: Clone> NewUpdateEvent<T> {
+    pub fn content(&self) -> &EventContent<T> {
+        match self {
+            NewUpdateEvent::Event(e) => &e.content,
+            NewUpdateEvent::Content(c) => &c,
+        }
+    }
+
+    pub fn timestamp(&self) -> &EventTimestamp {
+        &self.content().timestamp
+    }
+}
+
+pub struct TransposerContext {
+    pub event_factory: &'static EventFactory,
+    // todo add seeded deterministic random function
 }
 
 pub trait Transposer: Clone + Unpin + Send {
@@ -30,6 +53,7 @@ pub trait Transposer: Clone + Unpin + Send {
     // it is reccomended to use immutable structure sharing data types inside update.
     fn update(
         &self,
+        cx: &TransposerContext,
         event: ScheduleEvent<Self::In, Self::Internal>,
     ) -> Pin<Box<dyn Future<Output = UpdateResult<Self>>>>;
 

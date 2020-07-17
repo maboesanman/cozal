@@ -1,7 +1,17 @@
 use futures::{Future, FutureExt};
 use std::pin::Pin;
 use std::time::Duration;
-use crate::core::{event::event::{EventTimestamp, EventContent, EventPayload}, transposer::{schedule_event::ScheduleEvent, transposer::{UpdateResult, InitResult, Transposer}}};
+use crate::core::{
+    event::event::{
+        EventTimestamp, EventContent, EventPayload
+    }, 
+    transposer::{
+        schedule_event::ScheduleEvent, 
+        transposer::{
+            UpdateResult, InitResult, Transposer, NewUpdateEvent, TransposerContext
+        }
+    }
+};
 
 #[derive(Clone)]
 pub struct ExampleTransposer {
@@ -61,7 +71,7 @@ impl ExampleTransposer {
                     new_updater: Some(self),
                     trigger: event,
                     expired_events: vec![],
-                    new_events: vec![new_in_event],
+                    new_events: vec![NewUpdateEvent::Content(new_in_event)],
                     emitted_events: vec![new_out_event],
                 }
             }
@@ -79,6 +89,7 @@ impl Transposer for ExampleTransposer {
     }
     fn update(
         &self,
+        _cx: &TransposerContext,
         event: ScheduleEvent<(), ()>,
     ) -> Pin<Box<dyn Future<Output = UpdateResult<Self>>>> {
         let new_updater = self.clone();
