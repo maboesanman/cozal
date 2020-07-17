@@ -1,4 +1,4 @@
-use crate::core::event_factory::EventFactory;
+// use crate::core::event_factory::EventFactory;
 use core::pin::Pin;
 use futures::{
     stream::Fuse,
@@ -11,45 +11,48 @@ use std::collections::VecDeque;
 use tokio::time::{delay_until, Delay, Instant};
 
 use super::{
-    event::{Event, EventContent, ScheduleEvent},
-    updater::{InitResult, UpdateResult, Updater},
+    // event::{Event, EventContent, EventTimestamp},
+    transposer::{InitResult, UpdateResult, Transposer, TransposerContext, NewUpdateEvent}, schedule_event::ScheduleEvent,
 };
+use crate::core::event::{event::{EventContent, Event}, event_factory::EventFactory};
 
-enum WaitingFor<U: Updater> {
-    Init(Pin<Box<dyn Future<Output = InitResult<U>>>>),
-    Update(Pin<Box<dyn Future<Output = UpdateResult<U>>>>),
+enum WaitingFor<T: Transposer> {
+    Init(Pin<Box<dyn Future<Output = InitResult<T>>>>),
+    Update(Pin<Box<dyn Future<Output = UpdateResult<T>>>>),
     Scheduled(Delay),
     NewEvent,
 }
 
-pub struct Game<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> {
+
+
+pub struct TransposerStream<T: Transposer, S: Stream<Item = Event<T::In>> + Unpin + Send> {
     ef: &'static EventFactory,
     input_stream: Fuse<S>,
 
     // replace this a history of updaters.
-    schedule: OrdSet<ScheduleEvent<U::In, U::Internal>>,
-    updater: Option<U>,
+    schedule: OrdSet<ScheduleEvent<T::In, T::Internal>>,
+    updater: Option<T>,
 
     start: Instant,
-    last_event: Option<ScheduleEvent<U::In, U::Internal>>,
-    waiting_for: WaitingFor<U>,
-    output_buffer: VecDeque<Event<U::Out>>,
+    last_event: Option<ScheduleEvent<T::In, T::Internal>>,
+    waiting_for: WaitingFor<T>,
+    output_buffer: VecDeque<Event<T::Out>>,
 }
 
-impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Game<U, S> {
+impl<T: Transposer, S: Stream<Item = Event<T::In>> + Unpin + Send> TransposerStream<T, S> {
     pub fn new(input_stream: S, ef: &'static EventFactory) -> Self {
-        Game {
+        TransposerStream {
             ef,
             input_stream: input_stream.fuse(),
             schedule: OrdSet::new(),
             updater: None,
             start: Instant::now(),
             last_event: None,
-            waiting_for: WaitingFor::Init(U::init()),
+            waiting_for: WaitingFor::Init(T::init()),
             output_buffer: VecDeque::new(),
         }
     }
-    fn get_waiting_for_from_schedule(&self) -> WaitingFor<U> {
+    fn get_waiting_for_from_schedule(&self) -> WaitingFor<T> {
         match self.schedule.get_min() {
             Some(event) => {
                 let time = self.start + event.timestamp().time;
@@ -59,13 +62,17 @@ impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Game<U, S> {
         }
     }
 
-    fn schedule_event(&mut self, event: EventContent<U::Internal>) {
-        let event = self.ef.new_event(event);
+    fn schedule_event(&mut self, event: Event<T::Internal>) {
         let event = ScheduleEvent::Internal(event);
         self.schedule = self.schedule.update(event);
     }
 
-    fn emit_event(&mut self, event: EventContent<U::Out>) {
+    fn schedule_event_content(&mut self, event: EventContent<T::Internal>) {
+        let event = self.ef.new_event(event);
+        self.schedule_event(event);
+    }
+
+    fn emit_event(&mut self, event: EventContent<T::Out>) {
         let event = self.ef.new_event(event);
         self.output_buffer.push_back(event);
     }
@@ -79,9 +86,12 @@ impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Game<U, S> {
             match Pin::new(&mut self.input_stream).poll_next(cx) {
                 Poll::Ready(event) => match event {
                     Some(event) => {
-                        let event = ScheduleEvent::External(event);
-                        // println!("{:?}", event);
-                        self.schedule = self.schedule.update(event);
+                        if !T::can_process(&event) {
+                            continue;
+                        }
+
+                        let new_schedule_event = ScheduleEvent::External(event);
+                        self.schedule = self.schedule.update(new_schedule_event);
                         match self.waiting_for {
                             WaitingFor::Init(_) | WaitingFor::Update(_) => {}
                             WaitingFor::Scheduled(_) | WaitingFor::NewEvent => {
@@ -97,12 +107,16 @@ impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Game<U, S> {
     }
 
     fn poll_schedule(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        let transposer_context = TransposerContext {
+            event_factory: self.ef
+        };
+
         match &mut self.waiting_for {
             WaitingFor::Scheduled(delay) => match Pin::new(delay).poll(cx) {
                 Poll::Ready(_) => {
                     let (event, new_schedule) = self.schedule.without_min();
                     self.schedule = new_schedule;
-                    let fut = self.updater.as_ref().unwrap().update(event.unwrap());
+                    let fut = self.updater.as_ref().unwrap().update(&transposer_context, event.unwrap());
                     self.waiting_for = WaitingFor::Update(fut);
                     Poll::Ready(())
                 }
@@ -117,21 +131,36 @@ impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Game<U, S> {
             WaitingFor::Update(future) => {
                 match Pin::new(future).poll(cx) {
                     Poll::Ready(update_result) => {
-                        self.updater = Some(update_result.new_updater);
+                        if let Some(u) = update_result.new_updater {
+                            self.updater = Some(u);
+                        }
                         let trigger = update_result.trigger;
-                        for _ in update_result.expired_events.iter() {
-                            todo!()
-                            // if e.timestamp() < &t {
-                            //     panic!()
-                            // }
-                            // self.schedule.
-                            // self.schedule = self.schedule.without(e);
+                        for e in update_result.expired_events.iter() {
+                            // todo make this fast...
+                            let mut event_to_delete: Option<&ScheduleEvent<T::In, T::Internal>> = None;
+                            for s in self.schedule.iter() {
+                                if s.id() == *e {
+                                    event_to_delete = Some(s);
+                                    break;
+                                }
+                            }
+                            if let Some(e) = event_to_delete {
+                                self.schedule = self.schedule.without(e);
+                            }
                         }
                         for e in update_result.new_events.into_iter() {
-                            if e.timestamp < trigger.timestamp() {
+                            if e.timestamp() < &trigger.timestamp() {
                                 panic!()
                             }
-                            self.schedule_event(e);
+
+                            match e {
+                                NewUpdateEvent::Event(e) => {
+                                    self.schedule_event(e);
+                                },
+                                NewUpdateEvent::Content(c) => {
+                                    self.schedule_event_content(c);
+                                }
+                            }
                         }
                         for e in update_result.emitted_events.into_iter() {
                             if e.timestamp < trigger.timestamp() {
@@ -151,7 +180,7 @@ impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Game<U, S> {
                 Poll::Ready(init_result) => {
                     self.updater = Some(init_result.new_updater);
                     for e in init_result.new_events.into_iter() {
-                        self.schedule_event(e);
+                        self.schedule_event_content(e);
                     }
                     for e in init_result.emitted_events.into_iter() {
                         self.emit_event(e);
@@ -167,8 +196,8 @@ impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Game<U, S> {
     }
 }
 
-impl<U: Updater, S: Stream<Item = Event<U::In>> + Unpin + Send> Stream for Game<U, S> {
-    type Item = Event<U::Out>;
+impl<T: Transposer, S: Stream<Item = Event<T::In>> + Unpin + Send> Stream for TransposerStream<T, S> {
+    type Item = Event<T::Out>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let self_mut = self.get_mut();

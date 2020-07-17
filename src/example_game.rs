@@ -1,24 +1,33 @@
-use crate::core::event::{EventContent, EventTimestamp, ScheduleEvent};
-use crate::core::updater::{InitResult, UpdateResult, Updater};
 use futures::{Future, FutureExt};
 use std::pin::Pin;
 use std::time::Duration;
+use crate::core::{
+    event::event::{
+        EventTimestamp, EventContent, EventPayload
+    }, 
+    transposer::{
+        schedule_event::ScheduleEvent, 
+        transposer::{
+            UpdateResult, InitResult, Transposer, NewUpdateEvent, TransposerContext
+        }
+    }
+};
 
 #[derive(Clone)]
-pub struct MyUpdater {
+pub struct ExampleTransposer {
     count: usize,
 }
 
-impl MyUpdater {
+impl ExampleTransposer {
     async fn initialize_internal() -> InitResult<Self> {
         InitResult {
-            new_updater: MyUpdater { count: 0 },
+            new_updater: ExampleTransposer { count: 0 },
             new_events: vec![EventContent {
                 timestamp: EventTimestamp {
                     time: Duration::from_secs(0),
-                    priority: 1,
+                    priority: 0,
                 },
-                payload: (),
+                payload: EventPayload::Payload(()),
             }],
             emitted_events: vec![],
         }
@@ -30,12 +39,12 @@ impl MyUpdater {
                 let new_out_event = EventContent {
                     timestamp: EventTimestamp {
                         time: event.timestamp().time + Duration::from_secs(1),
-                        priority: 1,
+                        priority: 0,
                     },
-                    payload: self.count,
+                    payload: EventPayload::Payload(self.count),
                 };
                 UpdateResult {
-                    new_updater: self,
+                    new_updater: Some(self),
                     trigger: event,
                     expired_events: vec![],
                     new_events: vec![],
@@ -47,22 +56,22 @@ impl MyUpdater {
                 let new_in_event = EventContent {
                     timestamp: EventTimestamp {
                         time: event.timestamp().time + Duration::from_secs(1),
-                        priority: 1,
+                        priority: 0,
                     },
-                    payload: (),
+                    payload: EventPayload::Payload(()),
                 };
                 let new_out_event = EventContent {
                     timestamp: EventTimestamp {
                         time: event.timestamp().time + Duration::from_secs(1),
-                        priority: 1,
+                        priority: 0,
                     },
-                    payload: self.count,
+                    payload: EventPayload::Payload(self.count),
                 };
                 UpdateResult {
-                    new_updater: self,
+                    new_updater: Some(self),
                     trigger: event,
                     expired_events: vec![],
-                    new_events: vec![new_in_event],
+                    new_events: vec![NewUpdateEvent::Content(new_in_event)],
                     emitted_events: vec![new_out_event],
                 }
             }
@@ -70,7 +79,7 @@ impl MyUpdater {
     }
 }
 
-impl Updater for MyUpdater {
+impl Transposer for ExampleTransposer {
     type In = ();
     type Internal = ();
     type Out = usize;
@@ -80,6 +89,7 @@ impl Updater for MyUpdater {
     }
     fn update(
         &self,
+        _cx: &TransposerContext,
         event: ScheduleEvent<(), ()>,
     ) -> Pin<Box<dyn Future<Output = UpdateResult<Self>>>> {
         let new_updater = self.clone();
