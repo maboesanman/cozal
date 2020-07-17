@@ -38,13 +38,4 @@ pub trait Transposer: Clone + Unpin + Send {
     fn can_process(_event: &Event<Self::In>) -> bool {
         true
     }
-
-    // calculate the most likely outcome assuming there might be missing events.
-    // this is for tailoring netcode to more specific use cases to reduce "teleporting".
-    fn extrapolate(
-        &self,
-        event: ScheduleEvent<Self::In, Self::Internal>,
-    ) -> Pin<Box<dyn Future<Output = UpdateResult<Self>>>> {
-        self.update(event)
-    }
 }

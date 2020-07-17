@@ -8,7 +8,7 @@ pub struct EventTimestamp {
     // this is the duration since the initialization of the owning container.
     pub time: Duration,
     // break ties on time with priority.
-    pub priority: usize,
+    pub priority: i8,
 }
 
 impl Ord for EventTimestamp {
