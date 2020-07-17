@@ -7,19 +7,21 @@ use std::time::Instant;
 use crate::core::event::{event_factory::EventFactory, event::{EventTimestamp, EventContent, Event, EventPayload}};
 
 pub struct WinitLoop {
-    ef: &'static EventFactory,
     sender: Sender<Event<winit::event::Event<'static, ()>>>,
     event_loop: winit::event_loop::EventLoop<()>,
 }
 
 impl WinitLoop {
-    pub fn new(ef: &'static EventFactory) -> (Self, winit::window::Window, Receiver<Event<winit::event::Event<'_, ()>>>) {
+    pub fn new() -> (Self, winit::window::Window, Receiver<Event<winit::event::Event<'static, ()>>>) {
+        Self::new_from_builder(WindowBuilder::new())
+    }
+
+    pub fn new_from_builder(builder: WindowBuilder) -> (Self, winit::window::Window, Receiver<Event<winit::event::Event<'static, ()>>>) {
         let (sender, receiver) = unbounded();
         let event_loop = EventLoop::new();
-        let window = WindowBuilder::new().build(&event_loop).unwrap();
+        let window = builder.build(&event_loop).unwrap();
         (
             WinitLoop {
-                ef,
                 sender,
                 event_loop,
             },
@@ -28,12 +30,11 @@ impl WinitLoop {
         )
     }
 
-    pub fn run(self) -> ! {
+    pub fn run(self, ef: &'static EventFactory) -> ! {
         let start = Instant::now();
-        let ef = self.ef;
         let sender = self.sender;
-        let event_loop = self.event_loop;
-        event_loop.run(move |event, _, control_flow| {
+
+        self.event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
             if let Some(e) = event.to_static() {
                 let t = Instant::now();

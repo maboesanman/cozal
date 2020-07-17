@@ -22,7 +22,8 @@ lazy_static! {
 }
 
 fn main() {
-    let (winit, _, receiver) = WinitLoop::new(&EVENT_FACTORY);
+    let (winit, window, receiver) = WinitLoop::new();
+    window.set_visible(true);
 
     thread::spawn(move || {
         let key_presses = receiver.filter_map(move |e: Event<winit::event::Event<'_, ()>>| {
@@ -52,5 +53,5 @@ fn main() {
         rt.block_on(fut1).unwrap();
     });
 
-    winit.run();
+    winit.run(&EVENT_FACTORY);
 }
