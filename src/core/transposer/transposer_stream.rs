@@ -206,11 +206,9 @@ impl<T: Transposer, S: Stream<Item = Event<T::In>> + Unpin + Send> Stream for Tr
             match self_mut.output_buffer.pop_front() {
                 Some(event) => break Poll::Ready(Some(event)),
                 None => match self_mut.waiting_for {
-                    WaitingFor::Init(_) | WaitingFor::Update(_) => {
-                        match self_mut.poll_updater(cx) {
-                            Poll::Ready(_) => {}
-                            Poll::Pending => break Poll::Pending,
-                        }
+                    WaitingFor::Init(_) | WaitingFor::Update(_) => match self_mut.poll_updater(cx) {
+                        Poll::Ready(_) => {}
+                        Poll::Pending => break Poll::Pending,
                     }
                     WaitingFor::Scheduled(_) => match self_mut.poll_schedule(cx) {
                         Poll::Ready(_) => {}

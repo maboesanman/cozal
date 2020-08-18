@@ -30,6 +30,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-trait"
+version = "0.1.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "caae68055714ff28740f310927e04f2eba76ff580b16fb18ed90073ee71646f7"
+dependencies = [
+ "proc-macro2 1.0.18",
+ "quote 1.0.7",
+ "syn",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -160,10 +171,12 @@ dependencies = [
 name = "cozal"
 version = "0.0.1"
 dependencies = [
+ "async-trait",
  "flume",
  "futures",
  "im",
  "lazy_static",
+ "pin-project",
  "tokio",
  "winit",
 ]

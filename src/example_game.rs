@@ -3,7 +3,7 @@ use std::pin::Pin;
 use std::time::Duration;
 use crate::core::{
     event::event::{
-        EventTimestamp, EventContent, EventPayload
+        EventTimestamp, Event, EventPayload
     }, 
     transposer::{
         schedule_event::ScheduleEvent, 
@@ -22,7 +22,7 @@ impl ExampleTransposer {
     async fn initialize_internal() -> InitResult<Self> {
         InitResult {
             new_updater: ExampleTransposer { count: 0 },
-            new_events: vec![EventContent {
+            new_events: vec![Event {
                 timestamp: EventTimestamp {
                     time: Duration::from_secs(0),
                     priority: 0,
@@ -36,7 +36,7 @@ impl ExampleTransposer {
         match event {
             ScheduleEvent::External(_) => {
                 self.count -= 1;
-                let new_out_event = EventContent {
+                let new_out_event = Event {
                     timestamp: EventTimestamp {
                         time: event.timestamp().time + Duration::from_secs(1),
                         priority: 0,
@@ -53,14 +53,14 @@ impl ExampleTransposer {
             }
             ScheduleEvent::Internal(_) => {
                 self.count += 1;
-                let new_in_event = EventContent {
+                let new_in_event = Event {
                     timestamp: EventTimestamp {
                         time: event.timestamp().time + Duration::from_secs(1),
                         priority: 0,
                     },
                     payload: EventPayload::Payload(()),
                 };
-                let new_out_event = EventContent {
+                let new_out_event = Event {
                     timestamp: EventTimestamp {
                         time: event.timestamp().time + Duration::from_secs(1),
                         priority: 0,
@@ -71,7 +71,7 @@ impl ExampleTransposer {
                     new_updater: Some(self),
                     trigger: event,
                     expired_events: vec![],
-                    new_events: vec![NewUpdateEvent::Content(new_in_event)],
+                    new_events: vec![new_in_event],
                     emitted_events: vec![new_out_event],
                 }
             }
@@ -80,7 +80,7 @@ impl ExampleTransposer {
 }
 
 impl Transposer for ExampleTransposer {
-    type In = ();
+    type External = ();
     type Internal = ();
     type Out = usize;
 

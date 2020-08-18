@@ -35,15 +35,8 @@ impl PartialEq for EventTimestamp {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Event<T: Clone> {
-    // so we can add/remove these after creating them.
-    pub id: u64,
-    pub content: EventContent<T>,
-}
-
 #[derive(Clone)]
-pub struct EventContent<T: Clone> {
+pub struct Event<T: Clone> {
     pub timestamp: EventTimestamp,
     pub payload: EventPayload<T>,
 }
@@ -55,7 +48,7 @@ pub enum EventPayload<T> {
     Rollback,
 }
 
-impl<T: Debug + Clone> Debug for EventContent<T> {
+impl<T: Debug + Clone> Debug for Event<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Point")
             .field("timestamp", &self.timestamp)
@@ -66,17 +59,7 @@ impl<T: Debug + Clone> Debug for EventContent<T> {
 
 impl<T: Clone> Ord for Event<T> {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.content.timestamp != other.content.timestamp {
-            return self.content.timestamp.cmp(&other.content.timestamp);
-        }
-
-        // there should be no two events with the same id.
-        if self.id == other.id {
-            panic!();
-        }
-
-        // fall back to the order the events are created.
-        self.id.cmp(&other.id)
+        self.timestamp.cmp(&other.timestamp)
     }
 }
 
@@ -90,11 +73,7 @@ impl<T: Clone> Eq for Event<T> {}
 
 impl<T: Clone> PartialEq for Event<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.id == other.id {
-            panic!();
-        }
-        // there should be no two events with the same id.
-        false
+        self.timestamp.eq(&other.timestamp)
     }
 }
 
