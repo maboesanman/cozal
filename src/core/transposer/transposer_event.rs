@@ -5,21 +5,21 @@ use std::rc::Rc;
 use super::transposer::Transposer;
 
 #[derive(Clone)]
-pub struct InitialTransposerEvent<T: Transposer> {
+pub(super) struct InitialTransposerEvent<T: Transposer> {
     // this is the index in the new_events array in the result of the init function.
     pub index: usize,
     pub event: Event<T::Internal>,
 }
 
 #[derive(Clone)]
-pub struct ExternalTransposerEvent<T: Transposer> {
+pub(super) struct ExternalTransposerEvent<T: Transposer> {
     // this is the index of the event in the external event stream.
     pub index: usize,
     pub event: Event<T::External>,
 }
 
 #[derive(Clone)]
-pub struct InternalTransposerEvent<T: Transposer> {
+pub(super) struct InternalTransposerEvent<T: Transposer> {
     pub parent: Rc<TransposerEvent<T>>,
 
     // this is the index in the new_events array in the result of the update function of parent.
@@ -28,14 +28,14 @@ pub struct InternalTransposerEvent<T: Transposer> {
 }
 
 #[derive(Clone)]
-pub enum TransposerEvent<T: Transposer> {
+pub(super) enum TransposerEvent<T: Transposer> {
     Initial(InitialTransposerEvent<T>),
     External(ExternalTransposerEvent<T>),
     Internal(InternalTransposerEvent<T>),
 }
 
 impl<T: Transposer> TransposerEvent<T> {
-    pub fn timestamp(&self) -> EventTimestamp {
+    pub(super) fn timestamp(&self) -> EventTimestamp {
         match self {
             Self::Initial(e) => e.event.timestamp,
             Self::External(e) => e.event.timestamp,

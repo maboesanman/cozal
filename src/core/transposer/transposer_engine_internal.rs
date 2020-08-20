@@ -33,7 +33,7 @@ use std::cmp::{Ordering, Reverse};
 use core::sync::atomic::Ordering::Relaxed;
 
 #[derive(Clone)]
-pub(crate) struct TransposerFrame<T: Transposer> {
+pub(super) struct TransposerFrame<T: Transposer> {
     // this is an Rc because we might not change the transposer, and therefore don't need to save a copy.
     transposer: Rc<T>,
 
@@ -50,7 +50,7 @@ enum NextEvent<T: Transposer> {
     External(Rc<TransposerEvent<T>>),
 }
 
-pub(crate) struct TransposerEngineInternal<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> {
+pub(super) struct TransposerEngineInternal<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> {
     input_stream: Enumerate<S>,
 
     // modify to be a historical collection thing
@@ -65,7 +65,7 @@ pub(crate) struct TransposerEngineInternal<'a, T: Transposer + 'a, S: Stream<Ite
 }
 
 impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> TransposerEngineInternal<'a, T, S> {
-    pub(crate) async fn new(input_stream: S) -> TransposerEngineInternal<'a, T, S> {
+    pub async fn new(input_stream: S) -> TransposerEngineInternal<'a, T, S> {
         let (transposer_frame, output_buffer) = Self::init().await;
         TransposerEngineInternal {
                 input_stream: input_stream.enumerate(),
@@ -76,6 +76,54 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> 
                 current_waker: None,
         }
     }
+    
+    pub fn poll(&mut self, cx: &mut Context<'_>, until: &EventTimestamp) -> Poll<Option<Event<T::Out>>> {
+        self.poll_input(cx, until);
+        loop {
+            if let Some(out) = self.output_buffer.pop_front() {
+                break Poll::Ready(Some(out))
+            }
+            match self.poll_update(cx, until) {
+                None => break Poll::Pending,
+                Some(Poll::Pending) => break Poll::Pending,
+                Some(Poll::Ready(events)) => {
+                    self.output_buffer = VecDeque::from(events);
+                }
+            }
+        }
+    }
+
+    fn poll_input(&mut self, cx: &mut Context<'_>, _until: &EventTimestamp) {
+        let poll_result = Pin::new(&mut self.input_stream).poll_next(cx);
+        if let Poll::Ready(Some((index, event))) = poll_result {
+            self.input_buffer.push(Reverse((event, index)));
+        }
+        // this is where we put the rollback code.
+    }
+
+    fn poll_update(&mut self, cx: &mut Context<'_>, until: &EventTimestamp) -> Option<Poll<Vec<Event<T::Out>>>>{
+        // set current_update if it is not already set.
+        if let None = self.current_update {
+            if let Some((frame, fut)) = self.get_next_update(until) {
+                self.current_update = Some(fut);
+                self.transposer_frame = frame;
+            }
+        };
+        // poll current_update, setting it to none if ready.
+        if let Some(fut) = &mut self.current_update {
+            Some(match Pin::new(fut).poll(cx) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready((frame, events)) => {
+                    self.current_update = None;
+                    self.transposer_frame = frame;
+                    Poll::Ready(events)
+                }
+            })
+        } else {
+            None
+        }
+    }
+
     async fn init() -> (TransposerFrame<T>, Vec<Event<T::Out>>) {
         let cx = TransposerContext::new(0);
         let result = T::init(&cx).await;
@@ -212,37 +260,6 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> 
                 let fut = Box::pin(fut);
                 Some((new_frame, fut))
             },
-        }
-    }
-
-    pub fn poll(&mut self, cx: &mut Context<'_>, until: &EventTimestamp) -> Poll<Option<Event<T::Out>>> {
-        self.poll_input(cx, until);
-        loop {
-            if let Some(out) = self.output_buffer.pop_front() {
-                break Poll::Ready(Some(out))
-            }
-            self.poll_update(cx, until);
-        }
-    }
-
-    fn poll_input(&mut self, cx: &mut Context<'_>, _until: &EventTimestamp) {
-        let poll_result = Pin::new(&mut self.input_stream).poll_next(cx);
-        if let Poll::Ready(Some((index, event))) = poll_result {
-            self.input_buffer.push(Reverse((event, index)));
-        }
-        // this is where we put the rollback code.
-    }
-
-    fn poll_update(&mut self, cx: &mut Context<'_>, until: &EventTimestamp) -> Option<Poll<(TransposerFrame<T>, Vec<Event<T::Out>>)>>{
-        match &mut self.current_update {
-            None => match self.get_next_update(until) {
-                Some((frame, fut)) => {
-                    self.current_update = Some(fut);
-                    todo!()
-                },
-                None => None
-            },
-            Some(fut) => Some(Pin::new(fut).poll(cx)),
         }
     }
 }

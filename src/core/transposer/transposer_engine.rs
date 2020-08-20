@@ -28,7 +28,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> 
         }
     }
 
-    pub fn poll(&self, t: EventTimestamp) -> TransposerPollStream<'a, T, S> {
+    pub fn poll(&self, t: EventTimestamp) -> TransposerEngineStream<'a, T, S> {
         // Let the current pending stream know to wake up. It will resolve to None.
         match self.internal.lock() {
             Ok(internal) => {
@@ -38,7 +38,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> 
             }
             Err(_) => panic!()
         };
-        TransposerPollStream {
+        TransposerEngineStream {
             internal: self.internal.clone(),
             poll_stream_id: self.current_poll_stream.fetch_add(1, Relaxed),
             current_poll_stream: self.current_poll_stream.clone(),
@@ -47,14 +47,14 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> 
     }
 }
 
-pub struct TransposerPollStream<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> {
+pub struct TransposerEngineStream<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> {
     internal: Arc<Mutex<TransposerEngineInternal<'a, T, S>>>,
     poll_stream_id: usize,
     current_poll_stream: Arc<AtomicUsize>,
     until: EventTimestamp,
 }
 
-impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> Stream for TransposerPollStream<'a, T, S> {
+impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> Stream for TransposerEngineStream<'a, T, S> {
     type Item = Event<T::Out>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

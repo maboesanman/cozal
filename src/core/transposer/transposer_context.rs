@@ -2,8 +2,8 @@ use std::{sync::{Arc, atomic::AtomicU64, Mutex}, collections::HashMap};
 use core::sync::atomic::Ordering::Relaxed;
 
 pub struct TransposerContext {
-    pub(crate) current_expire_handle: AtomicU64,
-    pub(crate) new_expire_handles: Arc<Mutex<HashMap<u64, usize>>>,
+    pub(super) current_expire_handle: AtomicU64,
+    pub(super) new_expire_handles: Arc<Mutex<HashMap<u64, usize>>>,
     // todo add seeded deterministic random function
 }
 
