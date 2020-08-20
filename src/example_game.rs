@@ -67,7 +67,7 @@ impl Transposer for ExampleTransposer {
     type Internal = ();
     type Out = usize;
 
-    async fn init(cx: &TransposerContext) -> InitResult<Self> {
+    async fn init(_cx: &TransposerContext) -> InitResult<Self> {
         InitResult {
             new_updater: ExampleTransposer { count: 0 },
             new_events: vec![Event {
@@ -82,7 +82,7 @@ impl Transposer for ExampleTransposer {
     }
     async fn update<'a>(
         &'a self,
-        cx: &TransposerContext,
+        _cx: &TransposerContext,
         event: &'a TriggerEvent<Self>,
     ) -> UpdateResult<Self> {
         match event {

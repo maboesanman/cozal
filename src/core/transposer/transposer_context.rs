@@ -10,6 +10,7 @@ pub struct TransposerContext {
     // todo add seeded deterministic random function
 }
 
+#[allow(dead_code)]
 impl TransposerContext {
     pub fn new(current_expire_handle: u64) -> Self {
         Self {

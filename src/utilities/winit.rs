@@ -48,7 +48,10 @@ impl WinitLoop {
                     },
                     payload: EventPayload::Payload(e),
                 };
-                sender.send(e).unwrap();
+                if let Err(e) = sender.send(e) {
+                    println!("{:?}", e);
+                    *control_flow = ControlFlow::Exit;
+                }
             }
         });
     }
