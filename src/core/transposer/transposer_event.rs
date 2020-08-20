@@ -1,30 +1,29 @@
+use super::{transposer::Transposer, trigger_event::TriggerEvent};
 use crate::core::event::event::{Event, EventTimestamp};
-use std::{cmp::Ordering, fmt::Debug};
-use core::fmt;
-use std::rc::Rc;
-use super::transposer::Transposer;
+use std::cmp::Ordering;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub(super) struct InitialTransposerEvent<T: Transposer> {
     // this is the index in the new_events array in the result of the init function.
     pub index: usize,
-    pub event: Event<T::Internal>,
+    pub event: Arc<Event<T::Internal>>,
 }
 
 #[derive(Clone)]
 pub(super) struct ExternalTransposerEvent<T: Transposer> {
     // this is the index of the event in the external event stream.
     pub index: usize,
-    pub event: Event<T::External>,
+    pub event: Arc<Event<T::External>>,
 }
 
 #[derive(Clone)]
 pub(super) struct InternalTransposerEvent<T: Transposer> {
-    pub parent: Rc<TransposerEvent<T>>,
+    pub parent: Arc<TransposerEvent<T>>,
 
     // this is the index in the new_events array in the result of the update function of parent.
     pub index: usize,
-    pub event: Event<T::Internal>,
+    pub event: Arc<Event<T::Internal>>,
 }
 
 #[derive(Clone)]
@@ -35,14 +34,22 @@ pub(super) enum TransposerEvent<T: Transposer> {
 }
 
 impl<T: Transposer> TransposerEvent<T> {
-    pub(super) fn timestamp(&self) -> EventTimestamp {
+    pub fn timestamp(&self) -> EventTimestamp {
         match self {
             Self::Initial(e) => e.event.timestamp,
             Self::External(e) => e.event.timestamp,
             Self::Internal(e) => e.event.timestamp,
         }
     }
-    
+
+    pub fn into_trigger_event(&self) -> TriggerEvent<T> {
+        match self {
+            Self::Initial(e) => TriggerEvent::Internal(e.event.clone()),
+            Self::External(e) => TriggerEvent::External(e.event.clone()),
+            Self::Internal(e) => TriggerEvent::Internal(e.event.clone()),
+        }
+    }
+
     fn enum_sort_order(&self) -> u8 {
         match self {
             Self::Initial(_) => 0,
@@ -76,10 +83,14 @@ impl<T: Transposer> TransposerEvent<T> {
 impl<T: Transposer> Ord for TransposerEvent<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         let cmp = self.timestamp().cmp(&other.timestamp());
-        if cmp != Ordering::Equal{ return cmp; }
+        if cmp != Ordering::Equal {
+            return cmp;
+        }
 
         let cmp = self.enum_sort_order().cmp(&other.enum_sort_order());
-        if cmp != Ordering::Equal{ return cmp; }
+        if cmp != Ordering::Equal {
+            return cmp;
+        }
 
         match (self, other) {
             (Self::Initial(s), Self::Initial(o)) => s.index.cmp(&o.index),
@@ -91,7 +102,7 @@ impl<T: Transposer> Ord for TransposerEvent<T> {
                 } else {
                     s.index.cmp(&o.index)
                 }
-            },
+            }
             _ => panic!(),
         }
     }

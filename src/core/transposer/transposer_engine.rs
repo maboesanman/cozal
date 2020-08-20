@@ -1,22 +1,26 @@
-use core::pin::Pin;
-use futures::task::{Context, Poll, Waker};
-use crate::core::event::event::{EventTimestamp, Event};
 use super::transposer::Transposer;
-use futures::{Future, Stream};
-use std::sync::{Mutex, Arc};
-use core::sync::atomic::Ordering::Relaxed;
-use core::sync::atomic::AtomicUsize;
 use super::transposer_engine_internal::TransposerEngineInternal;
+use crate::core::event::event::{Event, EventTimestamp};
+use core::pin::Pin;
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering::Relaxed;
+use futures::task::{Context, Poll};
+use futures::Stream;
+use std::sync::{Arc, Mutex};
 
-
-
-pub struct TransposerEngine<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> {
+pub struct TransposerEngine<
+    'a,
+    T: Transposer + 'a,
+    S: Stream<Item = Event<T::External>> + Unpin + 'a,
+> {
     internal: Arc<Mutex<TransposerEngineInternal<'a, T, S>>>,
     current_poll_stream: Arc<AtomicUsize>,
 }
 
 #[allow(dead_code)]
-impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> TransposerEngine<'a, T, S> {
+impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a>
+    TransposerEngine<'a, T, S>
+{
     pub async fn new(input_stream: S) -> TransposerEngine<'a, T, S> {
         let internal = TransposerEngineInternal::new(input_stream).await;
         let internal = Arc::new(Mutex::new(internal));
@@ -36,7 +40,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> 
                     w.wake_by_ref();
                 }
             }
-            Err(_) => panic!()
+            Err(_) => panic!(),
         };
         TransposerEngineStream {
             internal: self.internal.clone(),
@@ -47,14 +51,20 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> 
     }
 }
 
-pub struct TransposerEngineStream<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> {
+pub struct TransposerEngineStream<
+    'a,
+    T: Transposer + 'a,
+    S: Stream<Item = Event<T::External>> + Unpin + 'a,
+> {
     internal: Arc<Mutex<TransposerEngineInternal<'a, T, S>>>,
     poll_stream_id: usize,
     current_poll_stream: Arc<AtomicUsize>,
     until: EventTimestamp,
 }
 
-impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> Stream for TransposerEngineStream<'a, T, S> {
+impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> Stream
+    for TransposerEngineStream<'a, T, S>
+{
     type Item = Event<T::Out>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -64,10 +74,8 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> 
 
         // someday do this locking with futures...
         match self.internal.lock() {
-            Ok(mut internal) => {
-                internal.poll(cx, &self.until)
-            }
-            Err(_) => panic!()
+            Ok(mut internal) => internal.poll(cx, &self.until),
+            Err(_) => panic!(),
         }
     }
 }

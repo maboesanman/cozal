@@ -1,7 +1,7 @@
+pub use super::event_timestamp::EventTimestamp;
 use core::fmt::Debug;
 use std::cmp::Ordering;
 use std::fmt;
-pub use super::event_timestamp::EventTimestamp;
 
 #[derive(Clone)]
 pub struct Event<T: Clone> {
@@ -43,4 +43,3 @@ impl<T: Clone> PartialEq for Event<T> {
         self.timestamp.eq(&other.timestamp)
     }
 }
-

@@ -1,7 +1,7 @@
-use async_trait::async_trait;
-use crate::core::event::event::Event;
-use super::transposer_event::TransposerEvent;
 use super::transposer_context::TransposerContext;
+use super::trigger_event::TriggerEvent;
+use crate::core::event::event::Event;
+use async_trait::async_trait;
 
 pub struct InitResult<T: Transposer> {
     pub new_updater: T,
@@ -31,7 +31,7 @@ pub trait Transposer: Clone + Unpin + Send {
     async fn update<'a>(
         &'a self,
         cx: &TransposerContext,
-        event: &'a TransposerEvent<Self>,
+        event: &'a TriggerEvent<Self>,
     ) -> UpdateResult<Self>;
 
     // filter out events you know you can't do anything with.
