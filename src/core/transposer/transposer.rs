@@ -17,7 +17,7 @@ pub struct UpdateResult<T: Transposer> {
     pub emitted_events: Vec<Event<T::Out>>,
 }
 
-// it is reccomended to use immutable structure sharing data types inside update.
+// it is recommended to use immutable structure sharing data types inside update.
 #[async_trait]
 pub trait Transposer: Clone + Unpin + Send {
     type External: Clone + Unpin + Send;
