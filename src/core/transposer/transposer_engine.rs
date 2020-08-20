@@ -11,14 +11,14 @@ use std::sync::{Arc, Mutex};
 pub struct TransposerEngine<
     'a,
     T: Transposer + 'a,
-    S: Stream<Item = Event<T::External>> + Unpin + 'a,
+    S: Stream<Item = Event<T::External>> + Unpin + Send + 'a,
 > {
     internal: Arc<Mutex<TransposerEngineInternal<'a, T, S>>>,
     current_poll_stream: Arc<AtomicUsize>,
 }
 
 #[allow(dead_code)]
-impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a>
+impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + Send + 'a>
     TransposerEngine<'a, T, S>
 {
     pub async fn new(input_stream: S) -> TransposerEngine<'a, T, S> {
@@ -54,7 +54,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a>
 pub struct TransposerEngineStream<
     'a,
     T: Transposer + 'a,
-    S: Stream<Item = Event<T::External>> + Unpin + 'a,
+    S: Stream<Item = Event<T::External>> + Unpin + Send + 'a,
 > {
     internal: Arc<Mutex<TransposerEngineInternal<'a, T, S>>>,
     poll_stream_id: usize,
@@ -62,7 +62,7 @@ pub struct TransposerEngineStream<
     until: EventTimestamp,
 }
 
-impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a> Stream
+impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + Send> Stream
     for TransposerEngineStream<'a, T, S>
 {
     type Item = Event<T::Out>;

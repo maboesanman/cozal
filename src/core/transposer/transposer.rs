@@ -19,10 +19,10 @@ pub struct UpdateResult<T: Transposer> {
 
 // it is recommended to use immutable structure sharing data types inside update.
 #[async_trait]
-pub trait Transposer: Clone + Unpin + Send {
-    type External: Clone + Unpin + Send;
-    type Internal: Clone + Unpin + Send;
-    type Out: Clone + Unpin + Send;
+pub trait Transposer: Clone + Unpin + Send + Sync {
+    type External: Clone + Unpin + Send + Sync;
+    type Internal: Clone + Unpin + Send + Sync;
+    type Out: Clone + Unpin + Send + Sync;
 
     // initialize the state of your transposer.
     async fn init(cx: &TransposerContext) -> InitResult<Self>;

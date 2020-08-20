@@ -38,7 +38,7 @@ enum NextEvent<T: Transposer> {
 pub(super) struct TransposerEngineInternal<
     'a,
     T: Transposer + 'a,
-    S: Stream<Item = Event<T::External>> + Unpin + 'a,
+    S: Stream<Item = Event<T::External>> + Unpin + Send + 'a,
 > {
     input_stream: Enumerate<S>,
 
@@ -49,11 +49,11 @@ pub(super) struct TransposerEngineInternal<
     input_buffer: BinaryHeap<Reverse<(Event<T::External>, usize)>>,
     output_buffer: VecDeque<Event<T::Out>>,
     pub current_update:
-        Option<Pin<Box<dyn Future<Output = (TransposerFrame<T>, Vec<Event<T::Out>>)> + 'a>>>,
+        Option<Pin<Box<dyn Future<Output = (TransposerFrame<T>, Vec<Event<T::Out>>)> + Send + 'a>>>,
     pub current_waker: Option<Waker>,
 }
 
-impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a>
+impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + Send + 'a>
     TransposerEngineInternal<'a, T, S>
 {
     pub(super) async fn new(input_stream: S) -> TransposerEngineInternal<'a, T, S> {
@@ -228,7 +228,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + 'a>
         _until: &EventTimestamp,
     ) -> Option<(
         TransposerFrame<T>,
-        Pin<Box<dyn Future<Output = (TransposerFrame<T>, Vec<Event<T::Out>>)> + 'a>>,
+        Pin<Box<dyn Future<Output = (TransposerFrame<T>, Vec<Event<T::Out>>)> + Send + 'a>>,
     )> {
         let next_external = self.input_buffer.peek();
         let next_external = match next_external {

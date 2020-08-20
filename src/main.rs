@@ -26,15 +26,14 @@ async fn main() {
     window.set_visible(true);
 
     let key_presses = get_filtered_stream(receiver);
-
+    let game: TransposerEngine<ExampleTransposer, _> = TransposerEngine::new(key_presses).await;
+    
     tokio::spawn(async move {
-        let game: TransposerEngine<ExampleTransposer, _> = TransposerEngine::new(key_presses).await;
         let poll = game.poll(EventTimestamp {
             time: Duration::from_secs(10),
             priority: 0,
         });
         let poll = poll.map(move |event| Ok(event));
-        let mut rt = Runtime::new().unwrap();
         poll.forward(DebugSink::new()).await;
     });
 
