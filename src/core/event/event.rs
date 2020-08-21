@@ -1,4 +1,3 @@
-pub use super::event_timestamp::EventTimestamp;
 use core::fmt::Debug;
 use std::cmp::Ordering;
 use std::fmt;
