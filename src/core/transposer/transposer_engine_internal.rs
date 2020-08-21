@@ -89,6 +89,13 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unp
         }
     }
 
+    pub(super) fn next_scheduled_time(&self) -> Option<T::Time> {
+        match self.transposer_frame.schedule.get_min() {
+            Some(e) => Some(e.timestamp()),
+            None => None,
+        }
+    }
+
     fn poll_input(&mut self, cx: &mut Context<'_>, until: &T::Time) {
         let poll_result = Pin::new(&mut self.input_stream).poll_next(cx);
         if let Poll::Ready(Some((index, event))) = poll_result {
@@ -212,20 +219,10 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unp
             }
         }
 
-        let mut emitted_events: Vec<Event<T::Time, T::Out>> = Vec::new();
-
-        if result.rollback {
-            emitted_events.push(Event {
-                timestamp: parent.timestamp(),
-                payload: EventPayload::Rollback,
-            });
-        }
-
-        emitted_events.append(&mut result.emitted_events.into_iter().map(|payload| Event {
-            timestamp: parent.timestamp(),
-            payload: EventPayload::Payload(payload),
-        }).collect::<Vec<_>>());
-        // add events to emission
+        let emitted_events = result.emitted_events.into_iter().map(|payload| Event {
+            timestamp: T::Time::default(),
+            payload: crate::core::event::event::EventPayload::Payload(payload),
+        }).collect::<Vec<_>>();
 
         let transposer = match result.new_updater {
             Some(u) => Arc::new(u),

@@ -25,7 +25,6 @@ impl ExampleTransposer {
             expired_events: vec![],
             new_events: vec![],
             emitted_events: vec![self.count],
-            rollback: false,
         }
     }
 
@@ -41,7 +40,6 @@ impl ExampleTransposer {
             expired_events: vec![],
             new_events: vec![new_in_event],
             emitted_events: vec![self.count],
-            rollback: false,
         }
     }
 }

@@ -51,6 +51,13 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unp
             until: t,
         }
     }
+
+    pub fn next_scheduled_time(&self) -> Option<T::Time> {
+        match self.internal.lock() {
+            Ok(internal) => internal.next_scheduled_time(),
+            Err(_) => panic!(),
+        }
+    }
 }
 
 pub struct TransposerEngineStream<

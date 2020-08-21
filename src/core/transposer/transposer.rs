@@ -15,7 +15,6 @@ pub struct UpdateResult<T: Transposer> {
     pub expired_events: Vec<u64>,
     pub new_events: Vec<Event<T::Time, T::Internal>>,
     pub emitted_events: Vec<T::Out>,
-    pub rollback: bool,
 }
 
 // it is recommended to use immutable structure sharing data types inside update.
