@@ -1,5 +1,5 @@
 use super::{transposer::Transposer, trigger_event::TriggerEvent};
-use crate::core::event::event::{Event, EventTimestamp};
+use crate::core::event::event::Event;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
@@ -7,14 +7,14 @@ use std::sync::Arc;
 pub(super) struct InitialTransposerEvent<T: Transposer> {
     // this is the index in the new_events array in the result of the init function.
     pub index: usize,
-    pub event: Arc<Event<T::Internal>>,
+    pub event: Arc<Event<T::Time, T::Internal>>,
 }
 
 #[derive(Clone)]
 pub(super) struct ExternalTransposerEvent<T: Transposer> {
     // this is the index of the event in the external event stream.
     pub index: usize,
-    pub event: Arc<Event<T::External>>,
+    pub event: Arc<Event<T::Time, T::External>>,
 }
 
 #[derive(Clone)]
@@ -23,7 +23,7 @@ pub(super) struct InternalTransposerEvent<T: Transposer> {
 
     // this is the index in the new_events array in the result of the update function of parent.
     pub index: usize,
-    pub event: Arc<Event<T::Internal>>,
+    pub event: Arc<Event<T::Time, T::Internal>>,
 }
 
 #[derive(Clone)]
@@ -34,7 +34,7 @@ pub(super) enum TransposerEvent<T: Transposer> {
 }
 
 impl<T: Transposer> TransposerEvent<T> {
-    pub fn timestamp(&self) -> EventTimestamp {
+    pub fn timestamp(&self) -> T::Time {
         match self {
             Self::Initial(e) => e.event.timestamp,
             Self::External(e) => e.event.timestamp,

@@ -1,5 +1,5 @@
 use futures::stream::StreamExt;
-use std::{time::Duration};
+use std::{time::{Instant, Duration}};
 
 use crate::core::transposer::transposer_engine::TransposerEngine;
 use crate::example_game::{get_filtered_stream, ExampleTransposer};
@@ -16,13 +16,10 @@ async fn main() {
     let (winit, window, receiver) = WinitLoop::new();
     window.set_visible(true);
 
-    let key_presses = get_filtered_stream(receiver);
+    let key_presses = get_filtered_stream(Instant::now(), receiver);
     let game: TransposerEngine<ExampleTransposer, _> = TransposerEngine::new(key_presses).await;
     
-    let poll = game.poll(EventTimestamp {
-        time: Duration::from_secs(10),
-        priority: 0,
-    });
+    let poll = game.poll(Duration::from_secs(10));
     tokio::spawn(async move {
         let poll = poll.map(move |event| Ok(event));
         poll.forward(DebugSink::new()).await.unwrap();

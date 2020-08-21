@@ -4,9 +4,9 @@ use std::cmp::Ordering;
 use std::fmt;
 
 #[derive(Clone)]
-pub struct Event<T: Clone> {
-    pub timestamp: EventTimestamp,
-    pub payload: EventPayload<T>,
+pub struct Event<T: Copy + Ord, P: Clone> {
+    pub timestamp: T,
+    pub payload: EventPayload<P>,
 }
 
 #[derive(Clone, Debug)]
@@ -15,7 +15,7 @@ pub enum EventPayload<T> {
     Rollback,
 }
 
-impl<T: Debug + Clone> Debug for Event<T> {
+impl<T: Debug + Copy + Ord, P: Debug + Clone> Debug for Event<T, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Point")
             .field("timestamp", &self.timestamp)
@@ -24,21 +24,21 @@ impl<T: Debug + Clone> Debug for Event<T> {
     }
 }
 
-impl<T: Clone> Ord for Event<T> {
+impl<T: Copy + Ord, P: Clone> Ord for Event<T, P> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.timestamp.cmp(&other.timestamp)
     }
 }
 
-impl<T: Clone> PartialOrd for Event<T> {
+impl<T: Copy + Ord, P: Clone> PartialOrd for Event<T, P> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T: Clone> Eq for Event<T> {}
+impl<T: Copy + Ord, P: Clone> Eq for Event<T, P> {}
 
-impl<T: Clone> PartialEq for Event<T> {
+impl<T: Copy + Ord, P: Clone> PartialEq for Event<T, P> {
     fn eq(&self, other: &Self) -> bool {
         self.timestamp.eq(&other.timestamp)
     }

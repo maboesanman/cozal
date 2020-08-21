@@ -7,7 +7,7 @@ use winit::{
 };
 
 pub struct WinitLoop {
-    sender: Sender<Event<winit::event::Event<'static, ()>>>,
+    sender: Sender<Event<Instant, winit::event::Event<'static, ()>>>,
     event_loop: winit::event_loop::EventLoop<()>,
 }
 
@@ -15,7 +15,7 @@ impl WinitLoop {
     pub fn new() -> (
         Self,
         winit::window::Window,
-        Receiver<Event<winit::event::Event<'static, ()>>>,
+        Receiver<Event<Instant, winit::event::Event<'static, ()>>>,
     ) {
         Self::new_from_builder(WindowBuilder::new())
     }
@@ -25,7 +25,7 @@ impl WinitLoop {
     ) -> (
         Self,
         winit::window::Window,
-        Receiver<Event<winit::event::Event<'static, ()>>>,
+        Receiver<Event<Instant, winit::event::Event<'static, ()>>>,
     ) {
         let (sender, receiver) = unbounded();
         let event_loop = EventLoop::new();
@@ -34,18 +34,12 @@ impl WinitLoop {
     }
 
     pub fn run(self) -> ! {
-        let start = Instant::now();
         let sender = self.sender;
-
         self.event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
             if let Some(e) = event.to_static() {
-                let t = Instant::now();
                 let e = Event {
-                    timestamp: EventTimestamp {
-                        time: t - start,
-                        priority: 0,
-                    },
+                    timestamp: Instant::now(),
                     payload: EventPayload::Payload(e),
                 };
                 if let Err(e) = sender.send(e) {

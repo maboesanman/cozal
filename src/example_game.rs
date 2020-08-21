@@ -1,5 +1,5 @@
 use crate::core::{
-    event::event::{Event, EventPayload, EventTimestamp},
+    event::event::{Event, EventPayload},
     transposer::{
         transposer::{InitResult, Transposer, UpdateResult},
         transposer_context::TransposerContext,
@@ -7,7 +7,7 @@ use crate::core::{
     },
 };
 use async_trait::async_trait;
-use std::time::Duration;
+use std::time::{Instant, Duration};
 use futures::{StreamExt, Stream};
 use futures::future::ready;
 
@@ -17,14 +17,11 @@ pub struct ExampleTransposer {
 }
 
 impl ExampleTransposer {
-    fn handle_external(&self, event: &Event<()>) -> UpdateResult<Self> {
+    fn handle_external(&self, event: &Event<Duration, ()>) -> UpdateResult<Self> {
         let mut new_updater = self.clone();
         new_updater.count -= 1;
         let new_out_event = Event {
-            timestamp: EventTimestamp {
-                time: event.timestamp.time + Duration::from_secs(1),
-                priority: 0,
-            },
+            timestamp: event.timestamp + Duration::from_secs(1),
             payload: EventPayload::Payload(self.count),
         };
         UpdateResult {
@@ -35,21 +32,15 @@ impl ExampleTransposer {
         }
     }
 
-    fn handle_internal(&self, event: &Event<()>) -> UpdateResult<Self> {
+    fn handle_internal(&self, event: &Event<Duration, ()>) -> UpdateResult<Self> {
         let mut new_updater = self.clone();
         new_updater.count += 1;
         let new_in_event = Event {
-            timestamp: EventTimestamp {
-                time: event.timestamp.time + Duration::from_secs(1),
-                priority: 0,
-            },
+            timestamp: event.timestamp + Duration::from_secs(1),
             payload: EventPayload::Payload(()),
         };
         let new_out_event = Event {
-            timestamp: EventTimestamp {
-                time: event.timestamp.time + Duration::from_secs(1),
-                priority: 0,
-            },
+            timestamp: event.timestamp + Duration::from_secs(1),
             payload: EventPayload::Payload(self.count),
         };
         UpdateResult {
@@ -63,18 +54,16 @@ impl ExampleTransposer {
 
 #[async_trait]
 impl Transposer for ExampleTransposer {
+    type Time = Duration;
     type External = ();
     type Internal = ();
     type Out = usize;
 
-    async fn init(_cx: &TransposerContext) -> InitResult<Self> {
+    async fn init(cx: &TransposerContext) -> InitResult<Self> {
         InitResult {
             new_updater: ExampleTransposer { count: 0 },
             new_events: vec![Event {
-                timestamp: EventTimestamp {
-                    time: Duration::from_secs(0),
-                    priority: 0,
-                },
+                timestamp: Duration::from_secs(0),
                 payload: EventPayload::Payload(()),
             }],
             emitted_events: vec![],
@@ -92,18 +81,19 @@ impl Transposer for ExampleTransposer {
     }
 }
 
-pub fn get_filtered_stream<S: Stream<Item = Event<winit::event::Event<'static, ()>>>>(
+pub fn get_filtered_stream<S: Stream<Item = Event<Instant, winit::event::Event<'static, ()>>>>(
+    start_time: Instant,
     stream: S,
-) -> impl Stream<Item = Event<()>> {
+) -> impl Stream<Item = Event<Duration, ()>> {
     stream.filter_map(
-        move |e: Event<winit::event::Event<'_, ()>>| ready(match e.payload {
+        move |e: Event<Instant, winit::event::Event<'_, ()>>| ready(match e.payload {
             EventPayload::Payload(winit::event::Event::WindowEvent {
                 window_id: _,
                 event,
             }) => match event {
                 winit::event::WindowEvent::ReceivedCharacter(_) => {
                     let event = Event {
-                        timestamp: e.timestamp,
+                        timestamp: e.timestamp - start_time,
                         payload: EventPayload::Payload(()),
                     };
                     Some(event)

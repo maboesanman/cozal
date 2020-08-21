@@ -3,7 +3,7 @@ use super::transposer_context::TransposerContext;
 use super::transposer_event::{
     ExternalTransposerEvent, InitialTransposerEvent, InternalTransposerEvent, TransposerEvent,
 };
-use crate::core::event::event::{Event, EventTimestamp};
+use crate::core::event::event::Event;
 use core::pin::Pin;
 use core::sync::atomic::Ordering::Relaxed;
 use futures::{
@@ -38,7 +38,7 @@ enum NextEvent<T: Transposer> {
 pub(super) struct TransposerEngineInternal<
     'a,
     T: Transposer + 'a,
-    S: Stream<Item = Event<T::External>> + Unpin + Send + 'a,
+    S: Stream<Item = Event<T::Time, T::External>> + Unpin + Send + 'a,
 > {
     input_stream: Enumerate<S>,
 
@@ -46,14 +46,14 @@ pub(super) struct TransposerEngineInternal<
     transposer_frame: TransposerFrame<T>,
 
     // this is a min heap of events and indexes, sorted first by event, then by index.
-    input_buffer: BinaryHeap<Reverse<(Event<T::External>, usize)>>,
-    output_buffer: VecDeque<Event<T::Out>>,
+    input_buffer: BinaryHeap<Reverse<(Event<T::Time, T::External>, usize)>>,
+    output_buffer: VecDeque<Event<T::Time, T::Out>>,
     pub current_update:
-        Option<Pin<Box<dyn Future<Output = (TransposerFrame<T>, Vec<Event<T::Out>>)> + Send + 'a>>>,
+        Option<Pin<Box<dyn Future<Output = (TransposerFrame<T>, Vec<Event<T::Time, T::Out>>)> + Send + 'a>>>,
     pub current_waker: Option<Waker>,
 }
 
-impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + Send + 'a>
+impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unpin + Send + 'a>
     TransposerEngineInternal<'a, T, S>
 {
     pub(super) async fn new(input_stream: S) -> TransposerEngineInternal<'a, T, S> {
@@ -71,8 +71,8 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + Send
     pub(super) fn poll(
         &mut self,
         cx: &mut Context<'_>,
-        until: &EventTimestamp,
-    ) -> Poll<Option<Event<T::Out>>> {
+        until: &T::Time,
+    ) -> Poll<Option<Event<T::Time, T::Out>>> {
         self.poll_input(cx, until);
         loop {
             if let Some(out) = self.output_buffer.pop_front() {
@@ -88,7 +88,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + Send
         }
     }
 
-    fn poll_input(&mut self, cx: &mut Context<'_>, _until: &EventTimestamp) {
+    fn poll_input(&mut self, cx: &mut Context<'_>, until: &T::Time) {
         let poll_result = Pin::new(&mut self.input_stream).poll_next(cx);
         if let Poll::Ready(Some((index, event))) = poll_result {
             self.input_buffer.push(Reverse((event, index)));
@@ -99,8 +99,8 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + Send
     fn poll_update(
         &mut self,
         cx: &mut Context<'_>,
-        until: &EventTimestamp,
-    ) -> Option<Poll<Vec<Event<T::Out>>>> {
+        until: &T::Time,
+    ) -> Option<Poll<Vec<Event<T::Time, T::Out>>>> {
         // set current_update if it is not already set.
         if let None = self.current_update {
             if let Some((frame, fut)) = self.get_next_update(until) {
@@ -123,7 +123,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + Send
         }
     }
 
-    async fn init() -> (TransposerFrame<T>, Vec<Event<T::Out>>) {
+    async fn init() -> (TransposerFrame<T>, Vec<Event<T::Time, T::Out>>) {
         let cx = TransposerContext::new(0);
         let result = T::init(&cx).await;
 
@@ -163,7 +163,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + Send
     async fn update(
         frame: TransposerFrame<T>,
         parent: Arc<TransposerEvent<T>>,
-    ) -> (TransposerFrame<T>, Vec<Event<T::Out>>) {
+    ) -> (TransposerFrame<T>, Vec<Event<T::Time, T::Out>>) {
         let cx = TransposerContext::new(frame.current_expire_handle);
         let trigger = parent.into_trigger_event();
         let result = frame.transposer.update(&cx, &trigger).await;
@@ -225,10 +225,10 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::External>> + Unpin + Send
 
     fn get_next_update(
         &self,
-        _until: &EventTimestamp,
+        until: &T::Time,
     ) -> Option<(
         TransposerFrame<T>,
-        Pin<Box<dyn Future<Output = (TransposerFrame<T>, Vec<Event<T::Out>>)> + Send + 'a>>,
+        Pin<Box<dyn Future<Output = (TransposerFrame<T>, Vec<Event<T::Time, T::Out>>)> + Send + 'a>>,
     )> {
         let next_external = self.input_buffer.peek();
         let next_external = match next_external {
