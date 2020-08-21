@@ -5,7 +5,6 @@ use crate::core::transposer::transposer_engine::TransposerEngine;
 use crate::example_game::{get_filtered_stream, ExampleTransposer};
 use crate::utilities::debug_sink::DebugSink;
 use utilities::winit::WinitLoop;
-use crate::core::event::event_timestamp::EventTimestamp;
 
 mod core;
 mod example_game;

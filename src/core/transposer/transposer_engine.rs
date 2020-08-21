@@ -21,6 +21,7 @@ pub struct TransposerEngine<
 impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unpin + Send + 'a>
     TransposerEngine<'a, T, S>
 {
+    // create a new transposer engine, consuming the input stream.
     pub async fn new(input_stream: S) -> TransposerEngine<'a, T, S> {
         let internal = TransposerEngineInternal::new(input_stream).await;
         let internal = Arc::new(Mutex::new(internal));
@@ -32,6 +33,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unp
         }
     }
 
+    // get a stream which will yeild all output events 
     pub fn poll(&self, t: T::Time) -> TransposerEngineStream<'a, T, S> {
         // Let the current pending stream know to wake up. It will resolve to None.
         match self.internal.lock() {

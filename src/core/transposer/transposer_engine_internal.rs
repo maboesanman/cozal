@@ -16,6 +16,7 @@ use im::{HashMap, OrdSet};
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, VecDeque};
 use std::sync::{Arc, Weak};
+use crate::core::event::event::EventPayload;
 
 #[derive(Clone)]
 pub(super) struct TransposerFrame<T: Transposer> {
@@ -91,7 +92,9 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unp
     fn poll_input(&mut self, cx: &mut Context<'_>, until: &T::Time) {
         let poll_result = Pin::new(&mut self.input_stream).poll_next(cx);
         if let Poll::Ready(Some((index, event))) = poll_result {
-            self.input_buffer.push(Reverse((event, index)));
+            if T::can_process(&event) {
+                self.input_buffer.push(Reverse((event, index)));
+            }
         }
         // this is where we put the rollback code.
     }
@@ -149,6 +152,11 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unp
             }
         }
 
+        let emitted_events = result.emitted_events.into_iter().map(|payload| Event {
+            timestamp: T::Time::default(),
+            payload: crate::core::event::event::EventPayload::Payload(payload),
+        }).collect::<Vec<_>>();
+
         (
             TransposerFrame {
                 transposer: Arc::new(result.new_updater),
@@ -156,7 +164,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unp
                 expire_handles,
                 current_expire_handle: cx.current_expire_handle.load(Relaxed),
             },
-            result.emitted_events,
+            emitted_events,
         )
     }
 
@@ -204,8 +212,20 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unp
             }
         }
 
+        let mut emitted_events: Vec<Event<T::Time, T::Out>> = Vec::new();
+
+        if result.rollback {
+            emitted_events.push(Event {
+                timestamp: parent.timestamp(),
+                payload: EventPayload::Rollback,
+            });
+        }
+
+        emitted_events.append(&mut result.emitted_events.into_iter().map(|payload| Event {
+            timestamp: parent.timestamp(),
+            payload: EventPayload::Payload(payload),
+        }).collect::<Vec<_>>());
         // add events to emission
-        let output_buffer = Vec::from(result.emitted_events);
 
         let transposer = match result.new_updater {
             Some(u) => Arc::new(u),
@@ -219,7 +239,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unp
                 expire_handles,
                 current_expire_handle: cx.current_expire_handle.load(Relaxed),
             },
-            output_buffer,
+            emitted_events,
         )
     }
 

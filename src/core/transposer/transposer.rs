@@ -6,7 +6,7 @@ use async_trait::async_trait;
 pub struct InitResult<T: Transposer> {
     pub new_updater: T,
     pub new_events: Vec<Event<T::Time, T::Internal>>,
-    pub emitted_events: Vec<Event<T::Time, T::Out>>,
+    pub emitted_events: Vec<T::Out>,
 }
 
 pub struct UpdateResult<T: Transposer> {
@@ -14,13 +14,14 @@ pub struct UpdateResult<T: Transposer> {
     // all these events must be in the future
     pub expired_events: Vec<u64>,
     pub new_events: Vec<Event<T::Time, T::Internal>>,
-    pub emitted_events: Vec<Event<T::Time, T::Out>>,
+    pub emitted_events: Vec<T::Out>,
+    pub rollback: bool,
 }
 
 // it is recommended to use immutable structure sharing data types inside update.
 #[async_trait]
 pub trait Transposer: Clone + Unpin + Send + Sync {
-    type Time: Copy + Ord + Send + Sync;
+    type Time: Copy + Ord + Default + Send + Sync;
     type External: Clone + Unpin + Send + Sync;
     type Internal: Clone + Unpin + Send + Sync;
     type Out: Clone + Unpin + Send + Sync;

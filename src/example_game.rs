@@ -17,18 +17,15 @@ pub struct ExampleTransposer {
 }
 
 impl ExampleTransposer {
-    fn handle_external(&self, event: &Event<Duration, ()>) -> UpdateResult<Self> {
+    fn handle_external(&self, _event: &Event<Duration, ()>) -> UpdateResult<Self> {
         let mut new_updater = self.clone();
         new_updater.count -= 1;
-        let new_out_event = Event {
-            timestamp: event.timestamp + Duration::from_secs(1),
-            payload: EventPayload::Payload(self.count),
-        };
         UpdateResult {
             new_updater: Some(new_updater),
             expired_events: vec![],
             new_events: vec![],
-            emitted_events: vec![new_out_event],
+            emitted_events: vec![self.count],
+            rollback: false,
         }
     }
 
@@ -39,15 +36,12 @@ impl ExampleTransposer {
             timestamp: event.timestamp + Duration::from_secs(1),
             payload: EventPayload::Payload(()),
         };
-        let new_out_event = Event {
-            timestamp: event.timestamp + Duration::from_secs(1),
-            payload: EventPayload::Payload(self.count),
-        };
         UpdateResult {
             new_updater: Some(new_updater),
             expired_events: vec![],
             new_events: vec![new_in_event],
-            emitted_events: vec![new_out_event],
+            emitted_events: vec![self.count],
+            rollback: false,
         }
     }
 }
@@ -59,7 +53,7 @@ impl Transposer for ExampleTransposer {
     type Internal = ();
     type Out = usize;
 
-    async fn init(cx: &TransposerContext) -> InitResult<Self> {
+    async fn init(_cx: &TransposerContext) -> InitResult<Self> {
         InitResult {
             new_updater: ExampleTransposer { count: 0 },
             new_events: vec![Event {

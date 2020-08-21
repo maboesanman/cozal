@@ -1,4 +1,4 @@
-use crate::core::event::event::{Event, EventPayload, EventTimestamp};
+use crate::core::event::event::{Event, EventPayload};
 use flume::{unbounded, Receiver, Sender};
 use std::time::Instant;
 use winit::{
