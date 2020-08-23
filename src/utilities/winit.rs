@@ -1,4 +1,4 @@
-use crate::core::event::event::{Event, EventPayload};
+use crate::core::event::event::Event;
 use flume::{unbounded, Receiver, Sender};
 use std::time::Instant;
 use winit::{
@@ -40,7 +40,7 @@ impl WinitLoop {
             if let Some(e) = event.to_static() {
                 let e = Event {
                     timestamp: Instant::now(),
-                    payload: EventPayload::Payload(e),
+                    payload: e,
                 };
                 if let Err(e) = sender.send(e) {
                     println!("{:?}", e);

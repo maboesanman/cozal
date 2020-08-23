@@ -1,5 +1,5 @@
 use super::transposer_context::TransposerContext;
-use super::trigger_event::TriggerEvent;
+use super::{transposer_event::TransposerEvent};
 use crate::core::event::event::Event;
 use async_trait::async_trait;
 
@@ -21,18 +21,19 @@ pub struct UpdateResult<T: Transposer> {
 #[async_trait]
 pub trait Transposer: Clone + Unpin + Send + Sync {
     type Time: Copy + Ord + Default + Send + Sync;
-    type External: Clone + Unpin + Send + Sync;
-    type Internal: Clone + Unpin + Send + Sync;
-    type Out: Clone + Unpin + Send + Sync;
+    type External: Unpin + Send + Sync;
+    type Internal: Unpin + Send + Sync;
+    type Out: Unpin + Send + Sync;
 
     // initialize the state of your transposer.
     async fn init(cx: &TransposerContext) -> InitResult<Self>;
 
-    // process events and produce a new state.
+    // process events for a single time T and produce a new state.
     async fn update<'a>(
         &'a self,
         cx: &TransposerContext,
-        event: &'a TriggerEvent<Self>,
+        // all these events have the same time.
+        events: Vec<&TransposerEvent<Self>>,
     ) -> UpdateResult<Self>;
 
     // filter out events you know you can't do anything with.

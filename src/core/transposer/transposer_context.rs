@@ -28,4 +28,6 @@ impl TransposerContext {
             .insert(handle, index);
         handle
     }
+
+    // todo add functions to get 
 }

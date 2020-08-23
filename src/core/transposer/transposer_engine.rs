@@ -1,6 +1,6 @@
 use super::transposer::Transposer;
 use super::transposer_engine_internal::TransposerEngineInternal;
-use crate::core::event::event::Event;
+use crate::core::event::event::{RollbackPayload, Event};
 use core::pin::Pin;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::SeqCst;
@@ -11,14 +11,14 @@ use std::sync::{Arc, Mutex};
 pub struct TransposerEngine<
     'a,
     T: Transposer + 'a,
-    S: Stream<Item = Event<T::Time, T::External>> + Unpin + Send + 'a,
+    S: Stream<Item = Event<T::Time, RollbackPayload<T::External>>> + Unpin + Send + 'a,
 > {
     internal: Arc<Mutex<TransposerEngineInternal<'a, T, S>>>,
     current_poll_stream: Arc<AtomicUsize>,
 }
 
 #[allow(dead_code)]
-impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unpin + Send + 'a>
+impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, RollbackPayload<T::External>>> + Unpin + Send + 'a>
     TransposerEngine<'a, T, S>
 {
     // create a new transposer engine, consuming the input stream.
@@ -63,7 +63,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unp
 pub struct TransposerEngineStream<
     'a,
     T: Transposer + 'a,
-    S: Stream<Item = Event<T::Time, T::External>> + Unpin + Send + 'a,
+    S: Stream<Item = Event<T::Time, RollbackPayload<T::External>>> + Unpin + Send + 'a,
 > {
     internal: Arc<Mutex<TransposerEngineInternal<'a, T, S>>>,
     poll_stream_id: usize,
@@ -71,7 +71,7 @@ pub struct TransposerEngineStream<
     until: T::Time,
 }
 
-impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, T::External>> + Unpin + Send> Stream
+impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, RollbackPayload<T::External>>> + Unpin + Send> Stream
     for TransposerEngineStream<'a, T, S>
 {
     type Item = Event<T::Time, T::Out>;
