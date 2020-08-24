@@ -288,12 +288,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = Event<T::Time, RollbackPayload<T::
         loop {
             let next_external = self.input_buffer.peek();
             let next_external = match next_external {
-                Some(Reverse(FullOrd(e))) => Some(e.clone()),
-                // Some(_) => None,
-                None => None,
-            };
-            let next_external = match next_external {
-                Some(e) => Some(TransposerEvent::External(e)),
+                Some(Reverse(FullOrd(e))) => Some(TransposerEvent::External(e.clone())),
                 // Some(_) => None,
                 None => None,
             };

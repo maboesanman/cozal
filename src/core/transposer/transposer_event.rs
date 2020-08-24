@@ -7,7 +7,7 @@ pub struct ExternalTransposerEvent<T: Transposer> {
     pub event: Arc<Event<T::Time, T::External>>,
 }
 
-impl<T: Transposer> ExternalTransposerEvent<T> {
+impl<T: Transposer> Clone for ExternalTransposerEvent<T> {
     fn clone(&self) -> Self {
         ExternalTransposerEvent {
             event: self.event.clone(),
@@ -53,7 +53,7 @@ pub struct InternalTransposerEvent<T: Transposer> {
     pub event: Arc<Event<T::Time, T::Internal>>,
 }
 
-impl<T: Transposer> InternalTransposerEvent<T> {
+impl<T: Transposer> Clone for InternalTransposerEvent<T> {
     fn clone(&self) -> Self {
         InternalTransposerEvent {
             created_at: self.created_at,
