@@ -20,9 +20,8 @@ async fn main() {
     let game: TransposerEngine<ExampleTransposer, _> = TransposerEngine::new(key_presses).await;
     let stream = game.to_realtime(Instant::now());
     let stream = stream.map(move |event| Ok(event));
-    tokio::spawn(async move {
-        stream.forward(DebugSink::new()).await.unwrap();
-    });
+    let fut = stream.forward(DebugSink::new());
+    tokio::spawn(fut);
 
     winit.run();
 }
