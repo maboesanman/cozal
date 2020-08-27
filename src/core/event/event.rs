@@ -37,7 +37,6 @@ impl<T: Copy + Ord, P: Clone> PartialEq for Event<T, P> {
     }
 }
 
-
 #[derive(Clone, Debug)]
 pub enum RollbackPayload<P> {
     Payload(P),

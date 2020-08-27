@@ -1,5 +1,5 @@
 use super::transposer_context::TransposerContext;
-use super::{transposer_event::TransposerEvent};
+use super::transposer_event::TransposerEvent;
 use crate::core::event::event::Event;
 use async_trait::async_trait;
 

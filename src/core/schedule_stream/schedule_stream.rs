@@ -1,11 +1,12 @@
-
-use std::task::Context;
-use std::pin::Pin;
 use super::{realtime_stream::RealtimeStream, timestamp::Timestamp};
+use std::pin::Pin;
+use std::task::Context;
 
 /// A modified version of futures::task::Poll, which has two new variants: Scheduled and Done.
 pub enum SchedulePoll<T, P>
-where T: Ord + Copy {
+where
+    T: Ord + Copy,
+{
     /// Represents that a value is ready and does not occur after the time polled
     Ready(P),
 
@@ -13,7 +14,7 @@ where T: Ord + Copy {
     ///
     /// When a function returns `Scheduled`, the function *must* also
     /// ensure that the current task is scheduled to be awoken when
-    /// progress can be made. Though new items may not be ready until 
+    /// progress can be made. Though new items may not be ready until
     /// after time t, the task still must be awoken.
     Scheduled(T),
 
@@ -71,10 +72,14 @@ pub trait ScheduleStream {
 impl<T> ScheduleStreamExt for T
 where
     T: ScheduleStream + Sized,
-    <Self as ScheduleStream>::Time: Timestamp {}
+    <Self as ScheduleStream>::Time: Timestamp,
+{
+}
 
 pub trait ScheduleStreamExt: ScheduleStream + Sized
-where <Self as ScheduleStream>::Time: Timestamp {
+where
+    <Self as ScheduleStream>::Time: Timestamp,
+{
     fn to_realtime(self, reference: <Self::Time as Timestamp>::Reference) -> RealtimeStream<Self> {
         RealtimeStream {
             reference,

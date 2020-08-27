@@ -7,9 +7,9 @@ use crate::core::{
     },
 };
 use async_trait::async_trait;
-use std::time::{Instant, Duration};
-use futures::{StreamExt, Stream};
 use futures::future::ready;
+use futures::{Stream, StreamExt};
+use std::time::{Duration, Instant};
 
 #[derive(Clone)]
 pub struct ExampleTransposer {
@@ -60,7 +60,7 @@ impl Transposer for ExampleTransposer {
                 }
             }
             result.emitted_events.push(new_updater.count);
-        };
+        }
         if new_updater.count != self.count {
             result.new_updater = Some(new_updater)
         }
@@ -72,8 +72,8 @@ pub fn get_filtered_stream<S: Stream<Item = Event<Instant, winit::event::Event<'
     start_time: Instant,
     stream: S,
 ) -> impl Stream<Item = Event<Duration, RollbackPayload<()>>> {
-    stream.filter_map(
-        move |e: Event<Instant, winit::event::Event<'_, ()>>| ready(match e.payload {
+    stream.filter_map(move |e: Event<Instant, winit::event::Event<'_, ()>>| {
+        ready(match e.payload {
             winit::event::Event::WindowEvent {
                 window_id: _,
                 event,
@@ -88,6 +88,6 @@ pub fn get_filtered_stream<S: Stream<Item = Event<Instant, winit::event::Event<'
                 _ => None,
             },
             _ => None,
-        }),
-    )
+        })
+    })
 }

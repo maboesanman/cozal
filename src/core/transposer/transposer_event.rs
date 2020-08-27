@@ -1,4 +1,4 @@
-use super::{transposer::Transposer};
+use super::transposer::Transposer;
 use crate::core::event::event::Event;
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -25,19 +25,19 @@ impl<T: Transposer> PartialOrd for ExternalTransposerEvent<T> {
 }
 
 impl<T: Transposer> ExternalTransposerEvent<T> {
-    fn second_sort(&self, other: &Self) -> Option<Ordering> {
+    fn second_sort(&self, _other: &Self) -> Option<Ordering> {
         None
     }
 }
 
-// impl<T: Transposer> ExternalTransposerEvent<T> 
+// impl<T: Transposer> ExternalTransposerEvent<T>
 // where T::External: PartialOrd {
 //     fn second_sort(&self, other: &Self) -> Option<Ordering> {
 //         self.event.payload.cmp(other.event.payload)
 //     }
 // }
 
-impl<T: Transposer> Eq for ExternalTransposerEvent<T> { }
+impl<T: Transposer> Eq for ExternalTransposerEvent<T> {}
 
 impl<T: Transposer> PartialEq for ExternalTransposerEvent<T> {
     fn eq(&self, other: &Self) -> bool {
@@ -158,8 +158,6 @@ impl<T: Transposer> PartialOrd for TransposerEvent<T> {
             return Some(cmp);
         }
 
-
-        // todo
         match (self, other) {
             (Self::External(s), Self::External(o)) => s.second_sort(o),
             (Self::Internal(s), Self::Internal(o)) => Some(s.second_sort(o)),

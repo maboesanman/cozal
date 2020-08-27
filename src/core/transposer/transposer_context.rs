@@ -12,7 +12,7 @@ pub struct TransposerContext {
 
 #[allow(dead_code)]
 impl TransposerContext {
-    pub fn new(current_expire_handle: u64) -> Self {
+    pub(super) fn new(current_expire_handle: u64) -> Self {
         Self {
             current_expire_handle: AtomicU64::new(current_expire_handle),
             new_expire_handles: Arc::new(Mutex::new(HashMap::new())),
@@ -29,5 +29,5 @@ impl TransposerContext {
         handle
     }
 
-    // todo add functions to get 
+    // todo add functions to get
 }

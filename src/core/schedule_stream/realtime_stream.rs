@@ -1,26 +1,32 @@
-
-
+use super::{
+    schedule_stream::{SchedulePoll, ScheduleStream},
+    timestamp::Timestamp,
+};
+use futures::{Future, Stream};
 use pin_project::{pin_project, project};
-use super::{timestamp::Timestamp, schedule_stream::{SchedulePoll, ScheduleStream}};
-use std::{pin::Pin, time::{Duration, Instant}, task::{Context, Poll}};
-use futures::{Stream, Future};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+    time::{Duration, Instant},
+};
 use tokio::time::delay_until;
 #[pin_project]
 pub struct RealtimeStream<St: ScheduleStream>
-where St::Time: Timestamp {
+where
+    St::Time: Timestamp,
+{
     pub(super) reference: <St::Time as Timestamp>::Reference,
     #[pin]
     pub(super) stream: St,
 }
 
 impl<St: ScheduleStream> Stream for RealtimeStream<St>
-where St::Time: Timestamp {
+where
+    St::Time: Timestamp,
+{
     type Item = St::Item;
 
-    fn poll_next(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.project();
         let time = St::Time::get_timestamp(&Instant::now(), this.reference);
         match this.stream.poll_next(time, cx) {
