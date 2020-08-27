@@ -81,9 +81,6 @@ where
     <Self as ScheduleStream>::Time: Timestamp,
 {
     fn to_realtime(self, reference: <Self::Time as Timestamp>::Reference) -> RealtimeStream<Self> {
-        RealtimeStream {
-            reference,
-            stream: self,
-        }
+        RealtimeStream::new(self, reference)
     }
 }

@@ -30,7 +30,7 @@ impl WinitLoop {
         let (sender, receiver) = unbounded();
         let event_loop = EventLoop::new();
         let window = builder.build(&event_loop).unwrap();
-        (WinitLoop { sender, event_loop }, window, receiver)
+        (Self { sender, event_loop }, window, receiver)
     }
 
     pub fn run(self) -> ! {

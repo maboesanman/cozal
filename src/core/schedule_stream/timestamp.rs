@@ -14,7 +14,7 @@ impl Timestamp for Instant {
     fn get_instant(&self, _reference: &Self::Reference) -> Instant {
         *self
     }
-    fn get_timestamp(instant: &Instant, reference: &Self::Reference) -> Self {
+    fn get_timestamp(instant: &Instant, _reference: &Self::Reference) -> Self {
         *instant
     }
 }

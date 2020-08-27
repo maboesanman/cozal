@@ -1,15 +1,15 @@
 use futures::stream::StreamExt;
-use std::time::{Duration, Instant};
+use std::time::Instant;
+use utilities::winit::WinitLoop;
 
+use crate::core::schedule_stream::schedule_stream::ScheduleStreamExt;
 use crate::core::transposer::transposer_engine::TransposerEngine;
 use crate::example_game::{get_filtered_stream, ExampleTransposer};
 use crate::utilities::debug_sink::DebugSink;
-use utilities::winit::WinitLoop;
 
 mod core;
 mod example_game;
 mod utilities;
-use crate::core::schedule_stream::schedule_stream::{ScheduleStream, ScheduleStreamExt};
 
 #[tokio::main]
 async fn main() {

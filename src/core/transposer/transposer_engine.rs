@@ -17,10 +17,13 @@ use core::sync::atomic::Ordering::Relaxed;
 use futures::task::{Context, Poll, Waker};
 use futures::{stream::Fuse, Future, Stream, StreamExt};
 use im::{HashMap, OrdSet};
-use pin_project::{pin_project, project};
+use pin_project::pin_project;
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, VecDeque};
-use std::sync::{Arc, Weak};
+use std::{
+    fmt::Debug,
+    sync::{Arc, Weak},
+};
 #[derive(Clone)]
 pub(super) struct TransposerFrame<T: Transposer> {
     // this is an Arc because we might not change the transposer, and therefore don't need to save a copy.
@@ -69,6 +72,8 @@ impl<
         T: Transposer + 'a,
         S: Stream<Item = Event<T::Time, RollbackPayload<T::External>>> + Unpin + Send + 'a,
     > ScheduleStream for TransposerEngine<'a, T, S>
+where
+    T::Time: Debug,
 {
     type Time = T::Time;
     type Item = RollbackPayload<T::Out>;
@@ -95,10 +100,22 @@ impl<
             }
             Self::poll_next_update(initial_frame, history, input_buffer, current_update, cx);
             match Self::poll_current_update(history, current_update, cx, time) {
-                None => break SchedulePoll::Pending,
-                Some(Poll::Pending) => break SchedulePoll::Pending,
                 Some(Poll::Ready(events)) => {
                     *output_buffer = VecDeque::from(events);
+                }
+                _ => {
+                    let current_frame = match history.last() {
+                        None => initial_frame,
+                        Some((_, frame)) => frame,
+                    };
+                    let next_scheduled_time = match current_frame.schedule.get_min() {
+                        Some(e) => Some(e.event.timestamp),
+                        None => None,
+                    };
+                    break match next_scheduled_time {
+                        Some(t) => SchedulePoll::Scheduled(t),
+                        None => SchedulePoll::Pending,
+                    };
                 }
             }
         }
@@ -121,27 +138,6 @@ impl<
             output_buffer: VecDeque::from(output_buffer),
             current_update: None,
             current_waker: None,
-        }
-    }
-
-    pub(super) fn next_scheduled_time(&self) -> Option<T::Time> {
-        match self.current_frame().schedule.get_min() {
-            Some(e) => Some(e.event.timestamp),
-            None => None,
-        }
-    }
-
-    fn current_time(&self) -> T::Time {
-        match self.history.last() {
-            None => T::Time::default(),
-            Some((e, _)) => e.first().unwrap().timestamp(),
-        }
-    }
-
-    fn current_frame(&self) -> &TransposerFrame<T> {
-        match self.history.last() {
-            None => &self.initial_frame,
-            Some((_, frame)) => &frame,
         }
     }
 
@@ -194,12 +190,12 @@ impl<
         cx: &mut Context<'_>,
     ) {
         // // set current_update if it is not already set.
-        if let None = current_update {
+        if current_update.is_none() {
             let current_frame = match history.last() {
                 None => &initial_frame,
                 Some((_, frame)) => frame,
             };
-            Self::get_next_update(current_frame, input_buffer, cx);
+            *current_update = Self::get_next_update(current_frame, input_buffer, cx);
         };
     }
 
@@ -427,7 +423,7 @@ impl<
             events.push(Arc::new(next_event));
         }
         if let Some(time) = time {
-            let future = Self::update(new_frame.clone(), events);
+            let future = Self::update(new_frame, events);
             let mut future = Box::pin(future);
             let result = Pin::new(&mut future).poll(cx);
             Some(Update {
