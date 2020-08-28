@@ -45,6 +45,7 @@ impl Transposer for ExampleTransposer {
             expired_events: Vec::new(),
             new_events: Vec::new(),
             emitted_events: Vec::new(),
+            exit: false,
         };
         for event in events {
             match event {

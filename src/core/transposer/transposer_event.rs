@@ -125,26 +125,6 @@ impl<T: Transposer> Clone for TransposerEvent<T> {
     }
 }
 
-// impl<Ext: Debug + Clone, Int: Debug + Clone> Debug for TransposerEvent<T> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         match self {
-//             TransposerEvent::Initial(e) => f.debug_struct("TransposerEvent::Initial")
-//                     .field("index", &e.index)
-//                     .field("event", &e.event)
-//                     .finish(),
-//             TransposerEvent::External(e) => f.debug_struct("TransposerEvent::External")
-//                     .field("index", &e.index)
-//                     .field("event", &e.event)
-//                     .finish(),
-//             TransposerEvent::Internal(e) => f.debug_struct("TransposerEvent::Internal")
-//                     .field("parent", &e.parent)
-//                     .field("index", &e.index)
-//                     .field("event", &e.event)
-//                     .finish(),
-//         }
-//     }
-// }
-
 // order is mostly deterministic. input events with identical time are not orderable.
 impl<T: Transposer> PartialOrd for TransposerEvent<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
