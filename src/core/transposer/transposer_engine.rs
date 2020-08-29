@@ -1,14 +1,18 @@
-use super::transposer::Transposer;
-use super::transposer_engine_internal::{InputStreamItem, TransposerEngineInternal};
-use crate::core::schedule_stream::schedule_stream::SchedulePoll;
-use crate::core::{
-    event::event::{Event, RollbackPayload},
-    schedule_stream::schedule_stream::ScheduleStream,
-};
 use core::pin::Pin;
+use futures::stream::Fuse;
 use futures::task::{Context, Poll};
-use futures::{stream::Fuse, Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use pin_project::pin_project;
+
+use crate::{
+    core::event::event::{Event, RollbackPayload},
+    core::schedule_stream::schedule_stream::{SchedulePoll, ScheduleStream},
+};
+
+use super::{
+    transposer::Transposer,
+    transposer_engine_internal::{InputStreamItem, TransposerEngineInternal},
+};
 
 #[pin_project(project = TransposerEngineProjection)]
 pub struct TransposerEngine<

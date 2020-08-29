@@ -49,7 +49,7 @@ where
                 time = *delay_time;
             }
         }
-        
+
         match this.stream.poll_next(time, cx) {
             SchedulePoll::Ready(p) => Poll::Ready(Some(p)),
             SchedulePoll::Scheduled(time) => {

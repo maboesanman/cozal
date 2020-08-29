@@ -1,28 +1,21 @@
-use super::transposer::Transposer;
-use super::transposer_context::TransposerContext;
-use super::{
-    transposer_event::{ExternalTransposerEvent, InternalTransposerEvent, TransposerEvent},
-    transposer_frame::TransposerFrame,
-    transposer_function_wrappers::{init, update, WrappedUpdateResult},
-    transposer_update::TransposerUpdate,
-};
-use crate::core::schedule_stream::schedule_stream::SchedulePoll;
-use crate::{
-    core::{
-        event::event::{Event, RollbackPayload},
-        schedule_stream::schedule_stream::ScheduleStream,
-    },
-    utilities::full_ord::{full_cmp, FullOrd},
-};
-use core::pin::Pin;
-use core::sync::atomic::Ordering::Relaxed;
-use futures::task::{Context, Poll, Waker};
-use futures::{stream::Fuse, Future, Stream, StreamExt};
-use im::{HashMap, OrdSet};
-use pin_project::pin_project;
+use futures::task::{Context, Poll};
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, VecDeque};
-use std::{fmt::Debug, sync::Arc};
+use std::sync::Arc;
+
+use crate::{
+    core::event::event::{Event, RollbackPayload},
+    core::schedule_stream::schedule_stream::SchedulePoll,
+    utilities::full_ord::{full_cmp, FullOrd},
+};
+
+use super::{
+    transposer::Transposer,
+    transposer_event::{ExternalTransposerEvent, TransposerEvent},
+    transposer_frame::TransposerFrame,
+    transposer_function_wrappers::{init, update},
+    transposer_update::TransposerUpdate,
+};
 
 pub(super) type InputBuffer<T> = BinaryHeap<Reverse<FullOrd<ExternalTransposerEvent<T>>>>;
 pub(super) type InputStreamItem<'a, T> =

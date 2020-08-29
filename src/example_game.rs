@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use futures::future::ready;
 use futures::{Stream, StreamExt};
 use std::time::{Duration, Instant};
+use tokio::time::delay_for;
 
 #[derive(Clone)]
 pub struct ExampleTransposer {
@@ -39,6 +40,7 @@ impl Transposer for ExampleTransposer {
         // all these events have the same time.
         events: Vec<&TransposerEvent<Self>>,
     ) -> UpdateResult<Self> {
+        // delay_for(Duration::from_millis(100)).await;
         let mut new_updater = self.clone();
         let mut result = UpdateResult {
             new_updater: None,
