@@ -42,25 +42,25 @@ where
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
-        let time = St::Time::get_timestamp(&Instant::now(), this.reference);
+        let mut time = St::Time::get_timestamp(&Instant::now(), this.reference);
+
+        if let Some((delay_time, delay)) = this.delay {
+            if delay.is_elapsed() && time < *delay_time {
+                time = *delay_time;
+            }
+        }
+        
         match this.stream.poll_next(time, cx) {
             SchedulePoll::Ready(p) => Poll::Ready(Some(p)),
             SchedulePoll::Scheduled(time) => {
-                match &mut this.delay {
-                    Some((t, _)) if t == &time => {}
-                    _ => {
-                        let instant = St::Time::get_instant(&time, this.reference);
-                        let instant = tokio::time::Instant::from_std(instant);
-                        *this.delay = Some((time, delay_until(instant)));
-                    }
+                let instant = time.get_instant(&this.reference);
+                let instant = tokio::time::Instant::from_std(instant);
+                *this.delay = Some((time, delay_until(instant)));
+
+                if let Some(delay) = this.delay {
+                    Pin::new(&mut delay.1).poll(cx);
                 }
-                match this.delay {
-                    Some((_, delay)) => match Pin::new(delay).poll(cx) {
-                        Poll::Pending => Poll::Pending,
-                        Poll::Ready(_) => unreachable!(),
-                    },
-                    None => Poll::Pending,
-                }
+                Poll::Pending
             }
             SchedulePoll::Pending => Poll::Pending,
             SchedulePoll::Done => Poll::Ready(None),

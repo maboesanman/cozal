@@ -10,7 +10,7 @@ pub struct Event<T: Copy + Ord, P> {
 
 impl<T: Debug + Copy + Ord, P: Debug + Clone> Debug for Event<T, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Point")
+        f.debug_struct("Event")
             .field("timestamp", &self.timestamp)
             .field("payload", &self.payload)
             .finish()
