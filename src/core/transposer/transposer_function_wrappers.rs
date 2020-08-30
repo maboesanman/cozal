@@ -6,7 +6,6 @@ use super::{
 };
 use crate::core::event::event::Event;
 use im::{HashMap, OrdSet};
-use std::sync::atomic::Ordering::SeqCst;
 use std::{num::NonZeroU64, sync::Arc};
 
 pub(super) type WrappedInitResult<T> = (
