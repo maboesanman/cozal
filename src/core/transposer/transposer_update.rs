@@ -1,5 +1,5 @@
 use super::{
-    transposer::Transposer, transposer_event::TransposerEvent,
+    transposer::Transposer, transposer_event::{ExternalTransposerEvent},
     transposer_function_wrappers::WrappedUpdateResult,
 };
 use futures::Future;
@@ -10,7 +10,7 @@ use std::{
 
 pub(super) struct TransposerUpdate<'a, T: Transposer> {
     pub time: T::Time,
-    pub events: Vec<TransposerEvent<T>>,
+    pub input_events: Vec<ExternalTransposerEvent<T>>,
     pub future: Pin<Box<dyn Future<Output = WrappedUpdateResult<T>> + Send + 'a>>,
     pub result: Poll<WrappedUpdateResult<T>>,
 }

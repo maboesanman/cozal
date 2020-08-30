@@ -12,10 +12,10 @@ where
 
     /// Represents that a value is ready, but occurs in the future, so the stream should be polled after time t.
     ///
-    /// When a function returns `Scheduled`, the function *must* also
-    /// ensure that the current task is scheduled to be awoken when
-    /// progress can be made. Though new items may not be ready until
-    /// after time t, the task still must be awoken.
+    /// When a function returns `Scheduled`, the function *may never wake the task*.
+    /// the contract is that repeated polling will continue to return scheduled(t) for the same t
+    /// until new information becomes availavle (via the input stream) or until poll is called
+    /// with a new, greater value of t.
     Scheduled(T),
 
     /// Represents that a value is not ready yet.

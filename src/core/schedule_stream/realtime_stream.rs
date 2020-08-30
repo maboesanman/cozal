@@ -44,9 +44,11 @@ where
         let mut this = self.project();
         let mut time = St::Time::get_timestamp(&Instant::now(), this.reference);
 
-        if let Some((delay_time, delay)) = this.delay {
-            if delay.is_elapsed() && time < *delay_time {
-                time = *delay_time;
+        if let Some((delay_time, delay)) = &mut this.delay {
+            if let Poll::Ready(_) = Pin::new(delay).poll(cx) {
+                if time < *delay_time {
+                    time = *delay_time;
+                }
             }
         }
 
@@ -58,7 +60,7 @@ where
                 *this.delay = Some((time, delay_until(instant)));
 
                 if let Some(delay) = this.delay {
-                    Pin::new(&mut delay.1).poll(cx);
+                    let _ = Pin::new(&mut delay.1).poll(cx);
                 }
                 Poll::Pending
             }

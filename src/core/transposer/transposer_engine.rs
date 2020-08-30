@@ -13,6 +13,7 @@ use super::{
     transposer::Transposer,
     transposer_engine_internal::{InputStreamItem, TransposerEngineInternal},
 };
+use std::fmt::Debug;
 
 #[pin_project(project = TransposerEngineProjection)]
 pub struct TransposerEngine<
@@ -28,6 +29,7 @@ pub struct TransposerEngine<
 
 impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + Send + 'a>
     ScheduleStream for TransposerEngine<'a, T, S>
+    where T::Time: Debug
 {
     type Time = T::Time;
     type Item = Event<T::Time, RollbackPayload<T::Out>>;
@@ -49,6 +51,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + 
 
 impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + Send + 'a>
     TransposerEngine<'a, T, S>
+    where T::Time : Debug
 {
     pub async fn new(input_stream: S) -> TransposerEngine<'a, T, S> {
         TransposerEngine {

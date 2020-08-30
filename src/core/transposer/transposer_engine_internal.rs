@@ -1,7 +1,7 @@
 use futures::task::{Context, Poll};
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, VecDeque};
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 
 use crate::{
     core::event::event::{Event, RollbackPayload},
@@ -23,8 +23,9 @@ pub(super) type InputStreamItem<'a, T> =
 
 pub(super) struct HistoryFrame<T: Transposer> {
     time: T::Time,
-    events: Vec<TransposerEvent<T>>,
     frame: TransposerFrame<T>,
+    input_events: Vec<ExternalTransposerEvent<T>>,
+    events_emitted: bool,
 }
 
 pub(super) struct TransposerEngineInternal<'a, T: Transposer + 'a> {
@@ -35,7 +36,8 @@ pub(super) struct TransposerEngineInternal<'a, T: Transposer + 'a> {
     current_update: Option<TransposerUpdate<'a, T>>,
 }
 
-impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
+impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T>
+    where T::Time: Debug {
     pub async fn new() -> TransposerEngineInternal<'a, T> {
         let (initial_frame, output_buffer) = init::<T>().await;
         TransposerEngineInternal {
@@ -60,6 +62,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
 
         let mut new_frame = current_frame.clone();
         let mut events: Vec<TransposerEvent<T>> = Vec::new();
+        let mut input_events: Vec<ExternalTransposerEvent<T>> = Vec::new();
         let mut time: Option<T::Time> = None;
 
         loop {
@@ -94,9 +97,10 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
                 time = Some(next_event.timestamp());
             }
 
-            match next_event {
-                TransposerEvent::External(_) => {
+            match &next_event {
+                TransposerEvent::External(event) => {
                     self.input_buffer.pop();
+                    input_events.push(event.clone());
                 }
                 TransposerEvent::Internal(_) => {
                     new_frame.schedule = schedule_without_next_internal;
@@ -106,12 +110,12 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         }
 
         self.current_update = if let Some(time) = time {
-            let future = update(new_frame, events.clone());
+            let future = update(new_frame, events);
             let future = Box::pin(future);
             let result = Poll::Pending;
             Some(TransposerUpdate {
                 time,
-                events,
+                input_events,
                 future,
                 result,
             })
@@ -124,15 +128,8 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         let staged_update = std::mem::take(&mut self.current_update);
 
         if let Some(staged_update) = staged_update {
-            for transposer_event in staged_update.events {
-                match transposer_event {
-                    TransposerEvent::External(external_event) => {
-                        self.input_buffer.push(Reverse(FullOrd(external_event)));
-                    }
-                    TransposerEvent::Internal(_) => {
-                        // we don't need to do anything here because this lives in the history.
-                    }
-                }
+            for event in staged_update.input_events {
+                self.input_buffer.push(Reverse(FullOrd(event)));
             }
         }
     }
@@ -166,8 +163,9 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
             }
             let new_history_frame = HistoryFrame {
                 time: staged_update.time,
-                events: staged_update.events,
                 frame,
+                input_events: staged_update.input_events,
+                events_emitted: !out_events.is_empty(),
             };
             self.history.push(new_history_frame);
 
@@ -177,18 +175,14 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         }
     }
 
-    fn revert(&mut self) {
-        if let Some(historyFrame) = self.history.pop() {
-            for transposer_event in historyFrame.events {
-                match transposer_event {
-                    TransposerEvent::External(external_event) => {
-                        self.input_buffer.push(Reverse(FullOrd(external_event)));
-                    }
-                    TransposerEvent::Internal(_) => {
-                        // we don't need to do anything here because this lives in the history.
-                    }
-                }
+    fn revert(&mut self) -> bool {
+        if let Some(history_frame) = self.history.pop() {
+            for event in history_frame.input_events {
+                self.input_buffer.push(Reverse(FullOrd(event)));
             }
+            history_frame.events_emitted
+        } else {
+            false
         }
     }
 
@@ -200,13 +194,15 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
                 self.unstage_update();
             }
         }
+        let mut needs_rollback = false;
         while let Some(history_frame) = self.history.last() {
             if history_frame.time >= time {
-                self.revert();
+                needs_rollback &= self.revert();
             } else {
                 break;
             }
         }
+        // todo emit rollback event;
     }
 
     /// scrub all events from all sources which occur at or after `time`
@@ -248,8 +244,8 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         time: T::Time,
         cx: &mut Context<'_>,
     ) -> SchedulePoll<T::Time, Event<T::Time, RollbackPayload<T::Out>>> {
-        self.try_stage_update();
         loop {
+            self.try_stage_update();
             if let Some(event) = self.output_buffer.pop_front() {
                 let Event { timestamp, payload } = event;
                 let payload = RollbackPayload::Payload(payload);
@@ -262,9 +258,15 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
                         self.output_buffer.push_back(event);
                     }
                 }
-                SchedulePoll::Pending => break SchedulePoll::Pending,
-                SchedulePoll::Scheduled(t) => break SchedulePoll::Scheduled(t),
-                SchedulePoll::Done => break SchedulePoll::Done,
+                SchedulePoll::Pending => {
+                    break SchedulePoll::Pending
+                },
+                SchedulePoll::Scheduled(t) => {
+                    break SchedulePoll::Scheduled(t)
+                },
+                SchedulePoll::Done => {
+                    break SchedulePoll::Done
+                },
             }
         }
     }
