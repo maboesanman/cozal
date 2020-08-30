@@ -7,9 +7,10 @@ use pin_project::pin_project;
 use std::{
     pin::Pin,
     task::{Context, Poll},
-    time::Instant,
+    time::Instant, sync::atomic::{Ordering, AtomicUsize},
 };
 use tokio::time::{Delay, delay_for};
+use crate::utilities::debug_waker::wrap_waker;
 
 /// Stream for the `to_realtime` method.
 #[pin_project]
@@ -22,6 +23,7 @@ where
     stream: St,
     #[pin]
     delay: Delay,
+    current_waker_count: AtomicUsize,
 }
 
 impl<St: ScheduleStream> RealtimeStream<St>
@@ -33,6 +35,7 @@ where
             stream,
             reference,
             delay: delay_for(std::time::Duration::from_secs(0)),
+            current_waker_count: AtomicUsize::from(0),
         }
     }
 }
@@ -44,7 +47,10 @@ where
     type Item = St::Item;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        println!("poll");
         let mut this = self.project();
+        let w = wrap_waker(cx.waker().to_owned(), this.current_waker_count.fetch_add(1, Ordering::SeqCst));
+        let cx = &mut Context::from_waker(&w);
         let time = St::Time::get_timestamp(&Instant::now(), this.reference);
 
         let result = match this.stream.poll_next(time, cx) {
