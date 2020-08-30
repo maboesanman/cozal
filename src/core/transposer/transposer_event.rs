@@ -1,7 +1,7 @@
 use super::transposer::Transposer;
 use crate::core::event::event::Event;
 use std::cmp::Ordering;
-use std::sync::Arc;
+use std::{num::NonZeroU64, sync::Arc};
 
 pub struct ExternalTransposerEvent<T: Transposer> {
     pub event: Arc<Event<T::Time, T::External>>,
@@ -50,6 +50,7 @@ pub struct InternalTransposerEvent<T: Transposer> {
 
     // this is the index in the new_events array in the result of the update or init function that spawned this event.
     pub(super) index: usize,
+    pub(super) expire_handle: Option<NonZeroU64>,
     pub event: Arc<Event<T::Time, T::Internal>>,
 }
 
@@ -58,6 +59,7 @@ impl<T: Transposer> Clone for InternalTransposerEvent<T> {
         InternalTransposerEvent {
             created_at: self.created_at,
             index: self.index,
+            expire_handle: None,
             event: self.event.clone(),
         }
     }
