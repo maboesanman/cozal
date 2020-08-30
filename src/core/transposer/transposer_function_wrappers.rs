@@ -76,9 +76,9 @@ pub(super) async fn update<T: Transposer>(
     events: Vec<TransposerEvent<T>>, // these are assumed to be at the same time and sorted.
 ) -> WrappedUpdateResult<T> {
     let cx = TransposerContext::new(frame.current_expire_handle);
-    let events_refs: Vec<&TransposerEvent<T>> = events.iter().collect();
-    let timestamp = events_refs.first().unwrap().timestamp();
-    let result = frame.transposer.update(&cx, events_refs).await;
+    let event_refs: Vec<&TransposerEvent<T>> = events.iter().collect();
+    let timestamp = event_refs.first().unwrap().timestamp();
+    let result = frame.transposer.update(&cx, event_refs).await;
 
     let mut new_events = Vec::new();
     for (index, event) in result.new_events.into_iter().enumerate() {
@@ -97,9 +97,15 @@ pub(super) async fn update<T: Transposer>(
         schedule.insert(event.clone());
     }
 
-    // add expire handles
     let mut expire_handles = frame.expire_handles.clone();
-    // for ()
+    // remove handled events' expire handles
+    for e in events {
+        if let TransposerEvent::Internal(_) = e {
+            todo!()
+            // expire_handles.remove(&h);
+        }
+    }
+    // add expire handles
     for (k, v) in cx.new_expire_handles.lock().unwrap().iter() {
         if let Some(e) = new_events.get(*k) {
             expire_handles.insert(*v, e.clone());
