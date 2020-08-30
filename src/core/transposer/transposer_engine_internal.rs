@@ -1,7 +1,7 @@
 use futures::task::{Context, Poll};
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, VecDeque};
-use std::{fmt::Debug, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     core::event::event::{Event, RollbackPayload},
@@ -37,8 +37,7 @@ pub(super) struct TransposerEngineInternal<'a, T: Transposer + 'a> {
     current_update: Option<TransposerUpdate<'a, T>>,
 }
 
-impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T>
-    where T::Time: Debug {
+impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
     pub async fn new() -> TransposerEngineInternal<'a, T> {
         let (initial_frame, output_buffer) = init::<T>().await;
         TransposerEngineInternal {

@@ -1,7 +1,7 @@
 use std::time::Duration;
 use std::time::Instant;
 
-/// Timestamps are the types used by `ScheduleStreams` to allow for streams that need a 
+/// Timestamps are the types used by `ScheduleStreams` to allow for streams that need a
 /// more complex timestamp type.
 ///
 /// for example, time could be quantized into "ticks", or could incorporate an added "priority level".

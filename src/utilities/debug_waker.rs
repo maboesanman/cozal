@@ -1,5 +1,5 @@
+use futures::task::{waker, ArcWake};
 use std::{sync::Arc, task::Waker};
-use futures::task::{ArcWake, waker};
 
 pub struct DebugWaker {
     inner: Waker,
@@ -15,10 +15,7 @@ impl ArcWake for DebugWaker {
 
 pub fn wrap_waker(inner: Waker, count: usize) -> Waker {
     println!("new {:?}", count);
-    let debug = DebugWaker {
-        inner,
-        count,
-    };
+    let debug = DebugWaker { inner, count };
     let arc_debug = Arc::new(debug);
     waker(arc_debug)
 }

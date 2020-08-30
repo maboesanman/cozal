@@ -1,5 +1,5 @@
 use super::{
-    transposer::Transposer, transposer_event::{ExternalTransposerEvent},
+    transposer::Transposer, transposer_event::ExternalTransposerEvent,
     transposer_function_wrappers::WrappedUpdateResult,
 };
 use futures::Future;

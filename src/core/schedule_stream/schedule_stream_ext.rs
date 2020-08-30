@@ -1,6 +1,6 @@
-use super::timestamp::Timestamp;
-use super::schedule_stream::ScheduleStream;
 use super::realtime_stream::RealtimeStream;
+use super::schedule_stream::ScheduleStream;
+use super::timestamp::Timestamp;
 
 impl<T> ScheduleStreamExt for T
 where
