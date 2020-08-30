@@ -1,7 +1,8 @@
 use core::sync::atomic::Ordering::Relaxed;
 use std::{
     collections::HashMap,
-    sync::{atomic::AtomicU64, Arc, Mutex}, num::NonZeroU64,
+    num::NonZeroU64,
+    sync::{atomic::AtomicU64, Arc, Mutex},
 };
 // todo document.
 pub struct TransposerContext {
@@ -25,24 +26,24 @@ impl TransposerContext {
     // get a handle that can be used to expire an event that has been scheduled.
     // the index argument is the index in the new_events array that the handle will correspond to.
     pub fn get_expire_handle(&self, index: usize) -> NonZeroU64 {
-        let mut handles = self.new_expire_handles
-            .lock()
-            .unwrap();
+        let mut handles = self.new_expire_handles.lock().unwrap();
 
         if handles.get(&index).is_none() {
-
             let handle = unsafe {
                 NonZeroU64::new_unchecked(self.current_expire_handle.fetch_add(1, Relaxed))
             };
             handles.insert(index, handle);
         }
-        
+
         handles[&index]
     }
-    
+
     pub(super) fn get_current_expire_handle(&self) -> NonZeroU64 {
         unsafe {
-            NonZeroU64::new_unchecked(self.current_expire_handle.load(std::sync::atomic::Ordering::SeqCst))
+            NonZeroU64::new_unchecked(
+                self.current_expire_handle
+                    .load(std::sync::atomic::Ordering::SeqCst),
+            )
         }
     }
 

@@ -1,7 +1,7 @@
 use super::transposer::Transposer;
 use super::transposer_event::InternalTransposerEvent;
 use im::{HashMap, OrdSet};
-use std::{num::NonZeroU64, sync::{Arc}};
+use std::{num::NonZeroU64, sync::Arc};
 
 #[derive(Clone)]
 pub(super) struct TransposerFrame<T: Transposer> {
