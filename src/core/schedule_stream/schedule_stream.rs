@@ -54,7 +54,7 @@ pub trait ScheduleStream {
     /// - `Poll::Done` means that the stream has terminated, and
     /// `poll_next` should not be invoked again.
     ///
-    /// = `Poll::Scheduled(t)` means that the stream's next value is not ready
+    /// - `Poll::Scheduled(t)` means that the stream's next value is not ready
     /// yet, but there is an event scheduled for time t.
     ///
     /// # Panics
@@ -66,4 +66,12 @@ pub trait ScheduleStream {
         time: Self::Time,
         cx: &mut Context<'_>,
     ) -> SchedulePoll<Self::Time, Self::Item>;
+
+    /// Returns the bounds on the remaining length of the stream.
+    ///
+    /// This is behaves exactly the same as regular streams, and is passed through transparently
+    /// in the `RealtimeStream`.
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, None)
+    }
 }

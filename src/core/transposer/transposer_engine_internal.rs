@@ -50,6 +50,13 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         }
     }
 
+    fn current_frame(&self) -> &TransposerFrame<T> {
+        match self.history.last() {
+            Some(frame) => &frame.frame,
+            None => &self.initial_frame,
+        }
+    }
+
     pub fn try_stage_update(&mut self) {
         // exit if we already have a staged update.
         if self.current_update.is_some() {
@@ -75,7 +82,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
 
             let (next_internal, schedule_without_next_internal) = new_frame.schedule.without_min();
             let next_internal = match next_internal {
-                Some(e) => Some(TransposerEvent::Internal(e.as_ref().clone())),
+                Some(e) => Some(TransposerEvent::Internal(e.clone())),
                 None => None,
             };
 
@@ -271,5 +278,11 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
                 SchedulePoll::Done => break SchedulePoll::Done,
             }
         }
+    }
+
+    pub fn size_hint(&self) -> (usize, Option<usize>) {
+        let frame = self.current_frame();
+        let min = frame.schedule.len() - frame.expire_handles.len();
+        (min, None)
     }
 }

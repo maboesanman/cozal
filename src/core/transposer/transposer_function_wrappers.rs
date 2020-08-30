@@ -27,7 +27,7 @@ pub(super) async fn init<T: Transposer>() -> WrappedInitResult<T> {
             index,
             event,
         };
-        new_events.push(Arc::new(init_event));
+        new_events.push(init_event);
     }
 
     // add events to schedule
@@ -39,8 +39,8 @@ pub(super) async fn init<T: Transposer>() -> WrappedInitResult<T> {
     // add expire handles
     let mut expire_handles = HashMap::new();
     for (k, v) in cx.new_expire_handles.lock().unwrap().iter() {
-        if let Some(e) = new_events.get(*v) {
-            expire_handles.insert(*k, Arc::downgrade(&e.clone()));
+        if let Some(e) = new_events.get(*k) {
+            expire_handles.insert(*v, e.clone());
         }
     }
 
@@ -88,7 +88,7 @@ pub(super) async fn update<T: Transposer>(
             index,
             event,
         };
-        new_events.push(Arc::new(init_event));
+        new_events.push(init_event);
     }
 
     // add events to schedule
@@ -99,19 +99,18 @@ pub(super) async fn update<T: Transposer>(
 
     // add expire handles
     let mut expire_handles = frame.expire_handles.clone();
+    // for ()
     for (k, v) in cx.new_expire_handles.lock().unwrap().iter() {
-        if let Some(e) = new_events.get(*v) {
-            expire_handles.insert(*k, Arc::downgrade(&e.clone()));
+        if let Some(e) = new_events.get(*k) {
+            expire_handles.insert(*v, e.clone());
         }
     }
 
     // remove expired events
     for h in result.expired_events {
         if let Some(e) = frame.expire_handles.get(&h) {
-            if let Some(e) = e.upgrade() {
-                schedule.remove(&e);
-                expire_handles.remove(&h);
-            }
+            schedule.remove(&e);
+            expire_handles.remove(&h);
         }
     }
 

@@ -47,6 +47,10 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + 
         }
         internal.poll(time, cx)
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.internal.size_hint()
+    }
 }
 
 impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + Send + 'a>

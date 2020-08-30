@@ -6,7 +6,7 @@ use std::{
 // todo document.
 pub struct TransposerContext {
     pub(super) current_expire_handle: AtomicU64,
-    pub(super) new_expire_handles: Arc<Mutex<HashMap<u64, usize>>>,
+    pub(super) new_expire_handles: Arc<Mutex<HashMap<usize, u64>>>,
     // todo add seeded deterministic random function
 }
 
@@ -21,12 +21,16 @@ impl TransposerContext {
     // get a handle that can be used to expire an event that has been scheduled.
     // the index argument is the index in the new_events array that the handle will correspond to.
     pub fn get_expire_handle(&self, index: usize) -> u64 {
-        let handle = self.current_expire_handle.fetch_add(1, Relaxed);
-        self.new_expire_handles
+        let mut handles = self.new_expire_handles
             .lock()
-            .unwrap()
-            .insert(handle, index);
-        handle
+            .unwrap();
+
+        if handles.get(&index).is_none() {
+            let handle = self.current_expire_handle.fetch_add(1, Relaxed);
+            handles.insert(index, handle);
+        }
+        
+        handles[&index]
     }
 
     // todo add functions to get state from other streams somehow...

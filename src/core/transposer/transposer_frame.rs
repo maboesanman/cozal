@@ -1,7 +1,7 @@
 use super::transposer::Transposer;
 use super::transposer_event::InternalTransposerEvent;
 use im::{HashMap, OrdSet};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc};
 
 #[derive(Clone)]
 pub(super) struct TransposerFrame<T: Transposer> {
@@ -9,8 +9,8 @@ pub(super) struct TransposerFrame<T: Transposer> {
     pub transposer: Arc<T>,
 
     // schedule and expire_handles
-    pub schedule: OrdSet<Arc<InternalTransposerEvent<T>>>,
-    pub expire_handles: HashMap<u64, Weak<InternalTransposerEvent<T>>>,
+    pub schedule: OrdSet<InternalTransposerEvent<T>>,
+    pub expire_handles: HashMap<u64, InternalTransposerEvent<T>>,
 
     pub current_expire_handle: u64,
     // todo: add constants for the current randomizer
