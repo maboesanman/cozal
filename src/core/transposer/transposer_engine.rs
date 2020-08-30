@@ -15,6 +15,7 @@ use super::{
 };
 use std::fmt::Debug;
 
+// todo document.
 #[pin_project(project = TransposerEngineProjection)]
 pub struct TransposerEngine<
     'a,
@@ -42,6 +43,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + 
             input_stream,
             internal,
         } = self.project();
+        // println!("poll input stream");
         if let Poll::Ready(Some(event)) = input_stream.poll_next(cx) {
             internal.insert(event);
         }

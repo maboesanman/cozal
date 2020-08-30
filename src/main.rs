@@ -2,7 +2,7 @@ use futures::stream::StreamExt;
 use std::time::Instant;
 use utilities::winit::WinitLoop;
 
-use crate::core::schedule_stream::schedule_stream::ScheduleStreamExt;
+use crate::core::schedule_stream::schedule_stream_ext::ScheduleStreamExt;
 use crate::core::transposer::transposer_engine::TransposerEngine;
 use crate::example_game::{get_filtered_stream, ExampleTransposer};
 use crate::utilities::debug_sink::DebugSink;

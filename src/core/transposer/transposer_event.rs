@@ -95,6 +95,7 @@ impl<T: Transposer> PartialEq for InternalTransposerEvent<T> {
     }
 }
 
+// todo document.
 pub enum TransposerEvent<T: Transposer> {
     External(ExternalTransposerEvent<T>),
     Internal(InternalTransposerEvent<T>),

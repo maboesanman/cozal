@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 
+// todo document.
 pub struct FullOrd<T: PartialOrd>(pub T);
 
 impl<T: PartialOrd> Ord for FullOrd<T> {

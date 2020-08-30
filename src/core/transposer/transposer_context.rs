@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     sync::{atomic::AtomicU64, Arc, Mutex},
 };
-
+// todo document.
 pub struct TransposerContext {
     pub(super) current_expire_handle: AtomicU64,
     pub(super) new_expire_handles: Arc<Mutex<HashMap<u64, usize>>>,
@@ -29,5 +29,5 @@ impl TransposerContext {
         handle
     }
 
-    // todo add functions to get
+    // todo add functions to get state from other streams somehow...
 }

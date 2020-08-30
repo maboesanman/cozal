@@ -9,7 +9,9 @@ use std::{
     task::{Context, Poll},
     time::Instant,
 };
-use tokio::time::{delay_until, Delay};
+use tokio::time::{Delay, delay_for};
+
+/// Stream for the `to_realtime` method.
 #[pin_project]
 pub struct RealtimeStream<St: ScheduleStream>
 where
@@ -18,18 +20,19 @@ where
     reference: <St::Time as Timestamp>::Reference,
     #[pin]
     stream: St,
-    delay: Option<(St::Time, Delay)>,
+    #[pin]
+    delay: Delay,
 }
 
 impl<St: ScheduleStream> RealtimeStream<St>
 where
     St::Time: Timestamp,
 {
-    pub fn new(stream: St, reference: <St::Time as Timestamp>::Reference) -> Self {
+    pub(super) fn new(stream: St, reference: <St::Time as Timestamp>::Reference) -> Self {
         Self {
             stream,
             reference,
-            delay: None,
+            delay: delay_for(std::time::Duration::from_secs(0)),
         }
     }
 }
@@ -42,30 +45,24 @@ where
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
-        let mut time = St::Time::get_timestamp(&Instant::now(), this.reference);
+        let time = St::Time::get_timestamp(&Instant::now(), this.reference);
 
-        if let Some((delay_time, delay)) = &mut this.delay {
-            if let Poll::Ready(_) = Pin::new(delay).poll(cx) {
-                if time < *delay_time {
-                    time = *delay_time;
-                }
-            }
-        }
-
-        match this.stream.poll_next(time, cx) {
+        let result = match this.stream.poll_next(time, cx) {
             SchedulePoll::Ready(p) => Poll::Ready(Some(p)),
-            SchedulePoll::Scheduled(time) => {
-                let instant = time.get_instant(&this.reference);
+            SchedulePoll::Scheduled(new_time) => {
+                let instant = new_time.get_instant(&this.reference);
                 let instant = tokio::time::Instant::from_std(instant);
-                *this.delay = Some((time, delay_until(instant)));
-
-                if let Some(delay) = this.delay {
-                    let _ = Pin::new(&mut delay.1).poll(cx);
-                }
+                this.delay.reset(instant);
+                
                 Poll::Pending
             }
             SchedulePoll::Pending => Poll::Pending,
             SchedulePoll::Done => Poll::Ready(None),
-        }
+        };
+
+        // make sure the delay has a reference to the current waker.
+        let _ = this.delay.poll(cx);
+
+        result
     }
 }

@@ -33,6 +33,7 @@ pub(super) struct TransposerEngineInternal<'a, T: Transposer + 'a> {
     history: Vec<HistoryFrame<T>>,
     input_buffer: InputBuffer<T>,
     output_buffer: VecDeque<Event<T::Time, T::Out>>,
+    needs_rollback: Option<T::Time>,
     current_update: Option<TransposerUpdate<'a, T>>,
 }
 
@@ -45,6 +46,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T>
             history: Vec::new(),
             input_buffer: BinaryHeap::new(),
             output_buffer: VecDeque::from(output_buffer),
+            needs_rollback: None,
             current_update: None,
         }
     }
@@ -139,8 +141,6 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T>
         time: T::Time,
         cx: &mut Context<'_>,
     ) -> SchedulePoll<T::Time, Vec<Event<T::Time, T::Out>>> {
-        // let staged_update = std::mem::take(self.current_update);
-
         if let Some(staged_update) = &mut self.current_update {
             staged_update.poll(cx);
 
@@ -177,6 +177,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T>
 
     fn revert(&mut self) -> bool {
         if let Some(history_frame) = self.history.pop() {
+            self.output_buffer.clear();
             for event in history_frame.input_events {
                 self.input_buffer.push(Reverse(FullOrd(event)));
             }
@@ -202,7 +203,9 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T>
                 break;
             }
         }
-        // todo emit rollback event;
+        if needs_rollback {
+            self.needs_rollback = Some(time);
+        }
     }
 
     /// scrub all events from all sources which occur at or after `time`
@@ -246,6 +249,12 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T>
     ) -> SchedulePoll<T::Time, Event<T::Time, RollbackPayload<T::Out>>> {
         loop {
             self.try_stage_update();
+            if let Some(timestamp) = self.needs_rollback {
+                self.needs_rollback = None;
+                let payload = RollbackPayload::Rollback;
+                let event = Event { timestamp, payload };
+                break SchedulePoll::Ready(event);
+            }
             if let Some(event) = self.output_buffer.pop_front() {
                 let Event { timestamp, payload } = event;
                 let payload = RollbackPayload::Payload(payload);
@@ -254,19 +263,13 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T>
             }
             match self.try_commit_update(time, cx) {
                 SchedulePoll::Ready(events) => {
-                    for event in events.into_iter() {
+                    for event in events {
                         self.output_buffer.push_back(event);
                     }
                 }
-                SchedulePoll::Pending => {
-                    break SchedulePoll::Pending
-                },
-                SchedulePoll::Scheduled(t) => {
-                    break SchedulePoll::Scheduled(t)
-                },
-                SchedulePoll::Done => {
-                    break SchedulePoll::Done
-                },
+                SchedulePoll::Pending => break SchedulePoll::Pending,
+                SchedulePoll::Scheduled(t) => break SchedulePoll::Scheduled(t),
+                SchedulePoll::Done => break SchedulePoll::Done,
             }
         }
     }

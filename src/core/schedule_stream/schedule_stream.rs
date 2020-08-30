@@ -68,19 +68,3 @@ pub trait ScheduleStream {
         cx: &mut Context<'_>,
     ) -> SchedulePoll<Self::Time, Self::Item>;
 }
-
-impl<T> ScheduleStreamExt for T
-where
-    T: ScheduleStream + Sized,
-    <Self as ScheduleStream>::Time: Timestamp,
-{
-}
-
-pub trait ScheduleStreamExt: ScheduleStream + Sized
-where
-    <Self as ScheduleStream>::Time: Timestamp,
-{
-    fn to_realtime(self, reference: <Self::Time as Timestamp>::Reference) -> RealtimeStream<Self> {
-        RealtimeStream::new(self, reference)
-    }
-}

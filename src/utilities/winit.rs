@@ -6,6 +6,7 @@ use winit::{
     window::WindowBuilder,
 };
 
+// todo document.
 pub struct WinitLoop {
     sender: Sender<Event<Instant, winit::event::Event<'static, ()>>>,
     event_loop: winit::event_loop::EventLoop<()>,
