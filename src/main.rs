@@ -17,8 +17,6 @@ async fn main() {
     window.set_visible(true);
 
     let key_presses = get_filtered_stream(Instant::now(), receiver);
-    // let key_presses = key_presses.map(move |event| Ok(event));
-    // let fut = key_presses.forward(DebugSink::new());
     let game: TransposerEngine<ExampleTransposer, _> = TransposerEngine::new(key_presses).await;
     let stream = game.to_realtime(Instant::now());
     let stream = stream.map(move |event| Ok(event));

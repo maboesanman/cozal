@@ -1,5 +1,5 @@
 use crate::core::event::event::Event;
-use flume::{unbounded, Receiver, Sender};
+use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use std::time::Instant;
 use winit::{
     event_loop::{ControlFlow, EventLoop},
@@ -8,7 +8,7 @@ use winit::{
 
 // todo document.
 pub struct WinitLoop {
-    sender: Sender<Event<Instant, winit::event::Event<'static, ()>>>,
+    sender: UnboundedSender<Event<Instant, winit::event::Event<'static, ()>>>,
     event_loop: winit::event_loop::EventLoop<()>,
 }
 
@@ -16,7 +16,7 @@ impl WinitLoop {
     pub fn new() -> (
         Self,
         winit::window::Window,
-        Receiver<Event<Instant, winit::event::Event<'static, ()>>>,
+        UnboundedReceiver<Event<Instant, winit::event::Event<'static, ()>>>,
     ) {
         Self::new_from_builder(WindowBuilder::new())
     }
@@ -26,7 +26,7 @@ impl WinitLoop {
     ) -> (
         Self,
         winit::window::Window,
-        Receiver<Event<Instant, winit::event::Event<'static, ()>>>,
+        UnboundedReceiver<Event<Instant, winit::event::Event<'static, ()>>>,
     ) {
         let (sender, receiver) = unbounded();
         let event_loop = EventLoop::new();
@@ -43,7 +43,7 @@ impl WinitLoop {
                     timestamp: Instant::now(),
                     payload: e,
                 };
-                if let Err(e) = sender.send(e) {
+                if let Err(e) = sender.unbounded_send(e) {
                     println!("{:?}", e);
                     *control_flow = ControlFlow::Exit;
                 }

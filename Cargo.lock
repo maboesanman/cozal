@@ -172,7 +172,6 @@ name = "cozal"
 version = "0.0.1"
 dependencies = [
  "async-trait",
- "flume",
  "futures",
  "im",
  "lazy_static",
@@ -212,16 +211,6 @@ name = "downcast-rs"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
-
-[[package]]
-name = "flume"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "855e285c3835897065a6ba6f9463b44553eb9f29c7988d692f3d41283b47388b"
-dependencies = [
- "futures",
- "spin",
-]
 
 [[package]]
 name = "foreign-types"
@@ -884,12 +873,6 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
 ]
-
-[[package]]
-name = "spin"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "stb_truetype"
