@@ -3,6 +3,7 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 use futures::Sink;
 
+// todo document.
 pub struct DebugSink {}
 
 impl DebugSink {
