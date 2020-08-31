@@ -21,8 +21,7 @@ pub trait Timestamp: Ord + Copy {
     /// let timestamp_1: Timestamp;
     /// let instant_1 = timestamp.get_instant(ref);
     /// let timestamp2 = instant_1.get_timestamp(ref);
-    /// assert_eq!(timestamp_1, timestamp_2);
-    /// ```
+    /// assert_eq!(timestamp_1, timestamp_2);```
     fn get_instant(&self, reference: &Self::Reference) -> Instant;
 
     /// Compute a timestamp from an instant and a reference point.
@@ -33,8 +32,7 @@ pub trait Timestamp: Ord + Copy {
     /// let timestamp_1: Timestamp;
     /// let instant_1 = timestamp.get_instant(ref);
     /// let timestamp2 = instant_1.get_timestamp(ref);
-    /// assert_eq!(timestamp_1, timestamp_2);
-    /// ```
+    /// assert_eq!(timestamp_1, timestamp_2);```
     fn get_timestamp(instant: &Instant, reference: &Self::Reference) -> Self;
 }
 

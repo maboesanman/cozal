@@ -25,7 +25,7 @@ impl Transposer for ExampleTransposer {
 
     async fn init(_cx: &TransposerContext) -> InitResult<Self> {
         InitResult {
-            new_updater: ExampleTransposer { count: 0 },
+            transposer: ExampleTransposer { count: 0 },
             new_events: vec![Event {
                 timestamp: Duration::from_secs(0),
                 payload: (),
@@ -41,7 +41,7 @@ impl Transposer for ExampleTransposer {
     ) -> UpdateResult<Self> {
         let mut new_updater = self.clone();
         let mut result = UpdateResult {
-            new_updater: None,
+            new_transposer: None,
             expired_events: Vec::new(),
             new_events: Vec::new(),
             emitted_events: Vec::new(),
@@ -63,7 +63,7 @@ impl Transposer for ExampleTransposer {
             result.emitted_events.push(new_updater.count);
         }
         if new_updater.count != self.count {
-            result.new_updater = Some(new_updater)
+            result.new_transposer = Some(new_updater)
         }
         result
     }

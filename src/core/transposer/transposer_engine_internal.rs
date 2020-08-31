@@ -4,7 +4,7 @@ use std::collections::{BinaryHeap, VecDeque};
 use std::sync::Arc;
 
 use crate::{
-    core::event::event::{Event, RollbackPayload},
+    core::event::event::{Event, RollbackEvent, RollbackPayload},
     core::schedule_stream::schedule_stream::SchedulePoll,
     utilities::full_ord::{full_cmp, FullOrd},
 };
@@ -19,7 +19,7 @@ use super::{
 
 pub(super) type InputBuffer<T> = BinaryHeap<Reverse<FullOrd<ExternalTransposerEvent<T>>>>;
 pub(super) type InputStreamItem<'a, T> =
-    Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::External>>;
+    RollbackEvent<<T as Transposer>::Time, <T as Transposer>::External>;
 
 pub(super) struct HistoryFrame<T: Transposer> {
     time: T::Time,

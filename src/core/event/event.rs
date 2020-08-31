@@ -43,6 +43,8 @@ pub enum RollbackPayload<P> {
     Rollback,
 }
 
+pub type RollbackEvent<T, P> = Event<T, RollbackPayload<P>>;
+
 // impl<P> Ord for RollbackPayload<P> {
 //     fn cmp(&self, other: &Self) -> Ordering {
 //         self.timestamp.cmp(&other.timestamp)

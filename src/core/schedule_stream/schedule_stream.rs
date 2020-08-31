@@ -1,7 +1,8 @@
 use std::pin::Pin;
 use std::task::Context;
 
-/// A modified version of futures::task::Poll, which has two new variants: Scheduled and Done.
+/// A modified version of [`futures::task::Poll`], which has two new variants:
+/// [`Scheduled`](self::SchedulePoll::Scheduled) and [`Done`](self::SchedulePoll::Done).
 pub enum SchedulePoll<T, P>
 where
     T: Ord + Copy,
@@ -44,23 +45,23 @@ pub trait ScheduleStream {
     /// There are several possible return values, each indicating a distinct
     /// stream state:
     ///
-    /// - `Poll::Pending` means that this stream's next value is not ready
-    /// yet, and no event is scheduled.
-    ///
-    /// - `Poll::Ready(val)` means that the stream has successfully
+    /// - [`SchedulePoll::Ready(val)`](self::SchedulePoll::Ready) means that the stream has successfully
     /// produced a value, `val`, and may produce further values on subsequent
     /// `poll_next` calls.
     ///
-    /// - `Poll::Done` means that the stream has terminated, and
-    /// `poll_next` should not be invoked again.
-    ///
-    /// - `Poll::Scheduled(t)` means that the stream's next value is not ready
+    /// - [`SchedulePoll::Scheduled(t)`](self::SchedulePoll::Scheduled) means that the stream's next value is not ready
     /// yet, but there is an event scheduled for time t.
+    ///
+    /// - [`SchedulePoll::Pending`](self::SchedulePoll::Pending) means that this stream's next value is not ready
+    /// yet, and no event is scheduled.
+    ///
+    /// - [`SchedulePoll::Done`](self::SchedulePoll::Done) means that the stream has terminated, and
+    /// [`poll_next`](self::ScheduleStream::poll_next) should not be invoked again.
     ///
     /// # Panics
     ///
-    /// Once a stream is finished, i.e. `Done` has been returned, further
-    /// calls to `poll_next` may result in a panic or other "bad behavior".
+    /// Once a stream is finished, i.e. [`SchedulePoll::Done`](self::SchedulePoll::Done) has been returned, further
+    /// calls to [`poll_next`](self::ScheduleStream::poll_next) may result in a panic or other "bad behavior".
     fn poll_next(
         self: Pin<&mut Self>,
         time: Self::Time,
@@ -70,7 +71,7 @@ pub trait ScheduleStream {
     /// Returns the bounds on the remaining length of the stream.
     ///
     /// This is behaves exactly the same as regular streams, and is passed through transparently
-    /// in the `RealtimeStream`.
+    /// in the [`RealtimeStream`](super::realtime_stream::RealtimeStream).
     fn size_hint(&self) -> (usize, Option<usize>) {
         (0, None)
     }

@@ -3,10 +3,16 @@ use crate::core::event::event::Event;
 use std::cmp::Ordering;
 use std::{num::NonZeroU64, sync::Arc};
 
+/// A struct representing an externally generated transposer event
 pub struct ExternalTransposerEvent<T: Transposer> {
+    /// The event becomes read only once we read it in from the stream and store it in an [`Arc`].
+    ///
+    /// the purpose of this [`Arc`] is that we never have to clone the payload,
+    /// and it can just be moved around until it is dropped.
     pub event: Arc<Event<T::Time, T::External>>,
 }
 
+// TODO refactor so this is not clone, and make ExternalTransposerEvent have an owned Event instead of an Arc.
 impl<T: Transposer> Clone for ExternalTransposerEvent<T> {
     fn clone(&self) -> Self {
         ExternalTransposerEvent {
@@ -45,12 +51,20 @@ impl<T: Transposer> PartialEq for ExternalTransposerEvent<T> {
     }
 }
 
+/// A struct representing an internally generated transposer event
+///
+/// All these events were returned by calls to [`TransposerEvent::update`].
 pub struct InternalTransposerEvent<T: Transposer> {
     pub(super) created_at: T::Time,
 
     // this is the index in the new_events array in the result of the update or init function that spawned this event.
     pub(super) index: usize,
     pub(super) expire_handle: Option<NonZeroU64>,
+
+    /// The event becomes read only once we create it and store it in an [`Arc`].
+    ///
+    /// the purpose of this [`Arc`] is that we never have to clone the payload,
+    /// and it can just be moved around until it is dropped.
     pub event: Arc<Event<T::Time, T::Internal>>,
 }
 
@@ -97,13 +111,22 @@ impl<T: Transposer> PartialEq for InternalTransposerEvent<T> {
     }
 }
 
-// todo document.
+/// This enum encodes all the events that a transposer update function
+/// is expected to be able to respond to.
+///
+/// [`TransposerEvent`]s are cheap to clone, as both variants primarily hold
+/// [`Arc`](std::sync::Arc)s of events, and can be individually cloned.
 pub enum TransposerEvent<T: Transposer> {
+
+    /// The event came from the input stream.
     External(ExternalTransposerEvent<T>),
+
+    /// The event was scheduled by ['Transposer::update`]
     Internal(InternalTransposerEvent<T>),
 }
 
 impl<T: Transposer> TransposerEvent<T> {
+    /// returns the timestamp of the underlying event
     pub fn timestamp(&self) -> T::Time {
         match self {
             Self::External(e) => e.event.timestamp,
@@ -119,16 +142,7 @@ impl<T: Transposer> TransposerEvent<T> {
     }
 }
 
-impl<T: Transposer> Clone for TransposerEvent<T> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::External(e) => Self::External((*e).clone()),
-            Self::Internal(e) => Self::Internal(e.clone()),
-        }
-    }
-}
-
-// order is mostly deterministic. input events with identical time are not orderable.
+// order is mostly deterministic. input events with equal time are not orderable.
 impl<T: Transposer> PartialOrd for TransposerEvent<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let cmp = self.timestamp().cmp(&other.timestamp());

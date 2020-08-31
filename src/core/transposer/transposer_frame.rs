@@ -4,7 +4,7 @@ use im::{HashMap, OrdSet};
 use std::{num::NonZeroU64, sync::Arc};
 
 #[derive(Clone)]
-pub(super) struct TransposerFrame<T: Transposer> {
+pub struct TransposerFrame<T: Transposer> {
     // this is an Arc because we might not change the transposer, and therefore don't need to save a copy.
     pub transposer: Arc<T>,
 

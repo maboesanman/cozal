@@ -8,13 +8,13 @@ use crate::core::event::event::Event;
 use im::{HashMap, OrdSet};
 use std::{num::NonZeroU64, sync::Arc};
 
-pub(super) type WrappedInitResult<T> = (
+pub type WrappedInitResult<T> = (
     TransposerFrame<T>,
     Vec<Event<<T as Transposer>::Time, <T as Transposer>::Out>>,
 );
 
 // wrapper for transposer init
-pub(super) async fn init<T: Transposer>() -> WrappedInitResult<T> {
+pub async fn init<T: Transposer>() -> WrappedInitResult<T> {
     let cx = TransposerContext::new(1);
     let result = T::init(&cx).await;
 
@@ -56,7 +56,7 @@ pub(super) async fn init<T: Transposer>() -> WrappedInitResult<T> {
 
     (
         TransposerFrame {
-            transposer: Arc::new(result.new_updater),
+            transposer: Arc::new(result.transposer),
             schedule,
             expire_handles,
             current_expire_handle: cx.get_current_expire_handle(),
@@ -65,14 +65,14 @@ pub(super) async fn init<T: Transposer>() -> WrappedInitResult<T> {
     )
 }
 
-pub(super) type WrappedUpdateResult<T> = (
+pub type WrappedUpdateResult<T> = (
     TransposerFrame<T>,
     Vec<Event<<T as Transposer>::Time, <T as Transposer>::Out>>,
     bool,
 );
 
 // wrapper for transposer update
-pub(super) async fn update<T: Transposer>(
+pub async fn update<T: Transposer>(
     frame: TransposerFrame<T>,
     events: Vec<TransposerEvent<T>>, // these are assumed to be at the same time and sorted.
 ) -> WrappedUpdateResult<T> {
@@ -132,7 +132,7 @@ pub(super) async fn update<T: Transposer>(
         .map(|payload| Event { timestamp, payload })
         .collect();
 
-    let transposer = match result.new_updater {
+    let transposer = match result.new_transposer {
         Some(u) => Arc::new(u),
         None => frame.transposer.clone(),
     };

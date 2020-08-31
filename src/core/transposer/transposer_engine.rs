@@ -14,8 +14,14 @@ use super::{
     transposer_engine_internal::{InputStreamItem, TransposerEngineInternal},
 };
 
-// todo document.
-#[pin_project(project = TransposerEngineProjection)]
+/// A struct which implements the [`ScheduleStream`] trait for a [`Transposer`].
+///
+/// This implementation does the following:
+/// - rollback state and replay to resolve instability in the order of the input stream.
+/// -- this is useful for online multiplayer games, where the network latency can jumble inputs.
+/// - respond to rollback events from the input stream.
+/// - record the input events for the purpose of storing replay data.
+#[pin_project]
 pub struct TransposerEngine<
     'a,
     T: Transposer + 'a,
@@ -37,10 +43,9 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + 
         time: Self::Time,
         cx: &mut Context<'_>,
     ) -> SchedulePoll<Self::Time, Self::Item> {
-        let TransposerEngineProjection {
-            input_stream,
-            internal,
-        } = self.project();
+        let projection = self.project();
+        let input_stream = projection.input_stream;
+        let internal = projection.internal;
 
         if let Poll::Ready(Some(event)) = input_stream.poll_next(cx) {
             internal.insert(event);
@@ -56,6 +61,7 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + 
 impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + Send + 'a>
     TransposerEngine<'a, T, S>
 {
+    /// create a new TransposerEngine, consuming the input stream.
     pub async fn new(input_stream: S) -> TransposerEngine<'a, T, S> {
         TransposerEngine {
             input_stream: input_stream.fuse(),
