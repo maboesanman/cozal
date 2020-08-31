@@ -2,12 +2,11 @@ use super::{
     schedule_stream::{SchedulePoll, ScheduleStream},
     timestamp::Timestamp,
 };
-use crate::utilities::debug_waker::wrap_waker;
+use crate::utilities::debug_waker::DebugWakerFactory;
 use futures::{Future, Stream};
 use pin_project::pin_project;
 use std::{
     pin::Pin,
-    sync::atomic::{AtomicUsize, Ordering},
     task::{Context, Poll},
     time::Instant,
 };
@@ -24,7 +23,7 @@ where
     stream: St,
     #[pin]
     delay: Delay,
-    current_waker_count: AtomicUsize,
+    waker_factory: DebugWakerFactory,
 }
 
 impl<St: ScheduleStream> RealtimeStream<St>
@@ -36,7 +35,7 @@ where
             stream,
             reference,
             delay: delay_for(std::time::Duration::from_secs(0)),
-            current_waker_count: AtomicUsize::from(0),
+            waker_factory: DebugWakerFactory::new(),
         }
     }
 }
@@ -48,15 +47,12 @@ where
     type Item = St::Item;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        println!("poll");
+        // println!("poll start");
         let mut this = self.project();
 
         // START DEBUG STUFF
-        let w = wrap_waker(
-            cx.waker().to_owned(),
-            this.current_waker_count.fetch_add(1, Ordering::SeqCst),
-        );
-        let cx = &mut Context::from_waker(&w);
+        // let w = this.waker_factory.wrap_waker(cx.waker().to_owned());
+        // let cx = &mut Context::from_waker(&w);
         // END DEBUG STUFF
 
         let time = St::Time::get_timestamp(&Instant::now(), this.reference);
@@ -66,7 +62,9 @@ where
             SchedulePoll::Scheduled(new_time) => {
                 let instant = new_time.get_instant(&this.reference);
                 let instant = tokio::time::Instant::from_std(instant);
+
                 this.delay.reset(instant);
+                let _ = this.delay.poll(cx);
 
                 Poll::Pending
             }
@@ -74,8 +72,7 @@ where
             SchedulePoll::Done => Poll::Ready(None),
         };
 
-        // make sure the delay has a reference to the current waker.
-        let _ = this.delay.poll(cx);
+        // println!("poll end");
 
         result
     }

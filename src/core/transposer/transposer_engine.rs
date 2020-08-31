@@ -44,10 +44,10 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + 
         cx: &mut Context<'_>,
     ) -> SchedulePoll<Self::Time, Self::Item> {
         let projection = self.project();
-        let input_stream = projection.input_stream;
+        let mut input_stream = projection.input_stream;
         let internal = projection.internal;
 
-        if let Poll::Ready(Some(event)) = input_stream.poll_next(cx) {
+        while let Poll::Ready(Some(event)) = input_stream.as_mut().poll_next(cx) {
             internal.insert(event);
         }
         internal.poll(time, cx)
