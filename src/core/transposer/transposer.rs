@@ -1,5 +1,5 @@
 use super::transposer_context::TransposerContext;
-use super::transposer_event::TransposerEvent;
+use super::{transposer_event::TransposerEvent, transposer_expire_handle::ExpireHandle};
 use crate::core::event::event::Event;
 use async_trait::async_trait;
 
@@ -28,7 +28,7 @@ pub struct UpdateResult<T: Transposer> {
     pub new_transposer: Option<T>,
 
     /// A [`Vec`] of expire handles.
-    pub expired_events: Vec<u64>,
+    pub expired_events: Vec<ExpireHandle>,
 
     /// New events to schedule. The order events are placed here is important,
     /// as the expiration handles are created by pointing to a specific index in the
@@ -76,7 +76,7 @@ pub trait Transposer: Clone + Unpin + Send + Sync {
     type External: Unpin + Send + Sync;
 
     /// The type of the payloads of scheduled events
-    /// 
+    ///
     /// the events in the schedule are all of type `Event<Self::Time, Self::Internal>`
     type Internal: Unpin + Send + Sync;
 
@@ -94,15 +94,13 @@ pub trait Transposer: Clone + Unpin + Send + Sync {
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`TransposerContext`] documentation.
-    async fn init(
-        cx: &TransposerContext
-    ) -> InitResult<Self>;
+    async fn init(cx: &TransposerContext) -> InitResult<Self>;
 
     /// The function to update your transposer.
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`TransposerContext`] documentation.
-    /// 
+    ///
     /// `events` is the collection of events that this update is meant to respond to.
     /// All events in `events` have **the same time**. You will receive all events
     /// with equal times (according to [`Eq`] as required by [`Ord`]). The events here have deterministic

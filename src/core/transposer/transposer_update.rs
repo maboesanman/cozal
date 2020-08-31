@@ -8,7 +8,7 @@ use std::{
     task::{Context, Poll},
 };
 
-pub struct TransposerUpdate<'a, T: Transposer> {
+pub(super) struct TransposerUpdate<'a, T: Transposer> {
     pub time: T::Time,
     pub input_events: Vec<ExternalTransposerEvent<T>>,
     pub future: Pin<Box<dyn Future<Output = WrappedUpdateResult<T>> + Send + 'a>>,

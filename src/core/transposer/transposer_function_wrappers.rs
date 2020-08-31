@@ -2,20 +2,21 @@ use super::{
     transposer::Transposer,
     transposer_context::TransposerContext,
     transposer_event::{InternalTransposerEvent, TransposerEvent},
+    transposer_expire_handle::ExpireHandleFactory,
     transposer_frame::TransposerFrame,
 };
 use crate::core::event::event::Event;
 use im::{HashMap, OrdSet};
-use std::{num::NonZeroU64, sync::Arc};
+use std::sync::Arc;
 
-pub type WrappedInitResult<T> = (
+pub(super) type WrappedInitResult<T> = (
     TransposerFrame<T>,
     Vec<Event<<T as Transposer>::Time, <T as Transposer>::Out>>,
 );
 
 // wrapper for transposer init
-pub async fn init<T: Transposer>() -> WrappedInitResult<T> {
-    let cx = TransposerContext::new(1);
+pub(super) async fn init<T: Transposer>() -> WrappedInitResult<T> {
+    let cx = TransposerContext::new(ExpireHandleFactory::new());
     let result = T::init(&cx).await;
 
     let mut new_events = Vec::new();
@@ -38,10 +39,10 @@ pub async fn init<T: Transposer>() -> WrappedInitResult<T> {
 
     // add expire handles
     let mut expire_handles = HashMap::new();
-    for (k, v) in cx.new_expire_handles.lock().unwrap().iter() {
+    for (k, v) in cx.new_expire_handles.iter() {
         if let Some(e) = new_events.get_mut(*k) {
-            e.expire_handle = Some(*v);
-            expire_handles.insert(*v, e.clone());
+            e.expire_handle = Some(v.clone());
+            expire_handles.insert(v.clone(), e.clone());
         }
     }
 
@@ -65,18 +66,18 @@ pub async fn init<T: Transposer>() -> WrappedInitResult<T> {
     )
 }
 
-pub type WrappedUpdateResult<T> = (
+pub(super) type WrappedUpdateResult<T> = (
     TransposerFrame<T>,
     Vec<Event<<T as Transposer>::Time, <T as Transposer>::Out>>,
     bool,
 );
 
 // wrapper for transposer update
-pub async fn update<T: Transposer>(
+pub(super) async fn update<T: Transposer>(
     frame: TransposerFrame<T>,
     events: Vec<TransposerEvent<T>>, // these are assumed to be at the same time and sorted.
 ) -> WrappedUpdateResult<T> {
-    let cx = TransposerContext::new(frame.current_expire_handle.get());
+    let cx = TransposerContext::new(frame.current_expire_handle);
     let event_refs: Vec<&TransposerEvent<T>> = events.iter().collect();
     let timestamp = event_refs.first().unwrap().timestamp();
     let result = frame.transposer.update(&cx, event_refs).await;
@@ -109,20 +110,18 @@ pub async fn update<T: Transposer>(
         }
     }
     // add expire handles
-    for (k, v) in cx.new_expire_handles.lock().unwrap().iter() {
+    for (k, v) in cx.new_expire_handles.iter() {
         if let Some(e) = new_events.get_mut(*k) {
-            e.expire_handle = Some(*v);
-            expire_handles.insert(*v, e.clone());
+            e.expire_handle = Some(v.clone());
+            expire_handles.insert(v.clone(), e.clone());
         }
     }
 
     // remove expired events
     for h in result.expired_events {
-        if let Some(h) = NonZeroU64::new(h) {
-            if let Some(e) = frame.expire_handles.get(&h) {
-                schedule.remove(&e);
-                expire_handles.remove(&h);
-            }
+        if let Some(e) = frame.expire_handles.get(&h) {
+            schedule.remove(&e);
+            expire_handles.remove(&h);
         }
     }
 

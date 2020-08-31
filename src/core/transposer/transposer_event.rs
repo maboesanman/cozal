@@ -1,7 +1,7 @@
-use super::transposer::Transposer;
+use super::{transposer::Transposer, transposer_expire_handle::ExpireHandle};
 use crate::core::event::event::Event;
 use std::cmp::Ordering;
-use std::{num::NonZeroU64, sync::Arc};
+use std::sync::Arc;
 
 /// A struct representing an externally generated transposer event
 pub struct ExternalTransposerEvent<T: Transposer> {
@@ -59,7 +59,7 @@ pub struct InternalTransposerEvent<T: Transposer> {
 
     // this is the index in the new_events array in the result of the update or init function that spawned this event.
     pub(super) index: usize,
-    pub(super) expire_handle: Option<NonZeroU64>,
+    pub(super) expire_handle: Option<ExpireHandle>,
 
     /// The event becomes read only once we create it and store it in an [`Arc`].
     ///
@@ -117,7 +117,6 @@ impl<T: Transposer> PartialEq for InternalTransposerEvent<T> {
 /// [`TransposerEvent`]s are cheap to clone, as both variants primarily hold
 /// [`Arc`](std::sync::Arc)s of events, and can be individually cloned.
 pub enum TransposerEvent<T: Transposer> {
-
     /// The event came from the input stream.
     External(ExternalTransposerEvent<T>),
 
