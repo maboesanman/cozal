@@ -2,7 +2,6 @@ use super::{
     schedule_stream::{SchedulePoll, ScheduleStream},
     timestamp::Timestamp,
 };
-use crate::utilities::debug_waker::DebugWakerFactory;
 use futures::{Future, Stream};
 use pin_project::pin_project;
 use std::{
@@ -23,7 +22,6 @@ where
     stream: St,
     #[pin]
     delay: Delay,
-    waker_factory: DebugWakerFactory,
 }
 
 impl<St: ScheduleStream> RealtimeStream<St>
@@ -35,7 +33,6 @@ where
             stream,
             reference,
             delay: delay_for(std::time::Duration::from_secs(0)),
-            waker_factory: DebugWakerFactory::new(),
         }
     }
 }
@@ -47,17 +44,11 @@ where
     type Item = St::Item;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        // println!("poll start");
         let mut this = self.project();
-
-        // START DEBUG STUFF
-        // let w = this.waker_factory.wrap_waker(cx.waker().to_owned());
-        // let cx = &mut Context::from_waker(&w);
-        // END DEBUG STUFF
 
         let time = St::Time::get_timestamp(&Instant::now(), this.reference);
 
-        let result = match this.stream.poll_next(time, cx) {
+        match this.stream.poll_next(time, cx) {
             SchedulePoll::Ready(p) => Poll::Ready(Some(p)),
             SchedulePoll::Scheduled(new_time) => {
                 let instant = new_time.get_instant(&this.reference);
@@ -70,11 +61,7 @@ where
             }
             SchedulePoll::Pending => Poll::Pending,
             SchedulePoll::Done => Poll::Ready(None),
-        };
-
-        // println!("poll end");
-
-        result
+        }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

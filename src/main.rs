@@ -1,6 +1,6 @@
 use futures::stream::{StreamExt};
 use std::time::Instant;
-use utilities::winit::WinitLoop;
+use utilities::{debug_stream::DebugStream, winit::WinitLoop, debug_future::DebugFuture, debug_sink::PrintSink};
 
 use crate::core::schedule_stream::schedule_stream_ext::ScheduleStreamExt;
 use crate::core::transposer::transposer_engine::TransposerEngine;
@@ -17,10 +17,15 @@ async fn main() {
     window.set_visible(true);
 
     let key_presses = get_filtered_stream(Instant::now(), receiver);
-    let game: TransposerEngine<ExampleTransposer, _> = TransposerEngine::new(key_presses).await;
+    let game = TransposerEngine::<ExampleTransposer, _>::new(key_presses).await;
     let stream = game.to_realtime(Instant::now());
     let stream = stream.map(move |event| Ok(event));
-    let fut = stream.forward(DebugSink::new());
+    // let stream = DebugStream::new(stream, "str");
+    let sink = PrintSink::new();
+    // let sink = DebugSink::new(sink, "sink");
+    let fut = stream.forward(sink);
+    // let fut = DebugFuture::new(fut, "fut");
+
     tokio::spawn(fut);
 
     winit.run();
