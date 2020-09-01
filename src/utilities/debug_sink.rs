@@ -12,8 +12,8 @@ impl DebugSink {
     }
 }
 
-impl<T: Clone + Debug> Sink<T> for DebugSink {
-    type Error = ();
+impl<T: Debug> Sink<T> for DebugSink {
+    type Error = core::convert::Infallible;
 
     fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
