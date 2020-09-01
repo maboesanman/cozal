@@ -1,4 +1,4 @@
-use futures::stream::StreamExt;
+use futures::stream::{StreamExt};
 use std::time::Instant;
 use utilities::winit::WinitLoop;
 
