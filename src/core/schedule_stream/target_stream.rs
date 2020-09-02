@@ -1,26 +1,22 @@
-use super::{
-    schedule_stream::{SchedulePoll, ScheduleStream},
-    timestamp::Timestamp,
-};
-use futures::{Future, Stream};
+use super::schedule_stream::{SchedulePoll, ScheduleStream};
+use futures::Stream;
 use pin_project::pin_project;
 use std::{
     pin::Pin,
-    task::{Context, Poll}, sync::Mutex,
+    sync::Mutex,
+    task::{Context, Poll},
 };
 
 /// Stream for the [`to_realtime`](super::schedule_stream_ext::ScheduleStreamExt::to_realtime) method.
 #[pin_project]
-pub struct TargetStream<St: ScheduleStream>
-{
+pub struct TargetStream<St: ScheduleStream> {
     #[pin]
     stream: St,
     target: Mutex<St::Time>,
     next_target: Option<St::Time>,
 }
 
-impl<St: ScheduleStream> TargetStream<St>
-{
+impl<St: ScheduleStream> TargetStream<St> {
     pub(super) fn new(stream: St, target: St::Time) -> Self {
         Self {
             stream,
@@ -42,15 +38,14 @@ impl<St: ScheduleStream> TargetStream<St>
     }
 }
 
-impl<St: ScheduleStream> Stream for TargetStream<St>
-{
+impl<St: ScheduleStream> Stream for TargetStream<St> {
     type Item = St::Item;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut this = self.project();
+        let this = self.project();
         *this.next_target = None;
 
-        match this.stream.poll_next(this.target.lock().unwrap().clone(), cx) {
+        match this.stream.poll_next(*this.target.lock().unwrap(), cx) {
             SchedulePoll::Ready(p) => Poll::Ready(Some(p)),
             SchedulePoll::Scheduled(new_time) => {
                 *this.next_target = Some(new_time);

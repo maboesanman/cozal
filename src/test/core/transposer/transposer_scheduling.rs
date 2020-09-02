@@ -1,12 +1,15 @@
-
-use crate::core::Transposer;
 use crate::core::schedule_stream::ScheduleStreamExt;
-use crate::core::{Event, transposer::{InitResult, UpdateResult, TransposerContext, TransposerEvent, TransposerEngine}, event::RollbackPayload};
+use crate::core::Transposer;
+use crate::core::{
+    event::RollbackPayload,
+    transposer::{InitResult, TransposerContext, TransposerEngine, TransposerEvent, UpdateResult},
+    Event,
+};
 use async_trait::async_trait;
 use futures::Stream;
 use std::task::Poll;
 
-struct EmptyStream { }
+struct EmptyStream {}
 
 impl Stream for EmptyStream {
     type Item = Event<usize, RollbackPayload<()>>;
@@ -21,7 +24,7 @@ impl Stream for EmptyStream {
 
 #[derive(Clone)]
 struct TestTransposer {
-    event_calls: Vec<usize>
+    event_calls: Vec<usize>,
 }
 
 #[async_trait]
@@ -37,7 +40,7 @@ impl Transposer for TestTransposer {
     async fn init(_cx: &TransposerContext) -> InitResult<Self> {
         InitResult {
             transposer: Self {
-                event_calls: Vec::new()
+                event_calls: Vec::new(),
             },
             new_events: vec![
                 Event {
@@ -78,8 +81,8 @@ impl Transposer for TestTransposer {
                             payload: e.event.timestamp * 2,
                         })
                     };
-                },
-                _ => {},
+                }
+                _ => {}
             };
         }
         let emitted_events = vec![new_transposer.event_calls.clone()];
@@ -95,9 +98,9 @@ impl Transposer for TestTransposer {
 }
 #[test]
 fn test_init_events_scheduled_correctly() {
-    let engine = futures::executor::block_on(
-        TransposerEngine::<'_, TestTransposer, _>::new(EmptyStream {})
-    );
+    let engine = futures::executor::block_on(TransposerEngine::<'_, TestTransposer, _>::new(
+        EmptyStream {},
+    ));
     let stream = engine.to_target(100);
     let mut iter = futures::executor::block_on_stream(stream);
     iter.next();
@@ -105,7 +108,11 @@ fn test_init_events_scheduled_correctly() {
     iter.next();
     iter.next();
     iter.next();
-    if let Some(Event { payload: RollbackPayload::Payload(payload), .. }) = iter.next() {
+    if let Some(Event {
+        payload: RollbackPayload::Payload(payload),
+        ..
+    }) = iter.next()
+    {
         assert_eq!(payload, vec![1, 2, 3, 4, 6, 8]);
     } else {
         panic!()

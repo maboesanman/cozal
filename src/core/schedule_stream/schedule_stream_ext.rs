@@ -30,14 +30,9 @@ where
     }
 }
 
-impl<S> ScheduleStreamExt for S
-where
-    S: ScheduleStream + Sized,
-{
-}
+impl<S> ScheduleStreamExt for S where S: ScheduleStream + Sized {}
 
-pub trait ScheduleStreamExt: ScheduleStream + Sized
-{
+pub trait ScheduleStreamExt: ScheduleStream + Sized {
     fn to_target(self, target: <Self as ScheduleStream>::Time) -> TargetStream<Self> {
         TargetStream::new(self, target)
     }
