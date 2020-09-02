@@ -16,6 +16,6 @@ pin-project = "0.4.23"
 futures = "0.3.5"
 im = "15.0.0"
 
-tokio = { path = "../Forks/tokio/tokio", features = ["time", "rt-threaded", "macros", "blocking"] }
+tokio = { version = "0.2.21", features = ["time", "rt-threaded", "macros", "blocking", "stream"] }
 winit = "0.22.2"
 flume = "0.7.2"

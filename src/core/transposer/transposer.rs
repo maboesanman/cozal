@@ -1,6 +1,6 @@
-use super::transposer_context::TransposerContext;
-use super::{transposer_event::TransposerEvent, transposer_expire_handle::ExpireHandle};
-use crate::core::event::event::Event;
+use super::context::TransposerContext;
+use super::{expire_handle::ExpireHandle, transposer_event::TransposerEvent};
+use crate::core::Event;
 use async_trait::async_trait;
 
 /// The result of the init function for a [`Transposer`].

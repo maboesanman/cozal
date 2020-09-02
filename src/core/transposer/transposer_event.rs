@@ -1,5 +1,5 @@
-use super::{transposer::Transposer, transposer_expire_handle::ExpireHandle};
-use crate::core::event::event::Event;
+use super::{expire_handle::ExpireHandle, transposer::Transposer};
+use crate::core::Event;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
@@ -53,7 +53,7 @@ impl<T: Transposer> PartialEq for ExternalTransposerEvent<T> {
 
 /// A struct representing an internally generated transposer event
 ///
-/// All these events were returned by calls to [`TransposerEvent::update`].
+/// All these events were returned by calls to [`Transposer::update`].
 pub struct InternalTransposerEvent<T: Transposer> {
     pub(super) created_at: T::Time,
 

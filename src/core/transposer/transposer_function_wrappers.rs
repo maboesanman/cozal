@@ -1,11 +1,11 @@
 use super::{
-    transposer::Transposer,
-    transposer_context::TransposerContext,
+    context::TransposerContext,
+    expire_handle::ExpireHandleFactory,
     transposer_event::{InternalTransposerEvent, TransposerEvent},
-    transposer_expire_handle::ExpireHandleFactory,
     transposer_frame::TransposerFrame,
+    Transposer,
 };
-use crate::core::event::event::Event;
+use crate::core::Event;
 use im::{HashMap, OrdSet};
 use std::sync::Arc;
 

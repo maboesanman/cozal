@@ -5,13 +5,14 @@ use futures::{Stream, StreamExt};
 use pin_project::pin_project;
 
 use crate::{
-    core::event::event::{Event, RollbackPayload},
-    core::schedule_stream::schedule_stream::{SchedulePoll, ScheduleStream},
+    core::event::RollbackPayload,
+    core::schedule_stream::{SchedulePoll, ScheduleStream},
+    core::Event,
 };
 
 use super::{
+    engine_internal::{InputStreamItem, TransposerEngineInternal},
     transposer::Transposer,
-    transposer_engine_internal::{InputStreamItem, TransposerEngineInternal},
 };
 
 /// A struct which implements the [`ScheduleStream`] trait for a [`Transposer`].
@@ -31,6 +32,18 @@ pub struct TransposerEngine<
     input_stream: Fuse<S>,
 
     internal: TransposerEngineInternal<'a, T>,
+}
+
+impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + Send + 'a>
+    TransposerEngine<'a, T, S>
+{
+    /// create a new TransposerEngine, consuming the input stream.
+    pub async fn new(input_stream: S) -> TransposerEngine<'a, T, S> {
+        TransposerEngine {
+            input_stream: input_stream.fuse(),
+            internal: TransposerEngineInternal::new().await,
+        }
+    }
 }
 
 impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + Send + 'a>
@@ -55,17 +68,5 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + 
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.internal.size_hint()
-    }
-}
-
-impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + Send + 'a>
-    TransposerEngine<'a, T, S>
-{
-    /// create a new TransposerEngine, consuming the input stream.
-    pub async fn new(input_stream: S) -> TransposerEngine<'a, T, S> {
-        TransposerEngine {
-            input_stream: input_stream.fuse(),
-            internal: TransposerEngineInternal::new().await,
-        }
     }
 }

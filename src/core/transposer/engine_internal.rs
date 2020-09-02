@@ -4,8 +4,8 @@ use std::collections::{BinaryHeap, VecDeque};
 use std::sync::Arc;
 
 use crate::{
-    core::event::event::{Event, RollbackEvent, RollbackPayload},
-    core::schedule_stream::schedule_stream::SchedulePoll,
+    core::event::{Event, RollbackEvent, RollbackPayload},
+    core::schedule_stream::SchedulePoll,
     utilities::full_ord::{full_cmp, FullOrd},
 };
 

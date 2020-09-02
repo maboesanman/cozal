@@ -1,11 +1,11 @@
-use crate::core::event::event::Event;
+use crate::core::Event;
 // use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
+use flume::{unbounded, Receiver, Sender};
 use std::time::Instant;
 use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
-use flume::{unbounded, Receiver, Sender};
 
 // todo document.
 pub struct WinitLoop {

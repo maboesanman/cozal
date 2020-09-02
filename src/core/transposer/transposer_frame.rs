@@ -1,7 +1,7 @@
 use super::transposer::Transposer;
 use super::{
+    expire_handle::{ExpireHandle, ExpireHandleFactory},
     transposer_event::InternalTransposerEvent,
-    transposer_expire_handle::{ExpireHandle, ExpireHandleFactory},
 };
 use im::{HashMap, OrdSet};
 use std::sync::Arc;
