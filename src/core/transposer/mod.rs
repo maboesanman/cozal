@@ -1,8 +1,9 @@
 mod context;
 mod engine;
 mod transposer;
+mod transposer_event;
 
-pub mod transposer_event;
+pub use transposer_event::*;
 pub use context::TransposerContext;
 pub use engine::TransposerEngine;
 pub use expire_handle::ExpireHandle;
