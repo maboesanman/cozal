@@ -209,6 +209,6 @@ impl<'a, T: Transposer + 'a> Future for CurriedScheduleFuture<'a, T> {
     type Output = WrappedUpdateResult<T>;
     
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        self.fut.as_mut().poll(cx)
+        self.project().fut.poll(cx)
     }
 }
