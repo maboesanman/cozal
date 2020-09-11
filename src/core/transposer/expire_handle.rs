@@ -4,7 +4,7 @@ use std::{num::NonZeroU64, sync::atomic::AtomicU64};
 /// this is the handle that you use to expire scheduled events.
 ///
 /// returning this is how
-#[derive(Hash, Eq, PartialEq)]
+#[derive(Hash, Eq, PartialEq, Debug, Copy)]
 pub struct ExpireHandle(NonZeroU64);
 
 impl ExpireHandle {
@@ -23,6 +23,7 @@ impl Clone for ExpireHandle {
     }
 }
 
+#[derive(Debug)]
 pub(super) struct ExpireHandleFactory(AtomicU64);
 
 impl ExpireHandleFactory {

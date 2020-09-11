@@ -1,7 +1,7 @@
 use super::Event;
 use std::cmp::Ordering;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum RollbackPayload<P> {
     Payload(P),
     Rollback,

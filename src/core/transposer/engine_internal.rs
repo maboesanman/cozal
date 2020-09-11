@@ -1,232 +1,150 @@
+use std::collections::BTreeMap;
+use std::collections::{VecDeque, HashSet};
+
 use futures::task::{Context, Poll};
 use std::cmp::{Ordering, Reverse};
-use std::collections::{BinaryHeap, VecDeque};
-use std::sync::Arc;
+use std::sync::{RwLock, Arc};
 
 use crate::{
-    core::event::{Event, RollbackEvent, RollbackPayload},
+    core::event::{Event, RollbackPayload},
     core::schedule_stream::SchedulePoll,
-    utilities::full_ord::{full_cmp, FullOrd},
 };
 
 use super::{
     transposer::Transposer,
-    transposer_event::{ExternalTransposerEvent, TransposerEvent},
+    internal_scheduled_event::InternalScheduledEvent,
     transposer_frame::TransposerFrame,
-    transposer_function_wrappers::{init, update},
+    transposer_function_wrappers::{init_events, handle_input, handle_scheduled},
     transposer_update::TransposerUpdate,
 };
 
-pub(super) type InputBuffer<T> = BinaryHeap<Reverse<FullOrd<ExternalTransposerEvent<T>>>>;
-pub(super) type InputStreamItem<'a, T> =
-    RollbackEvent<<T as Transposer>::Time, <T as Transposer>::External>;
+use super::{InputEvent, OutputEvent, InternalInputEvent, InternalOutputEvent, transposer_history::TransposerHistory};
 
-pub(super) struct HistoryFrame<T: Transposer> {
-    time: T::Time,
-    frame: TransposerFrame<T>,
-    input_events: Vec<ExternalTransposerEvent<T>>,
-    events_emitted: bool,
-}
+pub(super) type InputBuffer<T> = BTreeMap<<T as Transposer>::Time, Vec<<T as Transposer>::Input>>;
+pub(super) type InputStreamItem<T> = InputEvent<T>;
 
 pub(super) struct TransposerEngineInternal<'a, T: Transposer + 'a> {
-    initial_frame: TransposerFrame<T>,
-    history: Vec<HistoryFrame<T>>,
+    history: TransposerHistory<T>,
+    current_transposer_frame: Arc<RwLock<TransposerFrame<T>>>,
     input_buffer: InputBuffer<T>,
-    output_buffer: VecDeque<Event<T::Time, T::Out>>,
+    output_buffer: VecDeque<InternalOutputEvent<T>>,
     needs_rollback: Option<T::Time>,
-    current_update: Option<TransposerUpdate<'a, T>>,
+    current_update: TransposerUpdate<'a, T>,
 }
 
 impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
-    pub async fn new() -> TransposerEngineInternal<'a, T> {
-        let (initial_frame, output_buffer) = init::<T>().await;
-        TransposerEngineInternal {
-            initial_frame,
-            history: Vec::new(),
-            input_buffer: BinaryHeap::new(),
-            output_buffer: VecDeque::from(output_buffer),
-            needs_rollback: None,
-            current_update: None,
-        }
-    }
+    pub async fn new(transposer: T) -> TransposerEngineInternal<'a, T> {
+        let result = init_events(transposer).await;
+        let output_buffer = VecDeque::from(result.output_events);
 
-    fn current_frame(&self) -> &TransposerFrame<T> {
-        match self.history.last() {
-            Some(frame) => &frame.frame,
-            None => &self.initial_frame,
+        TransposerEngineInternal {
+            current_transposer_frame: Arc::new(RwLock::new(result.initial_frame.clone())),
+            history: TransposerHistory::new(result.initial_frame),
+            input_buffer: BTreeMap::new(),
+            output_buffer,
+            needs_rollback: None,
+            current_update: TransposerUpdate::None,
         }
     }
 
     pub fn try_stage_update(&mut self) {
-        // exit if we already have a staged update.
+        // // exit if we already have a staged update.
         if self.current_update.is_some() {
             return;
         }
+        let frame_arc = self.current_transposer_frame.clone();
+        let mut current_frame = self.current_transposer_frame.write().unwrap();
 
-        let current_frame = match self.history.last() {
-            None => &self.initial_frame,
-            Some(history_frame) => &history_frame.frame,
+        let next_inputs = self.input_buffer.first_key_value();
+        let next_scheduled = current_frame.schedule.get_min();
+
+        self.current_update = match (next_inputs, next_scheduled) {
+            (None, None) => TransposerUpdate::None,
+            (Some(_), None) => {
+                let (time, inputs) = self.input_buffer.pop_first().unwrap();
+                TransposerUpdate::new_input(frame_arc, time, inputs)
+            }
+            (None, Some(_)) => {
+                let next_scheduled = current_frame.schedule.remove_min().unwrap();
+                TransposerUpdate::new_schedule(frame_arc, next_scheduled)
+            }
+            (Some(i), Some(s)) => {
+                match i.0.cmp(&s.time) {
+                    Ordering::Less | Ordering::Equal => {
+                        let (time, inputs) = self.input_buffer.pop_first().unwrap();
+                        TransposerUpdate::new_input(frame_arc, time, inputs)
+                    },
+                    Ordering::Greater => {
+                        let next_scheduled = current_frame.schedule.remove_min().unwrap();
+                        TransposerUpdate::new_schedule(frame_arc, next_scheduled)
+                    }
+                }
+            }
         };
-
-        let mut new_frame = current_frame.clone();
-        let mut events: Vec<TransposerEvent<T>> = Vec::new();
-        let mut input_events: Vec<ExternalTransposerEvent<T>> = Vec::new();
-        let mut time: Option<T::Time> = None;
-
-        loop {
-            let next_external = self.input_buffer.peek();
-            let next_external = match next_external {
-                Some(Reverse(FullOrd(e))) => Some(TransposerEvent::External(e.clone())),
-                None => None,
-            };
-
-            let (next_internal, schedule_without_next_internal) = new_frame.schedule.without_min();
-            let next_internal = match next_internal {
-                Some(e) => Some(TransposerEvent::Internal(e.clone())),
-                None => None,
-            };
-
-            let next_event: TransposerEvent<T> = match (next_external, next_internal) {
-                (None, None) => break,
-                (Some(e), None) => e,
-                (None, Some(e)) => e,
-                (Some(ext), Some(int)) => match full_cmp(&ext, &int) {
-                    Ordering::Less => ext,
-                    Ordering::Equal => panic!(),
-                    Ordering::Greater => int,
-                },
-            };
-
-            if let Some(time) = time {
-                if time != next_event.timestamp() {
-                    break;
-                }
-            } else {
-                time = Some(next_event.timestamp());
-            }
-
-            match &next_event {
-                TransposerEvent::External(event) => {
-                    self.input_buffer.pop();
-                    input_events.push(event.clone());
-                }
-                TransposerEvent::Internal(_) => {
-                    new_frame.schedule = schedule_without_next_internal;
-                }
-            }
-            events.push(next_event);
-        }
-
-        self.current_update = if let Some(time) = time {
-            let future = update(new_frame, events);
-            let future = Box::pin(future);
-            let result = Poll::Pending;
-            Some(TransposerUpdate {
-                time,
-                input_events,
-                future,
-                result,
-            })
-        } else {
-            None
-        }
     }
 
     pub fn unstage_update(&mut self) {
-        let staged_update = std::mem::take(&mut self.current_update);
-
-        if let Some(staged_update) = staged_update {
-            for event in staged_update.input_events {
-                self.input_buffer.push(Reverse(FullOrd(event)));
+        if let Some((time, mut events)) = self.current_update.unstage() {
+            match self.input_buffer.get_mut(&time) {
+                Some(vec) => {
+                    vec.append(&mut events);
+                }
+                None => {
+                    self.input_buffer.insert(time, events);
+                }
             }
-        }
-    }
-
-    pub fn try_commit_update(
-        &mut self,
-        time: T::Time,
-        cx: &mut Context<'_>,
-    ) -> SchedulePoll<T::Time, Vec<Event<T::Time, T::Out>>> {
-        if let Some(staged_update) = &mut self.current_update {
-            staged_update.poll(cx);
-
-            if time < staged_update.time {
-                return SchedulePoll::Scheduled(staged_update.time);
-            }
-
-            if let Poll::Pending = staged_update.result {
-                return SchedulePoll::Pending;
-            }
-
-            let staged_update = std::mem::take(&mut self.current_update);
-            let staged_update = staged_update.unwrap();
-            let (frame, out_events, exit) = match staged_update.result {
-                Poll::Ready(r) => r,
-                _ => unreachable!(),
-            };
-            if exit {
-                return SchedulePoll::Done;
-            }
-            let new_history_frame = HistoryFrame {
-                time: staged_update.time,
-                frame,
-                input_events: staged_update.input_events,
-                events_emitted: !out_events.is_empty(),
-            };
-            self.history.push(new_history_frame);
-
-            SchedulePoll::Ready(out_events)
-        } else {
-            SchedulePoll::Pending
         }
     }
 
     fn revert(&mut self) -> bool {
-        if let Some(history_frame) = self.history.pop() {
-            self.output_buffer.clear();
-            for event in history_frame.input_events {
-                self.input_buffer.push(Reverse(FullOrd(event)));
-            }
-            history_frame.events_emitted
-        } else {
-            false
-        }
+        todo!()
+        // if let Some(history_frame) = self.history.pop() {
+        //     self.output_buffer.clear();
+        //     for event in history_frame.input_events {
+        //         self.input_buffer.push(Reverse(FullOrd(event)));
+        //     }
+        //     history_frame.events_emitted
+        // } else {
+        //     false
+        // }
     }
 
     fn prepare_for_insert(&mut self, time: T::Time) {
         // unstage if there is an update for at time or after
         // that update is now invalid.
-        if let Some(update) = &self.current_update {
-            if update.time >= time {
-                self.unstage_update();
-            }
-        }
-        let mut needs_rollback = false;
-        while let Some(history_frame) = self.history.last() {
-            if history_frame.time >= time {
-                needs_rollback &= self.revert();
-            } else {
-                break;
-            }
-        }
-        if needs_rollback {
-            self.needs_rollback = Some(time);
-        }
+        todo!()
+        // if let Some(update) = &self.current_update {
+        //     if update.time >= time {
+        //         self.unstage_update();
+        //     }
+        // }
+        // let mut needs_rollback = false;
+        // while let Some(history_frame) = self.history.last() {
+        //     if history_frame.frame.time >= time {
+        //         needs_rollback &= self.revert();
+        //     } else {
+        //         break;
+        //     }
+        // }
+        // if needs_rollback {
+        //     self.needs_rollback = Some(time);
+        // }
     }
 
     /// scrub all events from all sources which occur at or after `time`
     ///
     /// this must be run after prepare_for_insert.
     fn rollback(&mut self, time: T::Time) {
-        let mut new_input_buffer: InputBuffer<T> = BinaryHeap::new();
+        todo!()
+        // let mut new_input_buffer: InputBuffer<T> = BinaryHeap::new();
 
-        while let Some(Reverse(FullOrd(event))) = self.input_buffer.pop() {
-            if event.event.timestamp >= time {
-                break;
-            }
-            new_input_buffer.push(Reverse(FullOrd(event)));
-        }
-        self.input_buffer = new_input_buffer;
+        // while let Some(Reverse(FullOrd(event))) = self.input_buffer.pop() {
+        //     if event.timestamp >= time {
+        //         break;
+        //     }
+        //     new_input_buffer.push(Reverse(FullOrd(event)));
+        // }
+        // self.input_buffer = new_input_buffer;
     }
 
     pub fn insert(&mut self, event: InputStreamItem<T>) {
@@ -235,11 +153,12 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         self.prepare_for_insert(timestamp);
         match payload {
             RollbackPayload::Payload(payload) => {
-                let event = Event { timestamp, payload };
-                let event = Arc::new(event);
-                let event = ExternalTransposerEvent::<T> { event };
-                let event = Reverse(FullOrd(event));
-                self.input_buffer.push(event);
+                match self.input_buffer.get_mut(&timestamp) {
+                    Some(vec) => vec.push(payload),
+                    None => {
+                        self.input_buffer.insert(timestamp, vec![payload]);
+                    },
+                };
             }
             RollbackPayload::Rollback => {
                 // prepare for insert has ensured that all events after timestamp are in the input buffer.
@@ -252,7 +171,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         &mut self,
         time: T::Time,
         cx: &mut Context<'_>,
-    ) -> SchedulePoll<T::Time, Event<T::Time, RollbackPayload<T::Out>>> {
+    ) -> SchedulePoll<T::Time, OutputEvent<T>> {
         loop {
             self.try_stage_update();
             if let Some(timestamp) = self.needs_rollback {
@@ -267,10 +186,19 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
                 let event = Event { timestamp, payload };
                 break SchedulePoll::Ready(event);
             }
-            match self.try_commit_update(time, cx) {
-                SchedulePoll::Ready(events) => {
-                    for event in events {
-                        self.output_buffer.push_back(event);
+
+            match self.current_update.poll(time, cx) {
+                SchedulePoll::Ready((result, time, inputs)) => {
+                    // push history
+                    self.history.push_events(time, inputs, !result.output_events.is_empty());
+                    self.history.push_frame(result.new_frame.clone());
+
+                    // write to current_transposer_frame.
+                    *self.current_transposer_frame.write().unwrap() = result.new_frame;
+
+                    // push output events.
+                    for output in result.output_events {
+                        self.output_buffer.push_back(output);
                     }
                 }
                 SchedulePoll::Pending => break SchedulePoll::Pending,
@@ -281,8 +209,12 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
     }
 
     pub fn size_hint(&self) -> (usize, Option<usize>) {
-        let frame = self.current_frame();
-        let min = frame.schedule.len() - frame.expire_handles.len();
-        (min, None)
+        match self.current_transposer_frame.try_read() {
+            Ok(frame) => {
+                let min = frame.schedule.len() - frame.expire_handles.len();
+                (min, None)
+            }
+            Err(_) => (0, None)
+        }
     }
 }

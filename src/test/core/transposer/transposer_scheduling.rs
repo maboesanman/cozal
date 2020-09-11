@@ -2,7 +2,7 @@ use crate::core::schedule_stream::ScheduleStreamExt;
 use crate::core::Transposer;
 use crate::core::{
     event::RollbackPayload,
-    transposer::{InitResult, TransposerContext, TransposerEngine, TransposerEvent, UpdateResult},
+    transposer::{InitResult, TransposerContext, TransposerEngine, UpdateResult},
     Event,
 };
 use async_trait::async_trait;
@@ -12,7 +12,7 @@ use std::task::Poll;
 struct EmptyStream {}
 
 impl Stream for EmptyStream {
-    type Item = Event<usize, RollbackPayload<()>>;
+    type Item = Event<usize, RollbackPayload<!>>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,
@@ -27,21 +27,26 @@ struct TestTransposer {
     event_calls: Vec<usize>,
 }
 
+impl TestTransposer {
+    pub fn new() -> Self {
+        Self {
+            event_calls: Vec::new(),
+        }
+    }
+}
+
 #[async_trait]
 impl Transposer for TestTransposer {
     type Time = usize;
 
-    type External = ();
+    type Input = !;
 
-    type Internal = usize;
+    type Scheduled = usize;
 
-    type Out = Vec<usize>;
+    type Output = Vec<usize>;
 
-    async fn init(_cx: &TransposerContext) -> InitResult<Self> {
+    async fn init_events(&mut self, _cx: &TransposerContext) -> InitResult<Self> {
         InitResult {
-            transposer: Self {
-                event_calls: Vec::new(),
-            },
             new_events: vec![
                 Event {
                     timestamp: 8,
@@ -64,41 +69,43 @@ impl Transposer for TestTransposer {
         }
     }
 
-    async fn update(
-        &self,
-        _cx: &TransposerContext,
-        events: Vec<&TransposerEvent<Self>>,
-    ) -> UpdateResult<Self> {
-        let mut new_transposer = self.clone();
+    async fn handle_input(
+            &mut self,
+            time: Self::Time,
+            inputs: &[Self::Input],
+            cx: &TransposerContext,
+        ) -> UpdateResult<Self> {
+        UpdateResult::default()
+    }
+
+    async fn handle_scheduled(
+            &mut self,
+            time: Self::Time,
+            payload: &Self::Scheduled,
+            cx: &TransposerContext,
+        ) -> UpdateResult<Self> {
+        self.event_calls.push(*payload);
         let mut new_events = Vec::new();
-        for event in events {
-            match event {
-                TransposerEvent::Internal(e) => {
-                    new_transposer.event_calls.push(e.event.payload);
-                    if e.event.payload % 2 == 1 {
-                        new_events.push(Event {
-                            timestamp: e.event.timestamp * 2,
-                            payload: e.event.timestamp * 2,
-                        })
-                    };
-                }
-                _ => {}
-            };
-        }
-        let emitted_events = vec![new_transposer.event_calls.clone()];
-        let new_transposer = Some(new_transposer);
+        if payload % 2 == 1 {
+            new_events.push(Event {
+                timestamp: time * 2,
+                payload: payload * 2,
+            })
+        };
+        let emitted_events = vec![self.event_calls.clone()];
         UpdateResult {
             expired_events: Vec::new(),
             new_events,
             emitted_events,
             exit: false,
-            new_transposer,
         }
     }
 }
 #[test]
-fn test_init_events_scheduled_correctly() {
-    let engine = futures::executor::block_on(TransposerEngine::<'_, TestTransposer, _>::new(
+fn test_events_scheduled_correctly() {
+    let transposer = TestTransposer::new();
+    let engine = futures::executor::block_on(TransposerEngine::new(
+        transposer,
         EmptyStream {},
     ));
     let stream = engine.to_target(100);

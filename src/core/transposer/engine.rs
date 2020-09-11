@@ -25,8 +25,8 @@ use super::{
 #[pin_project]
 pub struct TransposerEngine<
     'a,
-    T: Transposer + 'a,
-    S: Stream<Item = InputStreamItem<'a, T>> + Unpin + Send + 'a,
+    T: Transposer,
+    S: Stream<Item = InputStreamItem<T>> + Unpin + Send,
 > {
     #[pin]
     input_stream: Fuse<S>,
@@ -34,23 +34,23 @@ pub struct TransposerEngine<
     internal: TransposerEngineInternal<'a, T>,
 }
 
-impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + Send + 'a>
+impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<T>> + Unpin + Send>
     TransposerEngine<'a, T, S>
 {
     /// create a new TransposerEngine, consuming the input stream.
-    pub async fn new(input_stream: S) -> TransposerEngine<'a, T, S> {
+    pub async fn new(transposer: T, input_stream: S) -> TransposerEngine<'a, T, S> {
         TransposerEngine {
             input_stream: input_stream.fuse(),
-            internal: TransposerEngineInternal::new().await,
+            internal: TransposerEngineInternal::new(transposer).await,
         }
     }
 }
 
-impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<'a, T>> + Unpin + Send + 'a>
+impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<T>> + Unpin + Send>
     ScheduleStream for TransposerEngine<'a, T, S>
 {
     type Time = T::Time;
-    type Item = Event<T::Time, RollbackPayload<T::Out>>;
+    type Item = Event<T::Time, RollbackPayload<T::Output>>;
     fn poll_next(
         self: Pin<&mut Self>,
         time: Self::Time,

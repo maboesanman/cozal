@@ -44,7 +44,7 @@ impl TransposerContext {
         handles[&index].get()
     }
 
-    pub(super) fn get_current_expire_handle(self) -> ExpireHandleFactory {
+    pub(super) fn get_expire_handle_factory(self) -> ExpireHandleFactory {
         self.expire_handle_factory
     }
 

@@ -1,20 +1,20 @@
 use super::transposer::Transposer;
 use super::{
     expire_handle::{ExpireHandle, ExpireHandleFactory},
-    transposer_event::InternalTransposerEvent,
+    internal_scheduled_event::InternalScheduledEvent,
 };
 use im::{HashMap, OrdSet};
-use std::sync::Arc;
+use std::sync::{Weak, Arc};
 
 #[derive(Clone)]
 pub(super) struct TransposerFrame<T: Transposer> {
-    // this is an Arc because we might not change the transposer, and therefore don't need to save a copy.
-    pub transposer: Arc<T>,
+    pub time: T::Time,
+    pub transposer: T,
 
     // schedule and expire_handles
-    pub schedule: OrdSet<InternalTransposerEvent<T>>,
-    pub expire_handles: HashMap<ExpireHandle, InternalTransposerEvent<T>>,
+    pub schedule: OrdSet<Arc<InternalScheduledEvent<T>>>,
+    pub expire_handles: HashMap<ExpireHandle, Weak<InternalScheduledEvent<T>>>,
 
-    pub current_expire_handle: ExpireHandleFactory,
+    pub expire_handle_factory: ExpireHandleFactory,
     // todo: add constants for the current randomizer
 }
