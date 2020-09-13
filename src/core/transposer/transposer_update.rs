@@ -99,10 +99,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
     }
 
     pub fn is_some(&self) -> bool {
-        match self {
-            Self::None => false,
-            _ => true,
-        }
+        !matches!(self, Self::None)
     }
 
     #[allow(dead_code)]

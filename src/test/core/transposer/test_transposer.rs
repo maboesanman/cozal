@@ -55,7 +55,7 @@ impl Transposer for TestTransposer {
 
     async fn init_events(&mut self, cx: &InitContext<Self>) {
         for event in self.init_events.iter() {
-            cx.schedule_event(event.timestamp, event.payload);
+            let _ = cx.schedule_event(event.timestamp, event.payload);
         }
     }
 
@@ -68,7 +68,7 @@ impl Transposer for TestTransposer {
         for payload in inputs {
             self.event_calls.push(EventCall::Scheduled(*payload));
             if payload % 2 == 1 {
-                cx.schedule_event(time * 2, payload * 2);
+                let _ = cx.schedule_event(time * 2, payload * 2);
             };
         }
         cx.emit_event(self.event_calls.clone());
@@ -82,7 +82,7 @@ impl Transposer for TestTransposer {
     ) {
         self.event_calls.push(EventCall::Scheduled(*payload));
         if payload % 2 == 1 {
-            cx.schedule_event(time * 2, payload * 2);
+            let _ = cx.schedule_event(time * 2, payload * 2);
         };
         cx.emit_event(self.event_calls.clone());
     }

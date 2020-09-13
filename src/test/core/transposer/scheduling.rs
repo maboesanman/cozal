@@ -1,11 +1,7 @@
 use crate::core::schedule_stream::ScheduleStreamExt;
-use crate::core::{
-    event::RollbackPayload,
-    transposer::TransposerEngine,
-    Event,
-};
+use crate::core::{event::RollbackPayload, transposer::TransposerEngine, Event};
 
-use super::test_transposer::{TestTransposer, EmptyStream, EventCall};
+use super::test_transposer::{EmptyStream, EventCall, TestTransposer};
 
 #[test]
 fn test_events_scheduled_correctly() {
@@ -40,14 +36,17 @@ fn test_events_scheduled_correctly() {
         ..
     }) = iter.next()
     {
-        assert_eq!(payload, vec![
-            EventCall::Scheduled(1),
-            EventCall::Scheduled(2),
-            EventCall::Scheduled(3),
-            EventCall::Scheduled(4),
-            EventCall::Scheduled(6),
-            EventCall::Scheduled(8),
-        ]);
+        assert_eq!(
+            payload,
+            vec![
+                EventCall::Scheduled(1),
+                EventCall::Scheduled(2),
+                EventCall::Scheduled(3),
+                EventCall::Scheduled(4),
+                EventCall::Scheduled(6),
+                EventCall::Scheduled(8),
+            ]
+        );
     } else {
         panic!()
     }
