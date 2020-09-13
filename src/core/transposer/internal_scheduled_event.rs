@@ -1,4 +1,4 @@
-use super::{expire_handle::ExpireHandle, transposer::Transposer, InputEvent};
+use super::{expire_handle::ExpireHandle, transposer::Transposer};
 use std::cmp::Ordering;
 use std::sync::Arc;
 
@@ -36,11 +36,13 @@ impl<T: Transposer> PartialOrd for InternalScheduledEvent<T> {
     }
 }
 
-impl<T: Transposer> Eq for InternalScheduledEvent<T> { }
+impl<T: Transposer> Eq for InternalScheduledEvent<T> {}
 
 impl<T: Transposer> PartialEq for InternalScheduledEvent<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.time == other.time && self.source_index == other.source_index && self.source == other.source
+        self.time == other.time
+            && self.source_index == other.source_index
+            && self.source == other.source
     }
 }
 
@@ -69,15 +71,13 @@ impl<T: Transposer> Ord for Source<T> {
             (Self::Init, Self::Schedule(_)) => Ordering::Less,
             (Self::Input(_), Self::Init) => Ordering::Greater,
             (Self::Schedule(_), Self::Init) => Ordering::Greater,
-            (Self::Schedule(s), Self::Schedule(o)) => {
-                match s.time.cmp(&o.time) {
-                    Ordering::Equal => match s.source.cmp(&o.source) {
-                        Ordering::Equal => s.source_index.cmp(&o.source_index),
-                        ord => ord,
-                    }
+            (Self::Schedule(s), Self::Schedule(o)) => match s.time.cmp(&o.time) {
+                Ordering::Equal => match s.source.cmp(&o.source) {
+                    Ordering::Equal => s.source_index.cmp(&o.source_index),
                     ord => ord,
-                }
-            }
+                },
+                ord => ord,
+            },
             (s, o) => s.time().cmp(&o.time()),
         }
     }
@@ -89,7 +89,7 @@ impl<T: Transposer> PartialOrd for Source<T> {
     }
 }
 
-impl<T: Transposer> Eq for Source<T> { }
+impl<T: Transposer> Eq for Source<T> {}
 
 impl<T: Transposer> PartialEq for Source<T> {
     fn eq(&self, other: &Self) -> bool {
@@ -97,7 +97,7 @@ impl<T: Transposer> PartialEq for Source<T> {
             (Self::Init, Self::Init) => true,
             (Self::Input(s), Self::Input(o)) => s == o,
             (Self::Schedule(s), Self::Schedule(o)) => s == o,
-            _ => false
+            _ => false,
         }
     }
 }

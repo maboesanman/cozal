@@ -23,11 +23,8 @@ use super::{
 /// - respond to rollback events from the input stream.
 /// - record the input events for the purpose of storing replay data.
 #[pin_project]
-pub struct TransposerEngine<
-    'a,
-    T: Transposer,
-    S: Stream<Item = InputStreamItem<T>> + Unpin + Send,
-> {
+pub struct TransposerEngine<'a, T: Transposer, S: Stream<Item = InputStreamItem<T>> + Unpin + Send>
+{
     #[pin]
     input_stream: Fuse<S>,
 
@@ -46,8 +43,8 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<T>> + Unpin + Send
     }
 }
 
-impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<T>> + Unpin + Send>
-    ScheduleStream for TransposerEngine<'a, T, S>
+impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<T>> + Unpin + Send> ScheduleStream
+    for TransposerEngine<'a, T, S>
 {
     type Time = T::Time;
     type Item = Event<T::Time, RollbackPayload<T::Output>>;

@@ -1,15 +1,20 @@
 use crate::core::schedule_stream::SchedulePoll;
 
 use super::{
-    transposer::Transposer,
-    transposer_function_wrappers::WrappedUpdateResult, InternalInputEvent,
-transposer_frame::TransposerFrame, transposer_function_wrappers::handle_input, internal_scheduled_event::InternalScheduledEvent, transposer_function_wrappers::handle_scheduled};
+    internal_scheduled_event::InternalScheduledEvent, transposer::Transposer,
+    transposer_frame::TransposerFrame, transposer_function_wrappers::handle_input,
+    transposer_function_wrappers::handle_scheduled,
+    transposer_function_wrappers::WrappedUpdateResult,
+};
 use futures::Future;
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-sync::Arc, sync::RwLock, marker::PhantomPinned};
 use pin_project::pin_project;
+use std::{
+    marker::PhantomPinned,
+    pin::Pin,
+    sync::Arc,
+    sync::RwLock,
+    task::{Context, Poll},
+};
 
 pub(super) enum TransposerUpdate<'a, T: Transposer> {
     Input(Pin<Box<CurriedInputFuture<'a, T>>>),
@@ -44,7 +49,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
     pub fn poll(
         &mut self,
         poll_time: T::Time,
-        cx: &mut Context<'_>
+        cx: &mut Context<'_>,
     ) -> SchedulePoll<T::Time, (WrappedUpdateResult<T>, T::Time, Vec<T::Input>)> {
         loop {
             match self {
@@ -61,29 +66,29 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
                     Poll::Ready(result) => {
                         if let Self::Schedule(fut) = std::mem::take(self) {
                             let time = fut.time();
-                            *self = Self::WaitingInput((time, Vec::new(), result));
+                            *self = Self::WaitingScheduled((time, result));
                         }
                     }
                     Poll::Pending => break SchedulePoll::Pending,
                 },
                 Self::WaitingInput((time, _, _)) => {
-                    if *time < poll_time {
-                        break SchedulePoll::Scheduled(*time)
+                    if *time > poll_time {
+                        break SchedulePoll::Scheduled(*time);
                     }
 
                     if let Self::WaitingInput((time, inputs, result)) = std::mem::take(self) {
-                        break SchedulePoll::Ready((result, time, inputs))
+                        break SchedulePoll::Ready((result, time, inputs));
                     }
 
                     unreachable!()
                 }
                 Self::WaitingScheduled((time, _)) => {
-                    if *time < poll_time {
-                        break SchedulePoll::Scheduled(*time)
+                    if *time > poll_time {
+                        break SchedulePoll::Scheduled(*time);
                     }
 
                     if let Self::WaitingScheduled((time, result)) = std::mem::take(self) {
-                        break SchedulePoll::Ready((result, time, Vec::new()))
+                        break SchedulePoll::Ready((result, time, Vec::new()));
                     }
 
                     unreachable!()
@@ -106,7 +111,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
             Self::Schedule(fut) => Some((fut.time(), Vec::new())),
             Self::WaitingInput((time, inputs, _)) => Some((time, inputs)),
             Self::WaitingScheduled((time, _)) => Some((time, Vec::new())),
-            Self::None => None
+            Self::None => None,
         }
     }
 }
@@ -135,14 +140,14 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
             fut: None,
             _pin: PhantomPinned,
         });
-        
+
         let input_ref = unsafe {
             // this is safe because we are adjusting the lifetime
             // to be the lifetime of the pinned struct
             let ptr: *const _ = &pinned.inputs;
             ptr.as_ref().unwrap()
         };
-        
+
         let fut = Box::new(handle_input(frame_arc, time, input_ref));
 
         let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut pinned);
@@ -150,7 +155,7 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
             // this is safe because this is a field of a pinned struct
             Pin::get_unchecked_mut(mut_ref).fut = Some(fut);
         }
-        
+
         pinned
     }
 
@@ -167,11 +172,9 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
 
 impl<'a, T: Transposer + 'a> Future for CurriedInputFuture<'a, T> {
     type Output = WrappedUpdateResult<T>;
-    
+
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let fut = unsafe {
-            self.map_unchecked_mut(|w| w.fut.as_mut().map(|v| &mut **v).unwrap())
-        };
+        let fut = unsafe { self.map_unchecked_mut(|w| w.fut.as_deref_mut().unwrap()) };
         fut.poll(cx)
     }
 }
@@ -193,11 +196,8 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
     ) -> Self {
         let time = event_arc.time;
         let fut = Box::pin(handle_scheduled(frame_arc, event_arc));
-        
-        Self {
-            time,
-            fut,
-        }
+
+        Self { time, fut }
     }
 
     pub fn time(&self) -> T::Time {
@@ -207,8 +207,8 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
 
 impl<'a, T: Transposer + 'a> Future for CurriedScheduleFuture<'a, T> {
     type Output = WrappedUpdateResult<T>;
-    
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         self.project().fut.poll(cx)
     }
 }

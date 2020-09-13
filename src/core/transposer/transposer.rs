@@ -1,8 +1,7 @@
 use super::context::TransposerContext;
-use super::{expire_handle::ExpireHandle};
+use super::expire_handle::ExpireHandle;
 use crate::core::{event::RollbackPayload, Event};
 use async_trait::async_trait;
-use std::{sync::{RwLock, Arc}, collections::HashSet};
 
 /// The result of the init function for a [`Transposer`].
 pub struct InitResult<T: Transposer> {
@@ -52,9 +51,9 @@ impl<T: Transposer> Default for UpdateResult<T> {
 }
 
 pub type InputEvent<T> = Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Input>>;
-pub(super) type InternalInputEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Input>;
 pub type ScheduledEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Scheduled>;
-pub type OutputEvent<T> = Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Output>>;
+pub type OutputEvent<T> =
+    Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Output>>;
 pub(super) type InternalOutputEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Output>;
 
 /// A `Transposer` is a type that can create an updated version of itself in response to events.

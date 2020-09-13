@@ -1,14 +1,13 @@
 use super::{
     context::TransposerContext,
     expire_handle::ExpireHandleFactory,
-    internal_scheduled_event::{Source, InternalScheduledEvent},
+    internal_scheduled_event::{InternalScheduledEvent, Source},
     transposer_frame::TransposerFrame,
-    Transposer,
-    UpdateResult, ScheduledEvent, ExpireHandle, InternalOutputEvent,
+    ExpireHandle, InternalOutputEvent, ScheduledEvent, Transposer, UpdateResult,
 };
 use crate::core::Event;
 use im::{HashMap, OrdSet};
-use std::sync::{RwLock, Arc};
+use std::sync::{Arc, RwLock};
 
 pub(super) struct WrappedInitResult<T: Transposer> {
     pub initial_frame: TransposerFrame<T>,
@@ -32,9 +31,8 @@ pub(super) async fn init_events<T: Transposer>(transposer: T) -> WrappedInitResu
 
     process_new_events(&mut initial_frame, source, result.new_events, cx);
 
-
     let output_events = prepare_output_events::<T>(T::Time::default(), result.emitted_events);
-    
+
     WrappedInitResult {
         initial_frame,
         output_events,
@@ -80,7 +78,10 @@ pub(super) async fn handle_scheduled<T: Transposer>(
 
     new_frame.time = event.time;
     let cx = TransposerContext::new(new_frame.expire_handle_factory.clone());
-    let result = new_frame.transposer.handle_scheduled(event.time, &event.payload, &cx).await;
+    let result = new_frame
+        .transposer
+        .handle_scheduled(event.time, &event.payload, &cx)
+        .await;
     new_frame.expire_handle_factory = cx.expire_handle_factory.clone();
     let source = Source::Schedule(event);
     let result = handle_update_result(new_frame, source, result, cx);
@@ -120,7 +121,7 @@ fn process_new_events<T: Transposer>(
             source: source.clone(),
             source_index: index,
             expire_handle: cx.new_expire_handles.remove(&index),
-            time: source.time(),
+            time: event.timestamp,
             payload: event.payload,
         };
 
@@ -129,7 +130,9 @@ fn process_new_events<T: Transposer>(
 
         // add an expire handle if we need to.
         if let Some(handle) = new_event.expire_handle {
-            frame.expire_handles.insert(handle, Arc::downgrade(&new_event.clone()));
+            frame
+                .expire_handles
+                .insert(handle, Arc::downgrade(&new_event.clone()));
         }
 
         // add new event to schedule
@@ -153,12 +156,13 @@ fn remove_expired_events<T: Transposer>(
 
 fn prepare_output_events<T: Transposer>(
     time: T::Time,
-    raw_payloads: Vec<T::Output>
+    raw_payloads: Vec<T::Output>,
 ) -> Vec<InternalOutputEvent<T>> {
     raw_payloads
         .into_iter()
         .map(|payload| Event {
             timestamp: time,
             payload,
-        }).collect()
+        })
+        .collect()
 }

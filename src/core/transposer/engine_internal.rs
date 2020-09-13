@@ -1,9 +1,8 @@
-use std::collections::BTreeMap;
-use std::collections::{VecDeque, HashSet};
+use std::{collections::BTreeMap, task::Context};
+use std::collections::VecDeque;
 
-use futures::task::{Context, Poll};
-use std::cmp::{Ordering, Reverse};
-use std::sync::{RwLock, Arc};
+use std::cmp::Ordering;
+use std::sync::{Arc, RwLock};
 
 use crate::{
     core::event::{Event, RollbackPayload},
@@ -12,13 +11,15 @@ use crate::{
 
 use super::{
     transposer::Transposer,
-    internal_scheduled_event::InternalScheduledEvent,
     transposer_frame::TransposerFrame,
-    transposer_function_wrappers::{init_events, handle_input, handle_scheduled},
+    transposer_function_wrappers::init_events,
     transposer_update::TransposerUpdate,
 };
 
-use super::{InputEvent, OutputEvent, InternalInputEvent, InternalOutputEvent, transposer_history::TransposerHistory};
+use super::{
+    transposer_history::TransposerHistory, InputEvent, InternalOutputEvent,
+    OutputEvent,
+};
 
 pub(super) type InputBuffer<T> = BTreeMap<<T as Transposer>::Time, Vec<<T as Transposer>::Input>>;
 pub(super) type InputStreamItem<T> = InputEvent<T>;
@@ -68,18 +69,16 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
                 let next_scheduled = current_frame.schedule.remove_min().unwrap();
                 TransposerUpdate::new_schedule(frame_arc, next_scheduled)
             }
-            (Some(i), Some(s)) => {
-                match i.0.cmp(&s.time) {
-                    Ordering::Less | Ordering::Equal => {
-                        let (time, inputs) = self.input_buffer.pop_first().unwrap();
-                        TransposerUpdate::new_input(frame_arc, time, inputs)
-                    },
-                    Ordering::Greater => {
-                        let next_scheduled = current_frame.schedule.remove_min().unwrap();
-                        TransposerUpdate::new_schedule(frame_arc, next_scheduled)
-                    }
+            (Some(i), Some(s)) => match i.0.cmp(&s.time) {
+                Ordering::Less | Ordering::Equal => {
+                    let (time, inputs) = self.input_buffer.pop_first().unwrap();
+                    TransposerUpdate::new_input(frame_arc, time, inputs)
                 }
-            }
+                Ordering::Greater => {
+                    let next_scheduled = current_frame.schedule.remove_min().unwrap();
+                    TransposerUpdate::new_schedule(frame_arc, next_scheduled)
+                }
+            },
         };
     }
 
@@ -96,20 +95,20 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         }
     }
 
-    fn revert(&mut self) -> bool {
-        todo!()
-        // if let Some(history_frame) = self.history.pop() {
-        //     self.output_buffer.clear();
-        //     for event in history_frame.input_events {
-        //         self.input_buffer.push(Reverse(FullOrd(event)));
-        //     }
-        //     history_frame.events_emitted
-        // } else {
-        //     false
-        // }
-    }
+    // fn revert(&mut self) -> bool {
+    //     todo!()
+    //     // if let Some(history_frame) = self.history.pop() {
+    //     //     self.output_buffer.clear();
+    //     //     for event in history_frame.input_events {
+    //     //         self.input_buffer.push(Reverse(FullOrd(event)));
+    //     //     }
+    //     //     history_frame.events_emitted
+    //     // } else {
+    //     //     false
+    //     // }
+    // }
 
-    fn prepare_for_insert(&mut self, time: T::Time) {
+    fn prepare_for_insert(&mut self, _time: T::Time) {
         // unstage if there is an update for at time or after
         // that update is now invalid.
         todo!()
@@ -134,7 +133,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
     /// scrub all events from all sources which occur at or after `time`
     ///
     /// this must be run after prepare_for_insert.
-    fn rollback(&mut self, time: T::Time) {
+    fn rollback(&mut self, _time: T::Time) {
         todo!()
         // let mut new_input_buffer: InputBuffer<T> = BinaryHeap::new();
 
@@ -157,7 +156,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
                     Some(vec) => vec.push(payload),
                     None => {
                         self.input_buffer.insert(timestamp, vec![payload]);
-                    },
+                    }
                 };
             }
             RollbackPayload::Rollback => {
@@ -190,7 +189,8 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
             match self.current_update.poll(time, cx) {
                 SchedulePoll::Ready((result, time, inputs)) => {
                     // push history
-                    self.history.push_events(time, inputs, !result.output_events.is_empty());
+                    self.history
+                        .push_events(time, inputs, !result.output_events.is_empty());
                     self.history.push_frame(result.new_frame.clone());
 
                     // write to current_transposer_frame.
@@ -214,7 +214,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
                 let min = frame.schedule.len() - frame.expire_handles.len();
                 (min, None)
             }
-            Err(_) => (0, None)
+            Err(_) => (0, None),
         }
     }
 }

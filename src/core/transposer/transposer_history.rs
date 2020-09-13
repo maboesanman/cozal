@@ -1,6 +1,4 @@
-
-
-use super::{transposer_frame::TransposerFrame, Transposer, InternalInputEvent};
+use super::{transposer_frame::TransposerFrame, Transposer};
 
 pub(super) struct TransposerHistory<T: Transposer> {
     frames: Vec<HistoryFrame<T>>,
@@ -19,9 +17,7 @@ struct EventFrame<T: Transposer> {
 
 impl<T: Transposer> TransposerHistory<T> {
     pub fn new(initial_frame: TransposerFrame<T>) -> Self {
-        let mut new_history = TransposerHistory {
-            frames: Vec::new(),
-        };
+        let mut new_history = TransposerHistory { frames: Vec::new() };
         new_history.push_frame(initial_frame);
         new_history
     }
@@ -41,7 +37,10 @@ impl<T: Transposer> TransposerHistory<T> {
         })
     }
 
-    pub fn revert(&mut self, time: T::Time) -> (TransposerFrame<T>, Vec<InternalInputEvent<T>>, bool) {
-        todo!()
-    }
+    // pub fn revert(
+    //     &mut self,
+    //     time: T::Time,
+    // ) -> (TransposerFrame<T>, Vec<InternalInputEvent<T>>, bool) {
+    //     todo!()
+    // }
 }

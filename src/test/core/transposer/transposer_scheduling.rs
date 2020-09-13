@@ -70,20 +70,20 @@ impl Transposer for TestTransposer {
     }
 
     async fn handle_input(
-            &mut self,
-            time: Self::Time,
-            inputs: &[Self::Input],
-            cx: &TransposerContext,
-        ) -> UpdateResult<Self> {
+        &mut self,
+        time: Self::Time,
+        inputs: &[Self::Input],
+        cx: &TransposerContext,
+    ) -> UpdateResult<Self> {
         UpdateResult::default()
     }
 
     async fn handle_scheduled(
-            &mut self,
-            time: Self::Time,
-            payload: &Self::Scheduled,
-            cx: &TransposerContext,
-        ) -> UpdateResult<Self> {
+        &mut self,
+        time: Self::Time,
+        payload: &Self::Scheduled,
+        cx: &TransposerContext,
+    ) -> UpdateResult<Self> {
         self.event_calls.push(*payload);
         let mut new_events = Vec::new();
         if payload % 2 == 1 {
@@ -104,17 +104,14 @@ impl Transposer for TestTransposer {
 #[test]
 fn test_events_scheduled_correctly() {
     let transposer = TestTransposer::new();
-    let engine = futures::executor::block_on(TransposerEngine::new(
-        transposer,
-        EmptyStream {},
-    ));
+    let engine = futures::executor::block_on(TransposerEngine::new(transposer, EmptyStream {}));
     let stream = engine.to_target(100);
     let mut iter = futures::executor::block_on_stream(stream);
-    iter.next();
-    iter.next();
-    iter.next();
-    iter.next();
-    iter.next();
+    let x = iter.next();
+    let x = iter.next();
+    let x = iter.next();
+    let x = iter.next();
+    let x = iter.next();
     if let Some(Event {
         payload: RollbackPayload::Payload(payload),
         ..

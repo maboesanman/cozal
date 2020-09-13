@@ -4,7 +4,7 @@ use super::{
     internal_scheduled_event::InternalScheduledEvent,
 };
 use im::{HashMap, OrdSet};
-use std::sync::{Weak, Arc};
+use std::sync::{Arc, Weak};
 
 #[derive(Clone)]
 pub(super) struct TransposerFrame<T: Transposer> {
