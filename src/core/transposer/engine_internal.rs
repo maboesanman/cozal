@@ -77,7 +77,6 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         };
     }
 
-    #[allow(dead_code)]
     pub fn unstage_update(&mut self) {
         if let Some((time, mut events)) = self.current_update.unstage() {
             match self.input_buffer.get_mut(&time) {
@@ -91,55 +90,31 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         }
     }
 
-    // fn revert(&mut self) -> bool {
-    //     todo!()
-    //     // if let Some(history_frame) = self.history.pop() {
-    //     //     self.output_buffer.clear();
-    //     //     for event in history_frame.input_events {
-    //     //         self.input_buffer.push(Reverse(FullOrd(event)));
-    //     //     }
-    //     //     history_frame.events_emitted
-    //     // } else {
-    //     //     false
-    //     // }
-    // }
-
-    fn prepare_for_insert(&mut self, _time: T::Time) {
+    fn prepare_for_insert(&mut self, time: T::Time) {
         // unstage if there is an update for at time or after
         // that update is now invalid.
-        todo!()
-        // if let Some(update) = &self.current_update {
-        //     if update.time >= time {
-        //         self.unstage_update();
-        //     }
-        // }
-        // let mut needs_rollback = false;
-        // while let Some(history_frame) = self.history.last() {
-        //     if history_frame.frame.time >= time {
-        //         needs_rollback &= self.revert();
-        //     } else {
-        //         break;
-        //     }
-        // }
-        // if needs_rollback {
-        //     self.needs_rollback = Some(time);
-        // }
-    }
+        if let Some(current_update_time) = self.current_update.time() {
+            if current_update_time >= time {
+                self.unstage_update();
+            }
+        }
+        let mut needs_rollback = false;
+        let current = self.current_transposer_frame.read().unwrap();
+        let current_time = current.time;
+        std::mem::drop(current);
 
-    /// scrub all events from all sources which occur at or after `time`
-    ///
-    /// this must be run after prepare_for_insert.
-    fn rollback(&mut self, _time: T::Time) {
-        todo!()
-        // let mut new_input_buffer: InputBuffer<T> = BinaryHeap::new();
-
-        // while let Some(Reverse(FullOrd(event))) = self.input_buffer.pop() {
-        //     if event.timestamp >= time {
-        //         break;
-        //     }
-        //     new_input_buffer.push(Reverse(FullOrd(event)));
-        // }
-        // self.input_buffer = new_input_buffer;
+        if current_time >= time {
+            let (frame, input_groups, events_emitted) = self.history.revert(time);
+            let mut current = self.current_transposer_frame.write().unwrap();
+            *current = frame;
+            for (time, inputs) in input_groups {
+                self.input_buffer.insert(time, inputs);
+            }
+            needs_rollback = events_emitted;
+        }
+        if needs_rollback {
+            self.needs_rollback = Some(time);
+        }
     }
 
     pub fn insert(&mut self, event: InputStreamItem<T>) {
@@ -157,7 +132,12 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
             }
             RollbackPayload::Rollback => {
                 // prepare for insert has ensured that all events after timestamp are in the input buffer.
-                self.rollback(timestamp);
+                while let Some((time, inputs)) = self.input_buffer.pop_first() {
+                    if time < timestamp {
+                        self.input_buffer.insert(time, inputs);
+                        break;
+                    }
+                }
             }
         }
     }

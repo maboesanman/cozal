@@ -24,7 +24,7 @@ impl<T: Transposer> Ord for InternalScheduledEvent<T> {
         };
         match sort {
             Ordering::Equal => self.source_index.cmp(&other.source_index),
-            ord => return ord,
+            ord => ord,
         }
     }
 }

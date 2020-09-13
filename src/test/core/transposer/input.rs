@@ -4,7 +4,7 @@ use crate::core::{event::RollbackPayload, transposer::TransposerEngine, Event};
 use super::test_transposer::{EventCall, TestTransposer};
 
 #[test]
-fn basic_rollback() {
+fn basic_input() {
     let transposer = TestTransposer::new(Vec::new());
     let (sender, receiver) = flume::unbounded();
     let engine = futures::executor::block_on(TransposerEngine::new(transposer, receiver));
@@ -20,8 +20,8 @@ fn basic_rollback() {
 
     assert!(sender
         .send(Event {
-            timestamp: 6,
-            payload: RollbackPayload::Payload(6),
+            timestamp: 4,
+            payload: RollbackPayload::Payload(4),
         })
         .is_ok());
 
@@ -30,18 +30,10 @@ fn basic_rollback() {
 
     assert!(sender
         .send(Event {
-            timestamp: 4,
-            payload: RollbackPayload::Payload(4),
+            timestamp: 6,
+            payload: RollbackPayload::Payload(6),
         })
         .is_ok());
-
-    assert_eq!(
-        iter.next(),
-        Some(Event {
-            timestamp: 4,
-            payload: RollbackPayload::Rollback
-        })
-    );
 
     if let Some(Event {
         payload: RollbackPayload::Payload(payload),
