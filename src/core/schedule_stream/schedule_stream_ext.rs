@@ -1,8 +1,10 @@
-use super::realtime_stream::RealtimeStream;
-use super::schedule_stream::ScheduleStream;
+use super::RealtimeStream;
+use super::ScheduleStream;
+use super::TargetStream;
+
 use super::timestamp::Timestamp;
 
-impl<S> ScheduleStreamExt for S
+impl<S> ScheduleStreamTimestampExt for S
 where
     S: ScheduleStream + Sized,
     <Self as ScheduleStream>::Time: Timestamp,
@@ -11,7 +13,7 @@ where
 
 /// An extension trait for [`ScheduleStream`](super::schedule_stream::ScheduleStream)s
 /// that provides the [`to_realtime`](self::to_realtime) method only (for now).
-pub trait ScheduleStreamExt: ScheduleStream + Sized
+pub trait ScheduleStreamTimestampExt: ScheduleStream + Sized
 where
     <Self as ScheduleStream>::Time: Timestamp,
 {
@@ -25,5 +27,13 @@ where
     /// are already realtime and need no reference.
     fn to_realtime(self, reference: <Self::Time as Timestamp>::Reference) -> RealtimeStream<Self> {
         RealtimeStream::new(self, reference)
+    }
+}
+
+impl<S> ScheduleStreamExt for S where S: ScheduleStream + Sized {}
+
+pub trait ScheduleStreamExt: ScheduleStream + Sized {
+    fn to_target(self, target: <Self as ScheduleStream>::Time) -> TargetStream<Self> {
+        TargetStream::new(self, target)
     }
 }

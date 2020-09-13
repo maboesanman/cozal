@@ -1,15 +1,12 @@
-use super::transposer_context::TransposerContext;
-use super::{transposer_event::TransposerEvent, transposer_expire_handle::ExpireHandle};
-use crate::core::event::event::Event;
+use super::context::TransposerContext;
+use super::expire_handle::ExpireHandle;
+use crate::core::{event::RollbackPayload, Event};
 use async_trait::async_trait;
 
 /// The result of the init function for a [`Transposer`].
 pub struct InitResult<T: Transposer> {
-    /// The initial value of your transposer.
-    pub transposer: T,
-
     /// Events to initialize the schedule with.
-    pub new_events: Vec<Event<T::Time, T::Internal>>,
+    pub new_events: Vec<ScheduledEvent<T>>,
 
     /// New events to yield downstream
     ///
@@ -17,35 +14,47 @@ pub struct InitResult<T: Transposer> {
     /// In the case of the [`InitResult`], they are emitted with `T::Time.default()`.
     ///
     /// If you need to emit an event in the future, schedule an internal event that, when handled, emits an output event.
-    pub emitted_events: Vec<T::Out>,
+    pub emitted_events: Vec<T::Output>,
 }
 
 /// The result of the update function for a [`Transposer`].
 pub struct UpdateResult<T: Transposer> {
-    /// If you have made changes to your state, you can set the state here.
-    ///
-    /// A value of [`None`] means that you intend to keep the previous value.
-    pub new_transposer: Option<T>,
-
     /// A [`Vec`] of expire handles.
     pub expired_events: Vec<ExpireHandle>,
 
     /// New events to schedule. The order events are placed here is important,
     /// as the expiration handles are created by pointing to a specific index in the
     /// new events array.
-    pub new_events: Vec<Event<T::Time, T::Internal>>,
+    pub new_events: Vec<ScheduledEvent<T>>,
 
     /// New events to yield downstream
     ///
     /// the time is not specified here, because events are always emitted exactly when they are created.
     ///
     /// If you need to emit an event in the future, schedule an internal event that, when handled, emits an output event.
-    pub emitted_events: Vec<T::Out>,
+    pub emitted_events: Vec<T::Output>,
 
     /// Whether or not the stream should yield [`Done`](crate::core::schedule_stream::schedule_stream::SchedulePoll::Done)
     /// and terminate.
     pub exit: bool,
 }
+
+impl<T: Transposer> Default for UpdateResult<T> {
+    fn default() -> Self {
+        UpdateResult {
+            expired_events: Vec::new(),
+            new_events: Vec::new(),
+            emitted_events: Vec::new(),
+            exit: false,
+        }
+    }
+}
+
+pub type InputEvent<T> = Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Input>>;
+pub type ScheduledEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Scheduled>;
+pub type OutputEvent<T> =
+    Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Output>>;
+pub(super) type InternalOutputEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Output>;
 
 /// A `Transposer` is a type that can create an updated version of itself in response to events.
 ///
@@ -73,12 +82,12 @@ pub trait Transposer: Clone + Unpin + Send + Sync {
     /// This type is not intended to contain timing information. It may if you need it, but
     /// no timing information contained inside your `External` type will be used to inform the order
     /// that events are handled.
-    type External: Unpin + Send + Sync;
+    type Input: Unpin + Send + Sync;
 
     /// The type of the payloads of scheduled events
     ///
     /// the events in the schedule are all of type `Event<Self::Time, Self::Internal>`
-    type Internal: Unpin + Send + Sync;
+    type Scheduled: Unpin + Send + Sync;
 
     /// The type of the output payloads.
     ///
@@ -86,36 +95,55 @@ pub trait Transposer: Clone + Unpin + Send + Sync {
     ///
     /// If a rollback must occur which invalidates previously yielded events, an event of type
     /// `Event<Self::Time, RollbackPayload::Rollback>` will be emitted.
-    type Out: Unpin + Send + Sync;
+    type Output: Unpin + Send + Sync;
 
-    /// The function to initialize your transposer.
+    /// The function to initialize your transposer's events.
     ///
-    /// You must initialize a transposer (passed through the [`transposer`](InitResult::transposer) prop of [`InitResult`])
+    /// You should initialize your transposer like any other struct.
+    /// This function is for initializing the schedule events and emitting any
+    /// output events that correspond with your transposer starting.
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`TransposerContext`] documentation.
-    async fn init(cx: &TransposerContext) -> InitResult<Self>;
+    async fn init_events(&mut self, cx: &TransposerContext) -> InitResult<Self>;
+
+    /// The function to respond to input.
+    ///
+    /// `cx` is a context object for performing additional operations.
+    /// For more information on `cx` see the [`TransposerContext`] documentation.
+    ///
+    /// `inputs` is the collection of payloads of input events that occurred at time `time`.
+    /// this is a collection and not one by one because cozal cannot disambiguate
+    /// the order of input events whose times are equal, so we need the implementer
+    /// to provide an implementation that does not depend on the order of the events.
+    /// this is why a `HashSet` is used.
+    async fn handle_input(
+        &mut self,
+        time: Self::Time,
+        inputs: &[Self::Input],
+        cx: &TransposerContext,
+    ) -> UpdateResult<Self>;
 
     /// The function to update your transposer.
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`TransposerContext`] documentation.
     ///
-    /// `events` is the collection of events that this update is meant to respond to.
-    /// All events in `events` have **the same time**. You will receive all events
-    /// with equal times (according to [`Eq`] as required by [`Ord`]). The events here have deterministic
-    /// order **if and only if** no two input events have the same time. If this is causing problems, [`Self::Time`]
-    /// should be selected to be a type with a more discerning implementation of [`Ord`]
-    /// (perhaps one that has a secondary value to sort on).
-    async fn update(
-        &self,
+    /// `events` is the collection of input events that occurred at time `time`.
+    /// this is a collection and not one by one because cozal cannot disambiguate
+    /// the order of input events whose times are equal, so we need the implementer
+    /// to provide an implementation that does not depend on the order of the events.
+    /// this is why a `HashSet` is used.
+    async fn handle_scheduled(
+        &mut self,
+        time: Self::Time,
+        payload: &Self::Scheduled,
         cx: &TransposerContext,
-        events: Vec<&TransposerEvent<Self>>,
     ) -> UpdateResult<Self>;
 
     /// Filter out events you know you can't do anything with.
     /// This reduces the amount of events you have to remember for rollback to work
-    fn can_process(_event: &Event<Self::Time, Self::External>) -> bool {
+    fn can_handle(_event: &InputEvent<Self>) -> bool {
         true
     }
 }

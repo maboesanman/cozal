@@ -1,4 +1,4 @@
-use super::transposer_expire_handle::{ExpireHandle, ExpireHandleFactory};
+use super::expire_handle::{ExpireHandle, ExpireHandleFactory};
 use std::collections::HashMap;
 /// This is passed to [`Transposer`](super::transposer::Transposer)'s
 /// [`init`](super::transposer::Transposer::init) and [`update`](super::transposer::Transposer::update) functions,
@@ -44,7 +44,7 @@ impl TransposerContext {
         handles[&index].get()
     }
 
-    pub(super) fn get_current_expire_handle(self) -> ExpireHandleFactory {
+    pub(super) fn get_expire_handle_factory(self) -> ExpireHandleFactory {
         self.expire_handle_factory
     }
 

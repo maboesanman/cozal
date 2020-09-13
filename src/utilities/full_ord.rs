@@ -25,10 +25,7 @@ impl<T: PartialOrd> Eq for FullOrd<T> {}
 
 impl<T: PartialOrd> PartialEq for FullOrd<T> {
     fn eq(&self, other: &Self) -> bool {
-        match self.cmp(other) {
-            Ordering::Equal => true,
-            _ => false,
-        }
+        matches!(self.cmp(other), Ordering::Equal)
     }
 }
 
