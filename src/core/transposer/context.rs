@@ -1,52 +1,150 @@
-use super::expire_handle::{ExpireHandle, ExpireHandleFactory};
-use std::collections::HashMap;
-/// This is passed to [`Transposer`](super::transposer::Transposer)'s
-/// [`init`](super::transposer::Transposer::init) and [`update`](super::transposer::Transposer::update) functions,
-/// enabling the following in a deterministic, rollback enabled way:
-/// - expire events, via [`get_expire_handle`](TransposerContext::get_expire_handle)
-/// - TODO: get external state
-/// - TODO: generate random values
-pub struct TransposerContext {
+use crate::core::Event;
+
+use super::{expire_handle::{ExpireHandle, ExpireHandleFactory}, Transposer, ScheduledEvent};
+use std::{collections::HashMap, sync::Mutex, sync::atomic::AtomicBool, sync::atomic::Ordering};
+
+pub struct InitContext<T: Transposer> {
     // this is really an AtomicNonZeroU64
+    pub(super) new_events: Mutex<Vec<ScheduledEvent<T>>>,
+    pub(super) emitted_events: Mutex<Vec<T::Output>>,
+
     pub(super) expire_handle_factory: ExpireHandleFactory,
-    pub(super) new_expire_handles: HashMap<usize, ExpireHandle>,
+    pub(super) new_expire_handles: Mutex<HashMap<usize, ExpireHandle>>,
     // todo add seeded deterministic random function
 }
 
-#[allow(dead_code)]
-impl TransposerContext {
+impl<T: Transposer> InitContext<T> {
     pub(super) fn new(handle_factory: ExpireHandleFactory) -> Self {
         Self {
+            new_events: Mutex::new(Vec::new()),
+            emitted_events: Mutex::new(Vec::new()),
             expire_handle_factory: handle_factory,
-            new_expire_handles: HashMap::new(),
+            new_expire_handles: Mutex::new(HashMap::new()),
         }
     }
-    /// get a handle that can be used to expire an event that has been scheduled.
-    /// the index argument is the index in the [`InitResult::new_events`](super::transposer::InitResult::new_events)
-    /// or [`UpdateResult::new_events`](super::transposer::UpdateResult::new_events)
-    /// array that the handle will correspond to.
-    ///
-    /// These handles are meant to be stored (either in the transposer or in a scheduled event payload)
-    /// until they are returned via the [`UpdateResult::expired_events`](super::transposer::UpdateResult::expired_events),
-    /// which will trigger the transposer engine to remove the associated events.
-    ///
-    /// You can only generate a handle for an event in the same update that creates the event in the first place,
-    /// so you need to create them in advance or you will not be able to interact with that event until it actually
-    /// occurs.
-    pub fn get_expire_handle(&mut self, index: usize) -> u64 {
-        let handles = &mut self.new_expire_handles;
 
-        if handles.get(&index).is_none() {
-            let handle = self.expire_handle_factory.next();
-            handles.insert(index, handle);
+    pub(super) fn destroy(self) -> (
+        Vec<ScheduledEvent<T>>,
+        Vec<T::Output>,
+        ExpireHandleFactory,
+        HashMap<usize, ExpireHandle>,
+    ) {
+        (
+            self.new_events.into_inner().unwrap(),
+            self.emitted_events.into_inner().unwrap(),
+            self.expire_handle_factory,
+            self.new_expire_handles.into_inner().unwrap(),
+        )
+    }
+
+    pub fn schedule_event(&self, time: T::Time, payload: T::Scheduled) {
+        let mut new_events = self.new_events.lock().unwrap();
+        new_events.push(Event {
+            timestamp: time,
+            payload,
+        });
+    }
+
+    pub fn schedule_event_expireable(&self, time: T::Time, payload: T::Scheduled) -> ExpireHandle {
+        let mut new_events = self.new_events.lock().unwrap();
+        let mut new_expire_handles = self.new_expire_handles.lock().unwrap();
+
+        let index = new_events.len();
+        let handle = self.expire_handle_factory.next();
+
+        new_events.push(Event {
+            timestamp: time,
+            payload,
+        });
+        new_expire_handles.insert(index, handle);
+
+        handle
+    }
+
+    pub fn emit_event(&self, payload: T::Output) {
+        let mut emitted_events = self.emitted_events.lock().unwrap();
+        emitted_events.push(payload);
+    }
+}
+
+pub struct UpdateContext<T: Transposer> {
+    // this is really an AtomicNonZeroU64
+    pub(super) new_events: Mutex<Vec<ScheduledEvent<T>>>,
+    pub(super) emitted_events: Mutex<Vec<T::Output>>,
+    pub(super) expired_events: Mutex<Vec<ExpireHandle>>,
+
+    pub(super) expire_handle_factory: ExpireHandleFactory,
+    pub(super) new_expire_handles: Mutex<HashMap<usize, ExpireHandle>>,
+    // todo add seeded deterministic random function
+
+    pub(super) exit: AtomicBool,
+}
+
+impl<T: Transposer> UpdateContext<T> {
+    pub(super) fn new(handle_factory: ExpireHandleFactory) -> Self {
+        Self {
+            new_events: Mutex::new(Vec::new()),
+            emitted_events: Mutex::new(Vec::new()),
+            expired_events: Mutex::new(Vec::new()),
+            expire_handle_factory: handle_factory,
+            new_expire_handles: Mutex::new(HashMap::new()),
+            exit: AtomicBool::new(false),
         }
-
-        handles[&index].get()
     }
 
-    pub(super) fn get_expire_handle_factory(self) -> ExpireHandleFactory {
-        self.expire_handle_factory
+    pub(super) fn destroy(self) -> (
+        Vec<ScheduledEvent<T>>,
+        Vec<T::Output>,
+        Vec<ExpireHandle>,
+        ExpireHandleFactory,
+        HashMap<usize, ExpireHandle>,
+        bool,
+    ) {
+        (
+            self.new_events.into_inner().unwrap(),
+            self.emitted_events.into_inner().unwrap(),
+            self.expired_events.into_inner().unwrap(),
+            self.expire_handle_factory,
+            self.new_expire_handles.into_inner().unwrap(),
+            self.exit.into_inner(),
+        )
     }
 
-    // todo add functions to get state from other streams somehow...
+    pub fn schedule_event(&self, time: T::Time, payload: T::Scheduled) {
+        let mut new_events = self.new_events.lock().unwrap();
+        new_events.push(Event {
+            timestamp: time,
+            payload,
+        });
+    }
+
+    pub fn schedule_event_expireable(&self, time: T::Time, payload: T::Scheduled) -> ExpireHandle {
+        let mut new_events = self.new_events.lock().unwrap();
+        let mut new_expire_handles = self.new_expire_handles.lock().unwrap();
+
+        let index = new_events.len();
+        let handle = self.expire_handle_factory.next();
+
+        new_events.push(Event {
+            timestamp: time,
+            payload,
+        });
+        new_expire_handles.insert(index, handle);
+
+        handle
+    }
+
+    pub fn emit_event(&self, payload: T::Output) {
+        let mut emitted_events = self.emitted_events.lock().unwrap();
+        emitted_events.push(payload);
+    }
+
+    pub fn expire_event(&self, handle: ExpireHandle) {
+        let mut expired_events = self.expired_events.lock().unwrap();
+        expired_events.push(handle);
+    }
+
+    pub fn exit(&self) {
+        self.exit.fetch_or(true, Ordering::SeqCst);
+    }
 }

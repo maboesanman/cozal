@@ -2,7 +2,7 @@ mod context;
 mod engine;
 mod transposer;
 
-pub use context::TransposerContext;
+pub use context::{InitContext, UpdateContext};
 pub use engine::TransposerEngine;
 pub use expire_handle::ExpireHandle;
 pub use transposer::*;

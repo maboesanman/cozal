@@ -1,54 +1,6 @@
-use super::context::TransposerContext;
-use super::expire_handle::ExpireHandle;
+use super::context::{InitContext, UpdateContext};
 use crate::core::{event::RollbackPayload, Event};
 use async_trait::async_trait;
-
-/// The result of the init function for a [`Transposer`].
-pub struct InitResult<T: Transposer> {
-    /// Events to initialize the schedule with.
-    pub new_events: Vec<ScheduledEvent<T>>,
-
-    /// New events to yield downstream
-    ///
-    /// the time is not specified here, because events are always emitted exactly when they are created.
-    /// In the case of the [`InitResult`], they are emitted with `T::Time.default()`.
-    ///
-    /// If you need to emit an event in the future, schedule an internal event that, when handled, emits an output event.
-    pub emitted_events: Vec<T::Output>,
-}
-
-/// The result of the update function for a [`Transposer`].
-pub struct UpdateResult<T: Transposer> {
-    /// A [`Vec`] of expire handles.
-    pub expired_events: Vec<ExpireHandle>,
-
-    /// New events to schedule. The order events are placed here is important,
-    /// as the expiration handles are created by pointing to a specific index in the
-    /// new events array.
-    pub new_events: Vec<ScheduledEvent<T>>,
-
-    /// New events to yield downstream
-    ///
-    /// the time is not specified here, because events are always emitted exactly when they are created.
-    ///
-    /// If you need to emit an event in the future, schedule an internal event that, when handled, emits an output event.
-    pub emitted_events: Vec<T::Output>,
-
-    /// Whether or not the stream should yield [`Done`](crate::core::schedule_stream::schedule_stream::SchedulePoll::Done)
-    /// and terminate.
-    pub exit: bool,
-}
-
-impl<T: Transposer> Default for UpdateResult<T> {
-    fn default() -> Self {
-        UpdateResult {
-            expired_events: Vec::new(),
-            new_events: Vec::new(),
-            emitted_events: Vec::new(),
-            exit: false,
-        }
-    }
-}
 
 pub type InputEvent<T> = Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Input>>;
 pub type ScheduledEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Scheduled>;
@@ -105,7 +57,7 @@ pub trait Transposer: Clone + Unpin + Send + Sync {
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`TransposerContext`] documentation.
-    async fn init_events(&mut self, cx: &TransposerContext) -> InitResult<Self>;
+    async fn init_events(&mut self, cx: &InitContext<Self>);
 
     /// The function to respond to input.
     ///
@@ -121,8 +73,8 @@ pub trait Transposer: Clone + Unpin + Send + Sync {
         &mut self,
         time: Self::Time,
         inputs: &[Self::Input],
-        cx: &TransposerContext,
-    ) -> UpdateResult<Self>;
+        cx: &UpdateContext<Self>,
+    );
 
     /// The function to update your transposer.
     ///
@@ -138,8 +90,8 @@ pub trait Transposer: Clone + Unpin + Send + Sync {
         &mut self,
         time: Self::Time,
         payload: &Self::Scheduled,
-        cx: &TransposerContext,
-    ) -> UpdateResult<Self>;
+        cx: &UpdateContext<Self>,
+    );
 
     /// Filter out events you know you can't do anything with.
     /// This reduces the amount of events you have to remember for rollback to work
