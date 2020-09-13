@@ -2,18 +2,12 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::{num::NonZeroU64, sync::atomic::AtomicU64};
 
 /// this is the handle that you use to expire scheduled events.
-///
-/// returning this is how
 #[derive(Hash, Eq, PartialEq, Debug, Copy)]
 pub struct ExpireHandle(NonZeroU64);
 
 impl ExpireHandle {
     unsafe fn new_unchecked(value: u64) -> Self {
         ExpireHandle(NonZeroU64::new_unchecked(value))
-    }
-
-    pub(super) fn get(&self) -> u64 {
-        self.0.get()
     }
 }
 

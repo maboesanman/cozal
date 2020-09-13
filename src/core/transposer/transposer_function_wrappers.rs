@@ -1,9 +1,9 @@
 use super::{
-    context::TransposerContext,
+    context::{InitContext, UpdateContext},
     expire_handle::ExpireHandleFactory,
     internal_scheduled_event::{InternalScheduledEvent, Source},
     transposer_frame::TransposerFrame,
-    ExpireHandle, InternalOutputEvent, ScheduledEvent, Transposer, UpdateResult,
+    ExpireHandle, InternalOutputEvent, ScheduledEvent, Transposer,
 };
 use crate::core::Event;
 use im::{HashMap, OrdSet};
@@ -24,14 +24,20 @@ pub(super) async fn init_events<T: Transposer>(transposer: T) -> WrappedInitResu
         expire_handle_factory: ExpireHandleFactory::new(),
     };
 
-    let cx = TransposerContext::new(initial_frame.expire_handle_factory.clone());
-    let result = T::init_events(&mut initial_frame.transposer, &cx).await;
-    initial_frame.expire_handle_factory = cx.expire_handle_factory.clone();
+    let cx = InitContext::new(initial_frame.expire_handle_factory.clone());
+    T::init_events(&mut initial_frame.transposer, &cx).await;
+    let (new_events, emitted_events, expire_handle_factory, mut new_expire_handles) = cx.destroy();
+    initial_frame.expire_handle_factory = expire_handle_factory;
     let source = Source::Init;
 
-    process_new_events(&mut initial_frame, source, result.new_events, cx);
+    process_new_events(
+        &mut initial_frame,
+        source,
+        new_events,
+        &mut new_expire_handles,
+    );
 
-    let output_events = prepare_output_events::<T>(T::Time::default(), result.emitted_events);
+    let output_events = prepare_output_events::<T>(T::Time::default(), emitted_events);
 
     WrappedInitResult {
         initial_frame,
@@ -57,13 +63,10 @@ pub(super) async fn handle_input<T: Transposer>(
     std::mem::drop(lock);
 
     new_frame.time = time;
-    let cx = TransposerContext::new(new_frame.expire_handle_factory.clone());
-    let result = new_frame.transposer.handle_input(time, inputs, &cx).await;
-    new_frame.expire_handle_factory = cx.expire_handle_factory.clone();
-    let source = Source::Input(time);
-    let result = handle_update_result(new_frame, source, result, cx);
+    let cx = UpdateContext::new(time, new_frame.expire_handle_factory.clone());
+    new_frame.transposer.handle_input(time, inputs, &cx).await;
 
-    result
+    handle_update_result(new_frame, Source::Input(time), cx)
 }
 
 pub(super) async fn handle_scheduled<T: Transposer>(
@@ -77,35 +80,41 @@ pub(super) async fn handle_scheduled<T: Transposer>(
     std::mem::drop(lock);
 
     new_frame.time = event.time;
-    let cx = TransposerContext::new(new_frame.expire_handle_factory.clone());
-    let result = new_frame
+    let cx = UpdateContext::new(event.time, new_frame.expire_handle_factory.clone());
+    new_frame
         .transposer
         .handle_scheduled(event.time, &event.payload, &cx)
         .await;
-    new_frame.expire_handle_factory = cx.expire_handle_factory.clone();
-    let source = Source::Schedule(event);
-    let result = handle_update_result(new_frame, source, result, cx);
 
-    result
+    handle_update_result(new_frame, Source::Schedule(event), cx)
 }
 
 fn handle_update_result<T: Transposer>(
     mut frame: TransposerFrame<T>,
     source: Source<T>,
-    result: UpdateResult<T>,
-    cx: TransposerContext,
+    cx: UpdateContext<T>,
 ) -> WrappedUpdateResult<T> {
+    let (
+        new_events,
+        emitted_events,
+        expired_events,
+        expire_handle_factory,
+        mut new_expire_handles,
+        exit,
+    ) = cx.destroy();
+    frame.expire_handle_factory = expire_handle_factory;
+
     let time = source.time();
-    process_new_events(&mut frame, source, result.new_events, cx);
+    process_new_events(&mut frame, source, new_events, &mut new_expire_handles);
 
-    remove_expired_events(&mut frame, result.expired_events);
+    remove_expired_events(&mut frame, expired_events);
 
-    let output_events = prepare_output_events::<T>(time, result.emitted_events);
+    let output_events = prepare_output_events::<T>(time, emitted_events);
 
     WrappedUpdateResult {
         new_frame: frame,
         output_events,
-        exit: result.exit,
+        exit,
     }
 }
 
@@ -113,14 +122,14 @@ fn process_new_events<T: Transposer>(
     frame: &mut TransposerFrame<T>,
     source: Source<T>,
     events: Vec<ScheduledEvent<T>>,
-    mut cx: TransposerContext,
+    new_expire_handles: &mut std::collections::HashMap<usize, ExpireHandle>,
 ) {
     for (index, event) in events.into_iter().enumerate() {
         // create new event
         let new_event = InternalScheduledEvent {
             source: source.clone(),
             source_index: index,
-            expire_handle: cx.new_expire_handles.remove(&index),
+            expire_handle: new_expire_handles.remove(&index),
             time: event.timestamp,
             payload: event.payload,
         };

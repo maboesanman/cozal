@@ -16,6 +16,15 @@ impl<T: Debug + Copy + Ord, P: Debug> Debug for Event<T, P> {
     }
 }
 
+impl<T: Copy + Ord, P: Clone> Clone for Event<T, P> {
+    fn clone(&self) -> Self {
+        Self {
+            timestamp: self.timestamp,
+            payload: self.payload.clone(),
+        }
+    }
+}
+
 impl<T: Copy + Ord, P> Ord for Event<T, P> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.timestamp.cmp(&other.timestamp)

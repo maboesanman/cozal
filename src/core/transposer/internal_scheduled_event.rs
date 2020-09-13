@@ -22,11 +22,10 @@ impl<T: Transposer> Ord for InternalScheduledEvent<T> {
             Ordering::Equal => self.source.cmp(&other.source),
             ord => return ord,
         };
-        let sort = match sort {
+        match sort {
             Ordering::Equal => self.source_index.cmp(&other.source_index),
             ord => return ord,
-        };
-        sort
+        }
     }
 }
 
