@@ -105,6 +105,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn unstage(&mut self) -> Option<(T::Time, Vec<T::Input>)> {
         match std::mem::take(self) {
             Self::Input(fut) => Some(fut.recover_pinned()),
@@ -165,6 +166,7 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
         (time, inputs)
     }
 
+    #[allow(dead_code)]
     pub fn time(&self) -> T::Time {
         self.time
     }

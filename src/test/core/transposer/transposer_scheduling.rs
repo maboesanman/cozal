@@ -107,11 +107,11 @@ fn test_events_scheduled_correctly() {
     let engine = futures::executor::block_on(TransposerEngine::new(transposer, EmptyStream {}));
     let stream = engine.to_target(100);
     let mut iter = futures::executor::block_on_stream(stream);
-    let x = iter.next();
-    let x = iter.next();
-    let x = iter.next();
-    let x = iter.next();
-    let x = iter.next();
+    iter.next();
+    iter.next();
+    iter.next();
+    iter.next();
+    iter.next();
     if let Some(Event {
         payload: RollbackPayload::Payload(payload),
         ..

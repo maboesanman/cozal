@@ -1,5 +1,5 @@
-use std::{collections::BTreeMap, task::Context};
 use std::collections::VecDeque;
+use std::{collections::BTreeMap, task::Context};
 
 use std::cmp::Ordering;
 use std::sync::{Arc, RwLock};
@@ -10,16 +10,11 @@ use crate::{
 };
 
 use super::{
-    transposer::Transposer,
-    transposer_frame::TransposerFrame,
-    transposer_function_wrappers::init_events,
-    transposer_update::TransposerUpdate,
+    transposer::Transposer, transposer_frame::TransposerFrame,
+    transposer_function_wrappers::init_events, transposer_update::TransposerUpdate,
 };
 
-use super::{
-    transposer_history::TransposerHistory, InputEvent, InternalOutputEvent,
-    OutputEvent,
-};
+use super::{transposer_history::TransposerHistory, InputEvent, InternalOutputEvent, OutputEvent};
 
 pub(super) type InputBuffer<T> = BTreeMap<<T as Transposer>::Time, Vec<<T as Transposer>::Input>>;
 pub(super) type InputStreamItem<T> = InputEvent<T>;
@@ -82,6 +77,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         };
     }
 
+    #[allow(dead_code)]
     pub fn unstage_update(&mut self) {
         if let Some((time, mut events)) = self.current_update.unstage() {
             match self.input_buffer.get_mut(&time) {
