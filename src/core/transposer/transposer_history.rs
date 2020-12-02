@@ -7,7 +7,6 @@ pub(super) struct TransposerHistory<T: Transposer> {
 struct HistoryFrame<T: Transposer> {
     pub start: TransposerFrame<T>,
     pub events: Vec<EventFrame<T>>,
-    pub outputs: bool,
 }
 
 struct EventFrame<T: Transposer> {
@@ -25,7 +24,6 @@ impl<T: Transposer> TransposerHistory<T> {
 
     pub fn push_events(&mut self, time: T::Time, inputs: Vec<T::Input>, outputs: bool) {
         let frame = self.frames.last_mut().unwrap();
-        frame.outputs |= outputs;
         frame.events.push(EventFrame {
             time,
             inputs,
@@ -37,7 +35,6 @@ impl<T: Transposer> TransposerHistory<T> {
         self.frames.push(HistoryFrame {
             start: frame,
             events: Vec::new(),
-            outputs: false,
         })
     }
 
@@ -50,22 +47,23 @@ impl<T: Transposer> TransposerHistory<T> {
         }
 
         let mut events_emitted = false;
+        let mut replay_events = Vec::new();
+
         while let Some(top) = self.frames.pop() {
             if top.start.time < time {
                 self.frames.push(top);
                 break;
             }
 
-            events_emitted |= top.outputs;
+            for event in top.events {
+                events_emitted |= event.outputs;
+                replay_events.push((event.time, event.inputs));
+            }
         }
         if let Some(top) = self.frames.last_mut() {
-            let mut replay_events = Vec::new();
             while let Some(event_frame) = top.events.pop() {
-                if event_frame.time < time {
-                    events_emitted |= event_frame.outputs;
-                } else {
-                    replay_events.push((event_frame.time, event_frame.inputs));
-                }
+                events_emitted |= event_frame.outputs;
+                replay_events.push((event_frame.time, event_frame.inputs));
             }
             (top.start.clone(), replay_events, events_emitted)
         } else {
