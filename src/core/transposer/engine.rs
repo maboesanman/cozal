@@ -6,7 +6,7 @@ use pin_project::pin_project;
 
 use crate::{
     core::event::RollbackPayload,
-    core::schedule_stream::{SchedulePoll, ScheduleStream},
+    core::schedule_stream::{SchedulePoll, StatefulScheduleStream},
     core::Event,
 };
 
@@ -15,7 +15,7 @@ use super::{
     transposer::Transposer,
 };
 
-/// A struct which implements the [`ScheduleStream`] trait for a [`Transposer`].
+/// A struct which implements the [`StatefulScheduleStream`] trait for a [`Transposer`].
 ///
 /// This implementation does the following:
 /// - rollback state and replay to resolve instability in the order of the input stream.
@@ -43,16 +43,18 @@ impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<T>> + Unpin + Send
     }
 }
 
-impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<T>> + Unpin + Send> ScheduleStream
-    for TransposerEngine<'a, T, S>
+impl<'a, T: Transposer + 'a, S: Stream<Item = InputStreamItem<T>> + Unpin + Send>
+    StatefulScheduleStream for TransposerEngine<'a, T, S>
 {
     type Time = T::Time;
     type Item = Event<T::Time, RollbackPayload<T::Output>>;
-    fn poll_next(
+    type State = T;
+
+    fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> SchedulePoll<Self::Time, Self::Item> {
+    ) -> (T, SchedulePoll<Self::Time, Self::Item>) {
         let projection = self.project();
         let mut input_stream = projection.input_stream;
         let internal = projection.internal;

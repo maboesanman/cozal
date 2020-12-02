@@ -1,4 +1,4 @@
-use crate::core::schedule_stream::ScheduleStreamExt;
+use crate::core::schedule_stream::StatefulScheduleStreamExt;
 use crate::core::{event::RollbackPayload, transposer::TransposerEngine, Event};
 
 use super::test_transposer::{EmptyStream, EventCall, TestTransposer};
@@ -31,10 +31,13 @@ fn test_events_scheduled_correctly() {
     iter.next();
     iter.next();
     iter.next();
-    if let Some(Event {
-        payload: RollbackPayload::Payload(payload),
-        ..
-    }) = iter.next()
+    if let Some((
+        _state,
+        Event {
+            payload: RollbackPayload::Payload(payload),
+            ..
+        },
+    )) = iter.next()
     {
         assert_eq!(
             payload,
@@ -47,7 +50,5 @@ fn test_events_scheduled_correctly() {
                 EventCall::Scheduled(8),
             ]
         );
-    } else {
-        panic!()
     }
 }

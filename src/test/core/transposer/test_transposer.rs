@@ -30,8 +30,8 @@ pub(crate) enum EventCall {
 
 #[derive(Clone)]
 pub(crate) struct TestTransposer {
-    init_events: Vec<ScheduledEvent<Self>>,
-    event_calls: Vec<EventCall>,
+    pub init_events: Vec<ScheduledEvent<Self>>,
+    pub event_calls: Vec<EventCall>,
 }
 
 impl TestTransposer {

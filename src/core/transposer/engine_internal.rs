@@ -166,8 +166,8 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         &mut self,
         time: T::Time,
         cx: &mut Context<'_>,
-    ) -> SchedulePoll<T::Time, OutputEvent<T>> {
-        loop {
+    ) -> (T, SchedulePoll<T::Time, OutputEvent<T>>) {
+        let poll = loop {
             self.try_stage_update();
             if let Some(timestamp) = self.needs_rollback {
                 self.needs_rollback = None;
@@ -201,7 +201,16 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
                 SchedulePoll::Scheduled(t) => break SchedulePoll::Scheduled(t),
                 SchedulePoll::Done => break SchedulePoll::Done,
             }
-        }
+        };
+        (
+            // TODO make this a fancy smart pointer which tracks whether or not it has been derefed.
+            self.current_transposer_frame
+                .read()
+                .unwrap()
+                .transposer
+                .clone(),
+            poll,
+        )
     }
 
     pub fn size_hint(&self) -> (usize, Option<usize>) {
