@@ -1,7 +1,13 @@
-use super::{ExpireHandle, InternalOutputEvent, ScheduledEvent, Transposer, context::{InitContext, UpdateContext}, expire_handle::ExpireHandleFactory, internal_scheduled_event::{InternalScheduledEvent, Source}, transposer_frame::TransposerFrame};
+use super::{
+    context::{InitContext, UpdateContext},
+    expire_handle::ExpireHandleFactory,
+    internal_scheduled_event::{InternalScheduledEvent, Source},
+    transposer_frame::TransposerFrame,
+    ExpireHandle, InternalOutputEvent, ScheduledEvent, Transposer,
+};
 use crate::core::Event;
 use im::{HashMap, OrdSet};
-use std::{sync::{Arc}};
+use std::sync::Arc;
 
 pub(super) struct WrappedInitResult<T: Transposer> {
     pub initial_frame: TransposerFrame<T>,

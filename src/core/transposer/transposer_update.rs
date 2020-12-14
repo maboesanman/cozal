@@ -1,7 +1,17 @@
-use super::{curried_input_future::CurriedInputFuture, curried_schedule_future::CurriedScheduleFuture, internal_scheduled_event::InternalScheduledEvent, transposer::Transposer, transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult};
-use futures::{Future, channel::oneshot::Sender};
+use super::{
+    curried_input_future::CurriedInputFuture, curried_schedule_future::CurriedScheduleFuture,
+    internal_scheduled_event::InternalScheduledEvent, transposer::Transposer,
+    transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult,
+};
+use futures::{channel::oneshot::Sender, Future};
 use pin_project::pin_project;
-use std::{marker::PhantomPinned, pin::Pin, sync::Arc, sync::RwLock, task::{Context, Poll}};
+use std::{
+    marker::PhantomPinned,
+    pin::Pin,
+    sync::Arc,
+    sync::RwLock,
+    task::{Context, Poll},
+};
 
 pub(super) enum TransposerUpdate<'a, T: Transposer> {
     // Input event processing has begun; future has not returned yet.
@@ -11,10 +21,23 @@ pub(super) enum TransposerUpdate<'a, T: Transposer> {
     Schedule(Pin<Box<CurriedScheduleFuture<'a, T>>>),
 
     // Input event processing has finished processing; resources are released.
-    ReadyInput((T::Time, Vec<T::Input>, T::InputState, WrappedUpdateResult<T>)),
+    ReadyInput(
+        (
+            T::Time,
+            Vec<T::Input>,
+            T::InputState,
+            WrappedUpdateResult<T>,
+        ),
+    ),
 
     // Schedule event processing has finished processing; resources are released.
-    ReadyScheduled((Arc<InternalScheduledEvent<T>>, Option<T::InputState>, WrappedUpdateResult<T>)),
+    ReadyScheduled(
+        (
+            Arc<InternalScheduledEvent<T>>,
+            Option<T::InputState>,
+            WrappedUpdateResult<T>,
+        ),
+    ),
 
     // there is no update.
     None,
@@ -82,7 +105,8 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
                     }
 
                     // this replaces self with the none variant, decomposes the current ready input, and returns it in the poll
-                    if let Self::ReadyInput((time, inputs, in_state, result)) = std::mem::take(self) {
+                    if let Self::ReadyInput((time, inputs, in_state, result)) = std::mem::take(self)
+                    {
                         break TransposerUpdatePoll::Ready((result, time, inputs));
                     } else {
                         unreachable!()
@@ -95,7 +119,9 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
                     }
 
                     // this replaces self with the none variant, decomposes the current ready input, and returns it in the poll
-                    if let Self::ReadyScheduled((event_arc, in_state, result)) = std::mem::take(self) {
+                    if let Self::ReadyScheduled((event_arc, in_state, result)) =
+                        std::mem::take(self)
+                    {
                         break TransposerUpdatePoll::Ready((result, time, Vec::new()));
                     } else {
                         unreachable!()
@@ -116,17 +142,17 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
             Self::Input(fut) => {
                 let (time, inputs, in_state) = fut.recover_pinned();
                 Some((time, inputs, Some(in_state)))
-            },
+            }
             Self::Schedule(fut) => {
                 let (event_arc, in_state) = fut.recover_pinned();
                 Some((event_arc.time, Vec::new(), in_state))
             }
             Self::ReadyInput((time, inputs, in_state, _update_result)) => {
                 Some((time, inputs, Some(in_state)))
-            },
+            }
             Self::ReadyScheduled((event_arc, in_state, _update_result)) => {
                 Some((event_arc.time, Vec::new(), in_state))
-            },
+            }
             Self::None => None,
         }
     }
@@ -138,4 +164,3 @@ pub(super) enum TransposerUpdatePoll<T: Transposer> {
     NeedsState,
     Pending,
 }
-

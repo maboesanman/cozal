@@ -1,6 +1,6 @@
-use std::{collections::HashMap, sync::atomic::AtomicBool, sync::atomic::Ordering};
-use futures::channel::oneshot::Receiver;
 use crate::core::Event;
+use futures::channel::oneshot::Receiver;
+use std::{collections::HashMap, sync::atomic::AtomicBool, sync::atomic::Ordering};
 
 use super::{
     expire_handle::{ExpireHandle, ExpireHandleFactory},
@@ -50,7 +50,11 @@ impl<T: Transposer> InitContext<T> {
     /// This allows you to schedule events to happen in the future.
     /// As long as the time you supply is not less than the current time,
     /// the event can be scheduled.
-    pub async fn schedule_event(&mut self, time: T::Time, payload: T::Scheduled) -> Result<(), &str> {
+    pub async fn schedule_event(
+        &mut self,
+        time: T::Time,
+        payload: T::Scheduled,
+    ) -> Result<(), &str> {
         if time < T::Time::default() {
             return Err("time must be in the future");
         }
@@ -107,19 +111,17 @@ impl<S> LazyState<S> {
     pub fn get(&mut self) -> Option<&S> {
         match self {
             Self::Ready(s) => Some(s),
-            Self::Pending(r) => {
-                match r.try_recv().unwrap() {
-                    Some(s) => {
-                        std::mem::swap(self, &mut Self::Ready(s));
-                        if let Self::Ready(s) = self {
-                            Some(s)
-                        } else {
-                            unreachable!()
-                        }
-                    },
-                    None => None,
+            Self::Pending(r) => match r.try_recv().unwrap() {
+                Some(s) => {
+                    std::mem::swap(self, &mut Self::Ready(s));
+                    if let Self::Ready(s) = self {
+                        Some(s)
+                    } else {
+                        unreachable!()
+                    }
                 }
-            }
+                None => None,
+            },
         }
     }
 
@@ -140,7 +142,7 @@ pub struct UpdateContext<'a, T: Transposer> {
     pub(super) new_events: Vec<ScheduledEvent<T>>,
     pub(super) emitted_events: Vec<T::Output>,
     pub(super) expired_events: Vec<ExpireHandle>,
-    
+
     // this is really an AtomicNonZeroU64
     pub(super) expire_handle_factory: &'a mut ExpireHandleFactory,
     pub(super) new_expire_handles: HashMap<usize, ExpireHandle>,
@@ -153,7 +155,11 @@ pub struct UpdateContext<'a, T: Transposer> {
 }
 
 impl<'a, T: Transposer> UpdateContext<'a, T> {
-    pub(super) fn new_input(time: T::Time, expire_handle_factory: &'a mut ExpireHandleFactory, input_state: &'a mut LazyState<T::InputState>) -> Self {
+    pub(super) fn new_input(
+        time: T::Time,
+        expire_handle_factory: &'a mut ExpireHandleFactory,
+        input_state: &'a mut LazyState<T::InputState>,
+    ) -> Self {
         Self {
             time,
 
@@ -171,7 +177,11 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
         }
     }
 
-    pub(super) fn new_scheduled(time: T::Time, expire_handle_factory: &'a mut ExpireHandleFactory, input_state: &'a mut LazyState<T::InputState>) -> Self {
+    pub(super) fn new_scheduled(
+        time: T::Time,
+        expire_handle_factory: &'a mut ExpireHandleFactory,
+        input_state: &'a mut LazyState<T::InputState>,
+    ) -> Self {
         Self {
             time,
 
@@ -196,7 +206,11 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
     /// This allows you to schedule events to happen in the future.
     /// As long as the time you supply is not less than the current time,
     /// the event can be scheduled.
-    pub async fn schedule_event(&mut self, time: T::Time, payload: T::Scheduled) -> Result<(), &str> {
+    pub async fn schedule_event(
+        &mut self,
+        time: T::Time,
+        payload: T::Scheduled,
+    ) -> Result<(), &str> {
         if time < self.time {
             return Err("time must be in the future");
         }

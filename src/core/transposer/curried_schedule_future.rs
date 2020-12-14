@@ -1,8 +1,18 @@
-use super::{UpdateContext, context::LazyState, internal_scheduled_event::InternalScheduledEvent, transposer::Transposer, transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult};
-use futures::{Future, future::Lazy};
+use super::{
+    context::LazyState, internal_scheduled_event::InternalScheduledEvent, transposer::Transposer,
+    transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult,
+    UpdateContext,
+};
+use futures::channel::oneshot::{channel, Receiver, Sender};
+use futures::{future::Lazy, Future};
 use pin_project::pin_project;
-use std::{marker::PhantomPinned, mem::MaybeUninit, pin::Pin, sync::Arc, task::{Context, Poll}};
-use futures::channel::oneshot::{channel, Sender, Receiver};
+use std::{
+    marker::PhantomPinned,
+    mem::MaybeUninit,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 #[pin_project]
 pub(super) struct CurriedScheduleFuture<'a, T: Transposer + 'a> {
@@ -29,9 +39,7 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         state: Option<T::InputState>,
     ) -> (Pin<Box<Self>>, Option<Sender<T::InputState>>) {
         let (state, sender) = match state {
-            Some(s) => {
-                (LazyState::Ready(s), None)
-            }
+            Some(s) => (LazyState::Ready(s), None),
             None => {
                 let (send, recv) = channel();
                 (LazyState::Pending(recv), Some(send))
@@ -70,9 +78,15 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
 
         // create and initialize context
         let cx: UpdateContext<'a, T>;
-        cx = UpdateContext::new_scheduled(event_arc.time, &mut frame_ref.expire_handle_factory, state_ref);
+        cx = UpdateContext::new_scheduled(
+            event_arc.time,
+            &mut frame_ref.expire_handle_factory,
+            state_ref,
+        );
         let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut pinned);
-        unsafe { Pin::get_unchecked_mut(mut_ref).update_cx = MaybeUninit::new(cx); }
+        unsafe {
+            Pin::get_unchecked_mut(mut_ref).update_cx = MaybeUninit::new(cx);
+        }
 
         // take ref from newly pinned ref
         let cx_ref = unsafe {
@@ -80,15 +94,21 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
             ptr.as_mut().unwrap()
         };
 
-        let fut = frame_ref.transposer.handle_scheduled(event_arc.time, &event_ref.payload, cx_ref);
+        let fut = frame_ref
+            .transposer
+            .handle_scheduled(event_arc.time, &event_ref.payload, cx_ref);
         let fut = Box::new(fut);
         let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut pinned);
-        unsafe { Pin::get_unchecked_mut(mut_ref).update_fut = MaybeUninit::new(fut); }
+        unsafe {
+            Pin::get_unchecked_mut(mut_ref).update_fut = MaybeUninit::new(fut);
+        }
 
         (pinned, sender)
     }
 
-    pub fn recover_pinned(self: Pin<Box<Self>>) -> (Arc<InternalScheduledEvent<T>>, Option<T::InputState>) {
+    pub fn recover_pinned(
+        self: Pin<Box<Self>>,
+    ) -> (Arc<InternalScheduledEvent<T>>, Option<T::InputState>) {
         let owned = unsafe { Pin::into_inner_unchecked(self) };
         (owned.event_arc, owned.state.destroy())
     }
@@ -102,12 +122,9 @@ impl<'a, T: Transposer + 'a> Future for CurriedScheduleFuture<'a, T> {
     type Output = WrappedUpdateResult<T>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let fut = unsafe { self.map_unchecked_mut(|w|
-            w.update_fut
-            .as_mut_ptr()
-            .as_mut().unwrap()
-            .as_mut()
-        ) };
+        let fut = unsafe {
+            self.map_unchecked_mut(|w| w.update_fut.as_mut_ptr().as_mut().unwrap().as_mut())
+        };
         match fut.poll(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(()) => {
@@ -116,4 +133,3 @@ impl<'a, T: Transposer + 'a> Future for CurriedScheduleFuture<'a, T> {
         }
     }
 }
-

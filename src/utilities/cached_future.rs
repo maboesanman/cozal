@@ -7,7 +7,7 @@
 // }
 
 // struct CachedFutureGuard<'a, T> {
-//     inner: 
+//     inner:
 // }
 
 // enum CachedFutureGuardState {

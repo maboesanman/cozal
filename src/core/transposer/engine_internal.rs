@@ -9,7 +9,10 @@ use crate::{
     core::schedule_stream::SchedulePoll,
 };
 
-use super::{engine::EngineStateGuard, transposer::Transposer, transposer_frame::TransposerFrame, transposer_function_wrappers::init_events, transposer_update::TransposerUpdate};
+use super::{
+    engine::EngineStateGuard, transposer::Transposer, transposer_frame::TransposerFrame,
+    transposer_function_wrappers::init_events, transposer_update::TransposerUpdate,
+};
 
 use super::{transposer_history::TransposerHistory, InputEvent, InternalOutputEvent, OutputEvent};
 
