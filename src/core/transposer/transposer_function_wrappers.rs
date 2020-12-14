@@ -7,7 +7,7 @@ use super::{
 };
 use crate::core::Event;
 use im::{HashMap, OrdSet};
-use std::sync::{Arc, RwLock};
+use std::{sync::{Arc}};
 
 pub(super) struct WrappedInitResult<T: Transposer> {
     pub initial_frame: TransposerFrame<T>,
@@ -24,8 +24,8 @@ pub(super) async fn init_events<T: Transposer>(transposer: T) -> WrappedInitResu
         expire_handle_factory: ExpireHandleFactory::new(),
     };
 
-    let cx = InitContext::new(initial_frame.expire_handle_factory.clone());
-    T::init_events(&mut initial_frame.transposer, &cx).await;
+    let mut cx = InitContext::new(initial_frame.expire_handle_factory.clone());
+    T::init_events(&mut initial_frame.transposer, &mut cx).await;
     let (new_events, emitted_events, expire_handle_factory, mut new_expire_handles) = cx.destroy();
     initial_frame.expire_handle_factory = expire_handle_factory;
     let source = Source::Init;
@@ -52,26 +52,24 @@ pub(super) struct WrappedUpdateResult<T: Transposer> {
 }
 
 pub(super) async fn handle_input<T: Transposer>(
-    frame: Arc<RwLock<TransposerFrame<T>>>,
+    frame: &mut TransposerFrame<T>,
     time: T::Time,
     inputs: &[T::Input],
+    input_state: &T::InputState,
 ) -> WrappedUpdateResult<T> {
-    // get a read lock for clone, drop right away
-    // TODO don't clone for this
-    let lock = frame.read().unwrap();
-    let mut new_frame = lock.clone();
-    std::mem::drop(lock);
 
-    new_frame.time = time;
-    let cx = UpdateContext::new(time, new_frame.expire_handle_factory.clone());
-    new_frame.transposer.handle_input(time, inputs, &cx).await;
+    frame.time = time;
 
-    handle_update_result(new_frame, Source::Input(time), cx)
+    let cx = UpdateContext::new_input(time, frame.expire_handle_factory.clone());
+    frame.transposer.handle_input(time, inputs, &cx).await;
+
+    handle_update_result(frame, Source::Input(time), cx)
 }
 
 pub(super) async fn handle_scheduled<T: Transposer>(
-    frame: Arc<RwLock<TransposerFrame<T>>>,
+    frame: &mut TransposerFrame<T>,
     event: Arc<InternalScheduledEvent<T>>,
+    // input_state: &Option<T::InputState>,
 ) -> WrappedUpdateResult<T> {
     // get a read lock for clone, drop right away
     // TODO don't clone for this

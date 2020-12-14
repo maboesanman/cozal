@@ -14,3 +14,5 @@ pub(self) mod transposer_frame;
 pub(self) mod transposer_function_wrappers;
 pub(self) mod transposer_history;
 pub(self) mod transposer_update;
+pub(self) mod curried_input_future;
+pub(self) mod curried_schedule_future;

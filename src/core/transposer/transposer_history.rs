@@ -12,6 +12,7 @@ struct HistoryFrame<T: Transposer> {
 struct EventFrame<T: Transposer> {
     pub time: T::Time,
     pub inputs: Vec<T::Input>,
+    pub state: T::InputState,
     pub outputs: bool,
 }
 
@@ -22,10 +23,17 @@ impl<T: Transposer> TransposerHistory<T> {
         new_history
     }
 
-    pub fn push_events(&mut self, time: T::Time, inputs: Vec<T::Input>, outputs: bool) {
+    pub fn push_events(
+        &mut self,
+        time: T::Time,
+        inputs: Vec<T::Input>,
+        state: T::InputState,
+        outputs: bool,
+    ) {
         self.frames.last_mut().unwrap().events.push(EventFrame {
             time,
             inputs,
+            state,
             outputs,
         });
     }

@@ -10,7 +10,7 @@ use crate::{
 };
 
 use super::{
-    transposer::Transposer, transposer_frame::TransposerFrame,
+    engine::EngineStateGuard, transposer::Transposer, transposer_frame::TransposerFrame,
     transposer_function_wrappers::init_events, transposer_update::TransposerUpdate,
 };
 
@@ -142,7 +142,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         // self.input_buffer = new_input_buffer;
     }
 
-    pub fn insert(&mut self, event: InputStreamItem<T>) {
+    pub fn insert(&mut self, event: InputStreamItem<T>, in_state: T::InputState) {
         let Event { timestamp, payload } = event;
 
         self.prepare_for_insert(timestamp);
@@ -165,8 +165,9 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
     pub fn poll(
         &mut self,
         time: T::Time,
+        in_state: T::InputState,
         cx: &mut Context<'_>,
-    ) -> (T, SchedulePoll<T::Time, OutputEvent<T>>) {
+    ) -> (EngineStateGuard<T>, SchedulePoll<T::Time, OutputEvent<T>>) {
         let poll = loop {
             self.try_stage_update();
             if let Some(timestamp) = self.needs_rollback {
@@ -185,8 +186,12 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
             match self.current_update.poll(time, cx) {
                 SchedulePoll::Ready((result, time, inputs)) => {
                     // push history
-                    self.history
-                        .push_events(time, inputs, !result.output_events.is_empty());
+                    self.history.push_events(
+                        time,
+                        inputs,
+                        in_state,
+                        !result.output_events.is_empty(),
+                    );
                     self.history.push_frame(result.new_frame.clone());
 
                     // write to current_transposer_frame.
@@ -202,13 +207,15 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
                 SchedulePoll::Done => break SchedulePoll::Done,
             }
         };
+        let owned_current_frame = self
+            .current_transposer_frame
+            .read()
+            .unwrap()
+            .transposer
+            .clone();
         (
             // TODO make this a fancy smart pointer which tracks whether or not it has been derefed.
-            self.current_transposer_frame
-                .read()
-                .unwrap()
-                .transposer
-                .clone(),
+            EngineStateGuard::new(owned_current_frame),
             poll,
         )
     }

@@ -23,32 +23,33 @@ fn test_events_scheduled_correctly() {
             payload: 3,
         },
     ]);
-    let engine = futures::executor::block_on(TransposerEngine::new(transposer, EmptyStream {}));
-    let stream = engine.to_target(100);
-    let mut iter = futures::executor::block_on_stream(stream);
-    iter.next();
-    iter.next();
-    iter.next();
-    iter.next();
-    iter.next();
-    if let Some((
-        _state,
-        Event {
-            payload: RollbackPayload::Payload(payload),
-            ..
-        },
-    )) = iter.next()
-    {
-        assert_eq!(
-            payload,
-            vec![
-                EventCall::Scheduled(1),
-                EventCall::Scheduled(2),
-                EventCall::Scheduled(3),
-                EventCall::Scheduled(4),
-                EventCall::Scheduled(6),
-                EventCall::Scheduled(8),
-            ]
-        );
-    }
+    todo!();
+    // let engine = futures::executor::block_on(TransposerEngine::new(transposer, EmptyStream {}));
+    // let stream = engine.to_target(100);
+    // let mut iter = futures::executor::block_on_stream(stream);
+    // iter.next();
+    // iter.next();
+    // iter.next();
+    // iter.next();
+    // iter.next();
+    // if let Some((
+    //     _state,
+    //     Event {
+    //         payload: RollbackPayload::Payload(payload),
+    //         ..
+    //     },
+    // )) = iter.next()
+    // {
+    //     assert_eq!(
+    //         payload,
+    //         vec![
+    //             EventCall::Scheduled(1),
+    //             EventCall::Scheduled(2),
+    //             EventCall::Scheduled(3),
+    //             EventCall::Scheduled(4),
+    //             EventCall::Scheduled(6),
+    //             EventCall::Scheduled(8),
+    //         ]
+    //     );
+    // }
 }

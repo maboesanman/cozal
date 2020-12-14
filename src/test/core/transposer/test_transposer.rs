@@ -47,23 +47,25 @@ impl TestTransposer {
 impl Transposer for TestTransposer {
     type Time = usize;
 
+    type InputState = ();
+
     type Input = usize;
 
     type Scheduled = usize;
 
     type Output = Vec<EventCall>;
 
-    async fn init_events(&mut self, cx: &InitContext<Self>) {
+    async fn init_events(&mut self, cx: &mut InitContext<Self>) {
         for event in self.init_events.iter() {
             let _ = cx.schedule_event(event.timestamp, event.payload);
         }
     }
 
-    async fn handle_input(
-        &mut self,
+    async fn handle_input<'a>(
+        &'a mut self,
         time: Self::Time,
-        inputs: &[Self::Input],
-        cx: &UpdateContext<Self>,
+        inputs: &'a [Self::Input],
+        cx: &'a mut UpdateContext<'a, Self>,
     ) {
         for payload in inputs {
             self.event_calls.push(EventCall::Scheduled(*payload));
@@ -74,11 +76,11 @@ impl Transposer for TestTransposer {
         cx.emit_event(self.event_calls.clone());
     }
 
-    async fn handle_scheduled(
-        &mut self,
+    async fn handle_scheduled<'a>(
+        &'a mut self,
         time: Self::Time,
         payload: &Self::Scheduled,
-        cx: &UpdateContext<Self>,
+        cx: &'a mut UpdateContext<'a, Self>,
     ) {
         self.event_calls.push(EventCall::Scheduled(*payload));
         if payload % 2 == 1 {
