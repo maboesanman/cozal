@@ -55,17 +55,23 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         };
 
         // and with this
+        let event_ref = unsafe {
+            let ptr: *const _ = &pinned.event_arc;
+            ptr.as_ref().unwrap()
+        };
+
+        // and with this
         let state_ref = unsafe {
             let ptr: *mut _ = &mut pinned.state;
             ptr.as_mut().unwrap()
         };
 
         // prepare for updating our pinned struct
-        let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut pinned);
 
         // create and initialize context
-        let mut cx: UpdateContext<'a, T>;
-        cx = UpdateContext::new_scheduled(event_arc.time, &mut frame.expire_handle_factory, state_ref);
+        let cx: UpdateContext<'a, T>;
+        cx = UpdateContext::new_scheduled(event_arc.time, &mut frame_ref.expire_handle_factory, state_ref);
+        let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut pinned);
         unsafe { Pin::get_unchecked_mut(mut_ref).update_cx = MaybeUninit::new(cx); }
 
         // take ref from newly pinned ref
@@ -74,15 +80,17 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
             ptr.as_mut().unwrap()
         };
 
-        let fut = frame.transposer.handle_scheduled(event_arc.time, &event_arc.payload, cx_ref);
+        let fut = frame_ref.transposer.handle_scheduled(event_arc.time, &event_ref.payload, cx_ref);
         let fut = Box::new(fut);
+        let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut pinned);
         unsafe { Pin::get_unchecked_mut(mut_ref).update_fut = MaybeUninit::new(fut); }
 
         (pinned, sender)
     }
 
     pub fn recover_pinned(self: Pin<Box<Self>>) -> (Arc<InternalScheduledEvent<T>>, Option<T::InputState>) {
-        (self.event_arc, self.state.destroy())
+        let owned = unsafe { Pin::into_inner_unchecked(self) };
+        (owned.event_arc, owned.state.destroy())
     }
 
     pub fn time(&self) -> T::Time {

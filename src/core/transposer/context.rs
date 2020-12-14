@@ -112,7 +112,7 @@ impl<S> LazyState<S> {
                     Some(s) => {
                         std::mem::swap(self, &mut Self::Ready(s));
                         if let Self::Ready(s) = self {
-                            Some(&s)
+                            Some(s)
                         } else {
                             unreachable!()
                         }

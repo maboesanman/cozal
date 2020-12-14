@@ -60,11 +60,11 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
         };
 
         // prepare for updating our pinned struct
-        let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut pinned);
 
         // create and initialize context
-        let mut cx: UpdateContext<'a, T>;
-        cx = UpdateContext::new_input(time, &mut frame.expire_handle_factory, state_ref);
+        let cx: UpdateContext<'a, T>;
+        cx = UpdateContext::new_input(time, &mut frame_ref.expire_handle_factory, state_ref);
+        let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut pinned);
         unsafe { Pin::get_unchecked_mut(mut_ref).update_cx = MaybeUninit::new(cx); }
 
         // take ref from newly pinned ref
@@ -74,8 +74,9 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
         };
 
         // initialize update_fut
-        let fut = frame.transposer.handle_input(time, input_ref, cx_ref);
+        let fut = frame_ref.transposer.handle_input(time, input_ref, cx_ref);
         let fut = Box::new(fut);
+        let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut pinned);
         unsafe { Pin::get_unchecked_mut(mut_ref).update_fut = MaybeUninit::new(fut); }
 
         pinned
@@ -85,14 +86,12 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
 
     // this does not recover frame because it may have been half-mutated
     pub fn recover_pinned(self: Pin<Box<Self>>) -> (T::Time, Vec<T::Input>, T::InputState) {
-        let time = self.time;
-        let inputs = unsafe { Pin::into_inner_unchecked(self).inputs };
-        let state = self.state;
-        let state = match state.destroy() {
+        let owned = unsafe { Pin::into_inner_unchecked(self) };
+        let state = match owned.state.destroy() {
             Some(s) => s,
             None => unreachable!()
         };
-        (time, inputs, state)
+        (owned.time, owned.inputs, state)
     }
 
     pub fn time(&self) -> T::Time {
