@@ -98,9 +98,37 @@ impl<T: Transposer> InitContext<T> {
     }
 }
 
-pub(super) enum LazyState<'a, S> {
-    Ready(&'a S),
-    Pending(Receiver<&'a S>),
+pub(super) enum LazyState<S> {
+    Ready(S),
+    Pending(Receiver<S>),
+}
+
+impl<S> LazyState<S> {
+    pub fn get(&mut self) -> Option<&S> {
+        match self {
+            Self::Ready(s) => Some(s),
+            Self::Pending(r) => {
+                match r.try_recv().unwrap() {
+                    Some(s) => {
+                        std::mem::swap(self, &mut Self::Ready(s));
+                        if let Self::Ready(s) = self {
+                            Some(&s)
+                        } else {
+                            unreachable!()
+                        }
+                    },
+                    None => None,
+                }
+            }
+        }
+    }
+
+    pub fn destroy(self) -> Option<S> {
+        match self {
+            Self::Ready(s) => Some(s),
+            Self::Pending(_) => None,
+        }
+    }
 }
 
 /// This is the interface through which you can do a variety of functions in your transposer.
@@ -109,24 +137,23 @@ pub(super) enum LazyState<'a, S> {
 /// though there are more methods to interact with the engine.
 pub struct UpdateContext<'a, T: Transposer> {
     pub(super) time: T::Time,
-    // this is really an AtomicNonZeroU64
     pub(super) new_events: Vec<ScheduledEvent<T>>,
     pub(super) emitted_events: Vec<T::Output>,
     pub(super) expired_events: Vec<ExpireHandle>,
-
-    pub(super) expire_handle_factory: ExpireHandleFactory,
+    
+    // this is really an AtomicNonZeroU64
+    pub(super) expire_handle_factory: &'a mut ExpireHandleFactory,
     pub(super) new_expire_handles: HashMap<usize, ExpireHandle>,
 
-    pub(super) input_state: LazyState<'a, T::InputState>,
+    pub(super) input_state: &'a mut LazyState<T::InputState>,
     pub(super) input_state_accessed: bool,
 
-    // state: reciever: 
     // todo add seeded deterministic random function
     pub(super) exit: AtomicBool,
 }
 
 impl<'a, T: Transposer> UpdateContext<'a, T> {
-    pub(super) fn new_input(time: T::Time, expire_handle_factory: ExpireHandleFactory, state: &'a T::InputState) -> Self {
+    pub(super) fn new_input(time: T::Time, expire_handle_factory: &'a mut ExpireHandleFactory, input_state: &'a mut LazyState<T::InputState>) -> Self {
         Self {
             time,
 
@@ -137,14 +164,14 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
             expire_handle_factory,
             new_expire_handles: HashMap::new(),
 
-            input_state: LazyState::Ready(state),
+            input_state,
             input_state_accessed: false,
 
             exit: AtomicBool::new(false),
         }
     }
 
-    pub(super) fn new_update(time: T::Time, expire_handle_factory: ExpireHandleFactory, input_state: LazyState<'a, T::InputState>) -> Self {
+    pub(super) fn new_scheduled(time: T::Time, expire_handle_factory: &'a mut ExpireHandleFactory, input_state: &'a mut LazyState<T::InputState>) -> Self {
         Self {
             time,
 
