@@ -1,6 +1,8 @@
 use crate::core::Event;
-use futures::channel::oneshot::Receiver;
-use std::{collections::HashMap, sync::atomic::AtomicBool, sync::atomic::Ordering};
+use futures::channel::oneshot::{Receiver, Sender};
+use std::{
+    collections::HashMap, future::ready, pin::Pin, sync::atomic::AtomicBool, sync::atomic::Ordering,
+};
 
 use super::{
     expire_handle::{ExpireHandle, ExpireHandleFactory},
@@ -108,20 +110,18 @@ pub(super) enum LazyState<S> {
 }
 
 impl<S> LazyState<S> {
-    pub fn get(&mut self) -> Option<&S> {
+    pub async fn get(&mut self) -> &S {
         match self {
-            Self::Ready(s) => Some(s),
-            Self::Pending(r) => match r.try_recv().unwrap() {
-                Some(s) => {
-                    std::mem::swap(self, &mut Self::Ready(s));
-                    if let Self::Ready(s) = self {
-                        Some(s)
-                    } else {
-                        unreachable!()
-                    }
+            Self::Ready(s) => s,
+            Self::Pending(r) => {
+                let s = r.await.unwrap();
+                std::mem::swap(self, &mut Self::Ready(s));
+                if let Self::Ready(s) = self {
+                    s
+                } else {
+                    unreachable!()
                 }
-                None => None,
-            },
+            }
         }
     }
 
@@ -148,7 +148,7 @@ pub struct UpdateContext<'a, T: Transposer> {
     pub(super) new_expire_handles: HashMap<usize, ExpireHandle>,
 
     pub(super) input_state: &'a mut LazyState<T::InputState>,
-    pub(super) input_state_accessed: bool,
+    pub(super) input_state_requester: Option<Sender<()>>,
 
     // todo add seeded deterministic random function
     pub(super) exit: AtomicBool,
@@ -171,7 +171,7 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
             new_expire_handles: HashMap::new(),
 
             input_state,
-            input_state_accessed: false,
+            input_state_requester: None,
 
             exit: AtomicBool::new(false),
         }
@@ -181,6 +181,7 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
         time: T::Time,
         expire_handle_factory: &'a mut ExpireHandleFactory,
         input_state: &'a mut LazyState<T::InputState>,
+        input_state_requester: Option<Sender<()>>,
     ) -> Self {
         Self {
             time,
@@ -193,24 +194,23 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
             new_expire_handles: HashMap::new(),
 
             input_state,
-            input_state_accessed: false,
+            input_state_requester,
 
             exit: AtomicBool::new(false),
         }
     }
 
-    pub fn get_input_state(&mut self) -> Result<T::InputState, &str> {
-        unimplemented!();
+    pub async fn get_input_state(&mut self) -> Result<&T::InputState, &str> {
+        if let Some(requester) = std::mem::take(&mut self.input_state_requester) {
+            let _ = requester.send(());
+        }
+        Ok(self.input_state.get().await)
     }
 
     /// This allows you to schedule events to happen in the future.
     /// As long as the time you supply is not less than the current time,
     /// the event can be scheduled.
-    pub async fn schedule_event(
-        &mut self,
-        time: T::Time,
-        payload: T::Scheduled,
-    ) -> Result<(), &str> {
+    pub fn schedule_event(&mut self, time: T::Time, payload: T::Scheduled) -> Result<(), &str> {
         if time < self.time {
             return Err("time must be in the future");
         }
@@ -224,7 +224,7 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
 
     /// The same behavior as [`schedule_event`], but now returning an [`ExpireHandle`]
     /// which can be stored and used to cancel the event in the future.
-    pub async fn schedule_event_expireable(
+    pub fn schedule_event_expireable(
         &mut self,
         time: T::Time,
         payload: T::Scheduled,
@@ -249,12 +249,12 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
     ///
     /// If you need to emit an event in the future at a scheduled time, schedule an internal event that can emit
     /// your event when handled.
-    pub async fn emit_event(&mut self, payload: T::Output) {
+    pub fn emit_event(&mut self, payload: T::Output) {
         self.emitted_events.push(payload);
     }
 
     /// This allows you to expire an event currently in the schedule, as long as you have an [`ExpireHandle`].
-    pub async fn expire_event(&mut self, handle: ExpireHandle) {
+    pub fn expire_event(&mut self, handle: ExpireHandle) {
         self.expired_events.push(handle);
     }
 

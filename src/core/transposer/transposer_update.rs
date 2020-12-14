@@ -3,13 +3,13 @@ use super::{
     internal_scheduled_event::InternalScheduledEvent, transposer::Transposer,
     transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult,
 };
-use futures::{channel::oneshot::Sender, Future};
-use pin_project::pin_project;
+use futures::{
+    channel::oneshot::{Receiver, Sender},
+    Future,
+};
 use std::{
-    marker::PhantomPinned,
     pin::Pin,
     sync::Arc,
-    sync::RwLock,
     task::{Context, Poll},
 };
 
@@ -18,7 +18,12 @@ pub(super) enum TransposerUpdate<'a, T: Transposer> {
     Input(Pin<Box<CurriedInputFuture<'a, T>>>),
 
     // Schedule event processing has begun; future has not returned yet.
-    Schedule(Pin<Box<CurriedScheduleFuture<'a, T>>>),
+    Schedule(
+        (
+            Pin<Box<CurriedScheduleFuture<'a, T>>>,
+            Option<(Sender<T::InputState>, Receiver<()>)>,
+        ),
+    ),
 
     // Input event processing has finished processing; resources are released.
     ReadyInput(
@@ -63,17 +68,26 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
         frame: TransposerFrame<T>,
         event_arc: Arc<InternalScheduledEvent<T>>,
         state: Option<T::InputState>,
-    ) -> (Self, Option<Sender<T::InputState>>) {
+    ) -> Self {
         let (fut, sender) = CurriedScheduleFuture::new(frame, event_arc, state);
-        (TransposerUpdate::Schedule(fut), sender)
+        TransposerUpdate::Schedule((fut, sender))
     }
 
     pub fn poll(
         &mut self,
         poll_time: T::Time,
-        input_state: Option<&T::InputState>,
+        input_state: Option<T::InputState>,
         cx: &mut Context<'_>,
     ) -> TransposerUpdatePoll<T> {
+        if let Some(state) = input_state {
+            if let Self::Schedule((_, sendrecv)) = self {
+                let sendrecv = std::mem::take(sendrecv);
+                if let Some((sender, receiver)) = sendrecv {
+                    // don't really care about the error here
+                    let _ = sender.send(state);
+                }
+            }
+        }
         loop {
             match self {
                 Self::Input(input_fut) => match input_fut.as_mut().poll(cx) {
@@ -87,17 +101,25 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
                     }
                     Poll::Pending => break TransposerUpdatePoll::Pending,
                 },
-                Self::Schedule(schedule_fut) => match schedule_fut.as_mut().poll(cx) {
-                    // this needs to somehow figure out that the state has been requested
+                Self::Schedule((schedule_fut, sendrecv)) => match schedule_fut.as_mut().poll(cx) {
                     Poll::Ready(result) => {
-                        if let Self::Schedule(fut) = std::mem::take(self) {
+                        if let Self::Schedule((fut, _)) = std::mem::take(self) {
                             let (event_arc, in_state) = fut.recover_pinned();
                             *self = Self::ReadyScheduled((event_arc, in_state, result));
                         } else {
                             unreachable!()
                         }
                     }
-                    Poll::Pending => break TransposerUpdatePoll::Pending,
+                    Poll::Pending => {
+                        break if let Some((_, recv)) = sendrecv {
+                            match recv.try_recv().unwrap() {
+                                Some(()) => TransposerUpdatePoll::NeedsState,
+                                None => TransposerUpdatePoll::Pending,
+                            }
+                        } else {
+                            TransposerUpdatePoll::Pending
+                        }
+                    }
                 },
                 Self::ReadyInput((time, ..)) => {
                     if *time > poll_time {
@@ -105,7 +127,8 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
                     }
 
                     // this replaces self with the none variant, decomposes the current ready input, and returns it in the poll
-                    if let Self::ReadyInput((time, inputs, in_state, result)) = std::mem::take(self)
+                    if let Self::ReadyInput((time, inputs, _in_state, result)) =
+                        std::mem::take(self)
                     {
                         break TransposerUpdatePoll::Ready((result, time, inputs));
                     } else {
@@ -119,7 +142,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
                     }
 
                     // this replaces self with the none variant, decomposes the current ready input, and returns it in the poll
-                    if let Self::ReadyScheduled((event_arc, in_state, result)) =
+                    if let Self::ReadyScheduled((_event_arc, _in_state, result)) =
                         std::mem::take(self)
                     {
                         break TransposerUpdatePoll::Ready((result, time, Vec::new()));
@@ -143,7 +166,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
                 let (time, inputs, in_state) = fut.recover_pinned();
                 Some((time, inputs, Some(in_state)))
             }
-            Self::Schedule(fut) => {
+            Self::Schedule((fut, _send)) => {
                 let (event_arc, in_state) = fut.recover_pinned();
                 Some((event_arc.time, Vec::new(), in_state))
             }

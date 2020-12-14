@@ -37,12 +37,20 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         frame: TransposerFrame<T>,
         event_arc: Arc<InternalScheduledEvent<T>>,
         state: Option<T::InputState>,
-    ) -> (Pin<Box<Self>>, Option<Sender<T::InputState>>) {
-        let (state, sender) = match state {
-            Some(s) => (LazyState::Ready(s), None),
+    ) -> (
+        Pin<Box<Self>>,
+        Option<(Sender<T::InputState>, Receiver<()>)>,
+    ) {
+        let (state, sendrecv, cx_request) = match state {
+            Some(s) => (LazyState::Ready(s), None, None),
             None => {
                 let (send, recv) = channel();
-                (LazyState::Pending(recv), Some(send))
+                let (send_request, recv_request) = channel();
+                (
+                    LazyState::Pending(recv),
+                    Some((send, recv_request)),
+                    Some(send_request),
+                )
             }
         };
 
@@ -82,6 +90,7 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
             event_arc.time,
             &mut frame_ref.expire_handle_factory,
             state_ref,
+            cx_request,
         );
         let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut pinned);
         unsafe {
@@ -103,7 +112,7 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
             Pin::get_unchecked_mut(mut_ref).update_fut = MaybeUninit::new(fut);
         }
 
-        (pinned, sender)
+        (pinned, sendrecv)
     }
 
     pub fn recover_pinned(
