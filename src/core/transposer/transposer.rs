@@ -90,7 +90,7 @@ pub trait Transposer: Clone + Unpin + Send + Sync {
 
     /// Filter out events you know you can't do anything with.
     /// This reduces the amount of events you have to remember for rollback to work
-    fn can_handle(_event: &InputEvent<Self>) -> bool {
+    fn can_handle(_time: Self::Time, _input: &Self::Input) -> bool {
         true
     }
 }

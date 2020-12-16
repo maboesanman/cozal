@@ -88,8 +88,4 @@ impl Transposer for TestTransposer {
         };
         cx.emit_event(self.event_calls.clone());
     }
-
-    fn can_handle(_event: &crate::core::transposer::InputEvent<Self>) -> bool {
-        true
-    }
 }

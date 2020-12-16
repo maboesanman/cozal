@@ -16,3 +16,6 @@ pub(self) mod transposer_frame;
 pub(self) mod transposer_function_wrappers;
 pub(self) mod transposer_history;
 pub(self) mod transposer_update;
+
+#[cfg(test)]
+pub mod test;

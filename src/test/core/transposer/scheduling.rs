@@ -1,7 +1,7 @@
 use crate::core::schedule_stream::StatefulScheduleStreamExt;
 use crate::core::{event::RollbackPayload, transposer::TransposerEngine, Event};
 
-use super::test_transposer::{EmptyStream, EventCall, TestTransposer};
+use crate::core::transposer::test::test_transposer::{EmptyStream, EventCall, TestTransposer};
 
 #[test]
 fn test_events_scheduled_correctly() {
