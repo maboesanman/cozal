@@ -41,9 +41,15 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
         Self(TransposerUpdateInner::new_schedule(frame, event_arc, state))
     }
 
-    pub fn init(self: Pin<&mut Self>) {
+    pub fn init_pinned(self: Pin<&mut Self>) {
         let inner = self.project().0;
         inner.init();
+    }
+
+    pub fn init(self) -> Pin<Box<Self>> {
+        let mut pinned = Box::pin(self);
+        pinned.as_mut().init_pinned();
+        pinned
     }
 
     pub fn time(self: Pin<&Self>) -> T::Time {
