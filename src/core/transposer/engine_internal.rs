@@ -25,7 +25,7 @@ pub(super) struct TransposerEngineInternal<'a, T: Transposer + 'a> {
     input_buffer: InputBuffer<T>,
     output_buffer: VecDeque<InternalOutputEvent<T>>,
     needs_rollback: Option<T::Time>,
-    current_update: TransposerUpdate<'a, T>,
+    current_update: Option<TransposerUpdate<'a, T>>,
 }
 
 impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
@@ -39,7 +39,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
             input_buffer: BTreeMap::new(),
             output_buffer,
             needs_rollback: None,
-            current_update: TransposerUpdate::None,
+            current_update: None,
         }
     }
 

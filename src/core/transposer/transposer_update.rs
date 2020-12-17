@@ -3,55 +3,87 @@ use super::{
     internal_scheduled_event::InternalScheduledEvent, transposer::Transposer,
     transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult,
 };
-use futures::{
-    channel::oneshot::{Receiver, Sender},
-    Future,
-};
+use futures::{Future, channel::oneshot::{Receiver, Sender, channel}};
+use pin_project::pin_project;
+use core::panic;
 use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
 
+#[pin_project(project = TransposerUpdateProject)]
 pub(super) enum TransposerUpdate<'a, T: Transposer> {
     // Input event processing has begun; future has not returned yet.
-    Input(Pin<Box<CurriedInputFuture<'a, T>>>),
+    Input(#[pin] UpdateInput<'a, T>),
 
     // Schedule event processing has begun; future has not returned yet.
-    Schedule(
-        (
-            Pin<Box<CurriedScheduleFuture<'a, T>>>,
-            Option<(Sender<T::InputState>, Receiver<()>)>,
-        ),
-    ),
+    Schedule(#[pin] UpdateSchedule<'a, T>),
 
-    // Input event processing has finished processing; resources are released.
-    ReadyInput(
-        (
-            T::Time,
-            Vec<T::Input>,
-            T::InputState,
-            WrappedUpdateResult<T>,
-        ),
-    ),
-
-    // Schedule event processing has finished processing; resources are released.
-    ReadyScheduled(
-        (
-            Arc<InternalScheduledEvent<T>>,
-            Option<T::InputState>,
-            WrappedUpdateResult<T>,
-        ),
-    ),
-
-    // there is no update.
-    None,
+    Done,
 }
 
-impl<'a, T: Transposer> Default for TransposerUpdate<'a, T> {
+impl<'a, T: Transposer> Default for TransposerUpdate<'a, T>{
     fn default() -> Self {
-        Self::None
+        TransposerUpdate::Done
     }
+}
+
+#[pin_project]
+struct UpdateInput<'a, T: Transposer> {
+    #[pin]
+    future: CurriedInputFuture<'a, T>
+}
+
+#[pin_project]
+struct UpdateSchedule<'a, T: Transposer>{
+    #[pin]
+    future: CurriedScheduleFuture<'a, T>,
+
+    state_notify: StateNotify<T::InputState>,
+}
+
+enum StateNotify<S> {
+    Complete {
+        state_sender: Sender<S>,
+        notification_receiver: Receiver<()>,
+    },
+    Incomplete {
+        state_sender: Sender<S>,
+    },
+    None
+}
+
+impl<S> StateNotify<S> {
+    pub fn try_send(&mut self, state: Option<S>) -> Result<(), S> {
+        match state {
+            Some(state) => match std::mem::take(self) {
+                StateNotify::Complete { state_sender, .. } => {
+                    state_sender.send(state)
+                }
+                StateNotify::Incomplete { state_sender } => {
+                    state_sender.send(state)
+                }
+                StateNotify::None => {
+                    Err(state)
+                }
+            }
+            None => Ok(())
+        }
+    }
+}
+
+impl<S> Default for StateNotify<S> {
+    fn default() -> Self {
+        StateNotify::None
+    }
+}
+
+struct ReadyResult<T: Transposer> {
+    time: T::Time,
+    inputs: Option<Vec<T::Input>>,
+    input_state: Option<T::InputState>,
+    result: WrappedUpdateResult<T>,
 }
 
 impl<'a, T: Transposer> TransposerUpdate<'a, T> {
@@ -61,7 +93,11 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
         inputs: Vec<T::Input>,
         state: T::InputState,
     ) -> Self {
-        TransposerUpdate::Input(CurriedInputFuture::new(frame, time, inputs, state))
+        let future = CurriedInputFuture::new(frame, time, inputs, state);
+        let update_input = UpdateInput {
+            future,
+        };
+        TransposerUpdate::Input(update_input)
     }
 
     pub fn new_schedule(
@@ -69,121 +105,146 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
         event_arc: Arc<InternalScheduledEvent<T>>,
         state: Option<T::InputState>,
     ) -> Self {
-        let (fut, sender) = CurriedScheduleFuture::new(frame, event_arc, state);
-        TransposerUpdate::Schedule((fut, sender))
+        let (future, state_notify) = CurriedScheduleFuture::new(frame, event_arc, state);
+        let state_notify = match state_notify {
+            Some(state_sender) => StateNotify::Incomplete{state_sender},
+            None => StateNotify::None,
+        };
+        let update_schedule = UpdateSchedule {
+            future,
+            state_notify,
+        };
+        TransposerUpdate::Schedule(update_schedule)
+    }
+
+    pub fn init(self: Pin<&mut Self>) {
+        match self.project() {
+            TransposerUpdateProject::Input(update_input) => {
+                let update_input = update_input.project();
+                update_input.future.init();
+            }
+            TransposerUpdateProject::Schedule(update_schedule) => {
+                let update_schedule = update_schedule.project();
+                let prev_state_notify = std::mem::take(update_schedule.state_notify);
+                let notification_reciever = match prev_state_notify {
+                    StateNotify::Complete{ .. } => panic!(),
+                    StateNotify::Incomplete{ state_sender } => {
+                        let (notification_sender, notification_receiver) = channel();
+                        *update_schedule.state_notify = StateNotify::Complete {
+                            state_sender,
+                            notification_receiver,
+                        };
+                        Some(notification_sender)
+                    },
+                    StateNotify::None => None,
+                };
+                update_schedule.future.init(notification_reciever);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn time(self: Pin<&Self>) -> T::Time {
+        match self.get_ref() {
+            TransposerUpdate::Input(update_input) => {
+                update_input.future.time()
+            }
+            TransposerUpdate::Schedule(update_schedule) => {
+                update_schedule.future.time()
+            }
+            TransposerUpdate::Done => panic!()
+        }
     }
 
     pub fn poll(
-        &mut self,
-        poll_time: T::Time,
+        mut self: Pin<&mut Self>,
         input_state: Option<T::InputState>,
         cx: &mut Context<'_>,
     ) -> TransposerUpdatePoll<T> {
-        if let Some(state) = input_state {
-            if let Self::Schedule((_, sendrecv)) = self {
-                let sendrecv = std::mem::take(sendrecv);
-                if let Some((sender, receiver)) = sendrecv {
-                    // don't really care about the error here
-                    let _ = sender.send(state);
-                }
-            }
-        }
-        loop {
-            match self {
-                Self::Input(input_fut) => match input_fut.as_mut().poll(cx) {
-                    Poll::Ready(result) => {
-                        if let Self::Input(fut) = std::mem::take(self) {
-                            let (time, inputs, in_state) = fut.recover_pinned();
-                            *self = Self::ReadyInput((time, inputs, in_state, result));
-                        } else {
-                            unreachable!()
-                        }
-                    }
-                    Poll::Pending => break TransposerUpdatePoll::Pending,
-                },
-                Self::Schedule((schedule_fut, sendrecv)) => match schedule_fut.as_mut().poll(cx) {
-                    Poll::Ready(result) => {
-                        if let Self::Schedule((fut, _)) = std::mem::take(self) {
-                            let (event_arc, in_state) = fut.recover_pinned();
-                            *self = Self::ReadyScheduled((event_arc, in_state, result));
-                        } else {
-                            unreachable!()
-                        }
-                    }
-                    Poll::Pending => {
-                        break if let Some((_, recv)) = sendrecv {
-                            match recv.try_recv().unwrap() {
-                                Some(()) => TransposerUpdatePoll::NeedsState,
-                                None => TransposerUpdatePoll::Pending,
-                            }
-                        } else {
-                            TransposerUpdatePoll::Pending
-                        }
-                    }
-                },
-                Self::ReadyInput((time, ..)) => {
-                    if *time > poll_time {
-                        break TransposerUpdatePoll::Scheduled(*time);
-                    }
+        let this = self.as_mut().project();
+        // if let TransposerUpdateProject::Schedule(update_schedule) = this {
+        //     let update_schedule = update_schedule.project();
+        //     update_schedule.state_notify.try_send(input_state);
+        // }
 
-                    // this replaces self with the none variant, decomposes the current ready input, and returns it in the poll
-                    if let Self::ReadyInput((time, inputs, _in_state, result)) =
-                        std::mem::take(self)
-                    {
-                        break TransposerUpdatePoll::Ready((result, time, inputs));
-                    } else {
-                        unreachable!()
-                    }
-                }
-                Self::ReadyScheduled((event_arc, ..)) => {
-                    let time = event_arc.time;
-                    if time > poll_time {
-                        break TransposerUpdatePoll::Scheduled(time);
-                    }
+        let result = match this {
+            TransposerUpdateProject::Input(update_input) => {
+                let update_input = update_input.project();
+                update_input.future.poll(cx)
+            },
+            TransposerUpdateProject::Schedule(update_schedule) => {
+                let update_schedule = update_schedule.project();
+                let _ = update_schedule.state_notify.try_send(input_state);
+                let result = update_schedule.future.poll(cx);
 
-                    // this replaces self with the none variant, decomposes the current ready input, and returns it in the poll
-                    if let Self::ReadyScheduled((_event_arc, _in_state, result)) =
-                        std::mem::take(self)
-                    {
-                        break TransposerUpdatePoll::Ready((result, time, Vec::new()));
-                    } else {
-                        unreachable!()
+                if let Poll::Pending = result {
+                    if let StateNotify::Complete {
+                        notification_receiver, ..
+                    } = update_schedule.state_notify {
+                        match notification_receiver.try_recv().unwrap() {
+                            Some(()) => return TransposerUpdatePoll::NeedsState,
+                            None => return TransposerUpdatePoll::Pending,
+                        }
                     }
                 }
-                Self::None => break TransposerUpdatePoll::Pending,
+
+                result
             }
+            TransposerUpdateProject::Done => panic!()
+        };
+
+        match result {
+            Poll::Ready(result) => {
+                let this = std::mem::take(unsafe { self.get_unchecked_mut() });
+                match this {
+                    Self::Input(update_input) => {
+                        let (time, inputs, input_state) = update_input.future.recover();
+                        TransposerUpdatePoll::Ready(ReadyResult {
+                            time,
+                            inputs: Some(inputs),
+                            input_state: Some(input_state),
+                            result,
+                        });
+                    }
+                    Self::Schedule(update_schedule) => {
+                        let (event_arc, input_state) = update_schedule.future.recover();
+                        TransposerUpdatePoll::Ready(ReadyResult {
+                            time: event_arc.time,
+                            inputs: None,
+                            input_state,
+                            result,
+                        });
+                    }
+                    Self::Done => unreachable!()
+                }
+                TransposerUpdatePoll::Pending
+            }
+            Poll::Pending => TransposerUpdatePoll::Pending
         }
     }
 
-    pub fn is_some(&self) -> bool {
-        !matches!(self, Self::None)
-    }
+    // pub fn recover_pinned(self: Pin<&mut Self>) -> (T::Time, Vec<T::Input>, Option<T::InputState>) {
+    //     let owned = unsafe { Pin::into_inner_unchecked(self)};
+    //     owned.recover()
+    // }
 
-    #[allow(dead_code)]
-    pub fn unstage(&mut self) -> Option<(T::Time, Vec<T::Input>, Option<T::InputState>)> {
-        match std::mem::take(self) {
-            Self::Input(fut) => {
-                let (time, inputs, in_state) = fut.recover_pinned();
-                Some((time, inputs, Some(in_state)))
-            }
-            Self::Schedule((fut, _send)) => {
-                let (event_arc, in_state) = fut.recover_pinned();
-                Some((event_arc.time, Vec::new(), in_state))
-            }
-            Self::ReadyInput((time, inputs, in_state, _update_result)) => {
-                Some((time, inputs, Some(in_state)))
-            }
-            Self::ReadyScheduled((event_arc, in_state, _update_result)) => {
-                Some((event_arc.time, Vec::new(), in_state))
-            }
-            Self::None => None,
-        }
-    }
+    // #[allow(dead_code)]
+    // pub fn recover(self) -> (T::Time, Vec<T::Input>, Option<T::InputState>) {
+    //     match self {
+    //         Self::Input(fut) => {
+    //             let (time, inputs, in_state) = fut.recover();
+    //             (time, inputs, Some(in_state))
+    //         }
+    //         Self::Schedule((fut, _send)) => {
+    //             let (event_arc, in_state) = fut.recover();
+    //             (event_arc.time, Vec::new(), in_state)
+    //         }
+    //     }
+    // }
 }
 
 pub(super) enum TransposerUpdatePoll<T: Transposer> {
-    Ready((WrappedUpdateResult<T>, T::Time, Vec<T::Input>)),
-    Scheduled(T::Time),
+    Ready(ReadyResult<T>),
     NeedsState,
     Pending,
 }
