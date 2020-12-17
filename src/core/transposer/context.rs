@@ -82,7 +82,6 @@ impl<T: Transposer> InitContext<T> {
             return Err("time must be in the future");
         }
 
-        // todo experiment with these being fired at the same time.
         let index = self.new_events.len();
         let handle = self.expire_handle_factory.next();
 
@@ -151,7 +150,7 @@ pub struct UpdateContext<'a, T: Transposer> {
     pub(super) input_state_requester: Option<Sender<()>>,
 
     // todo add seeded deterministic random function
-    pub(super) exit: AtomicBool,
+    pub(super) exit: bool,
 }
 
 impl<'a, T: Transposer> UpdateContext<'a, T> {
@@ -173,7 +172,7 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
             input_state,
             input_state_requester: None,
 
-            exit: AtomicBool::new(false),
+            exit: false,
         }
     }
 
@@ -196,7 +195,7 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
             input_state,
             input_state_requester,
 
-            exit: AtomicBool::new(false),
+            exit: false,
         }
     }
 
@@ -260,6 +259,6 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
 
     /// This allows you to exit the transposer, closing the output stream.
     pub fn exit(&mut self) {
-        self.exit.fetch_or(true, Ordering::SeqCst);
+        self.exit = true;
     }
 }

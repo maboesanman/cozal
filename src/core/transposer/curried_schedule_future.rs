@@ -1,6 +1,9 @@
 use super::{
-    context::LazyState, internal_scheduled_event::InternalScheduledEvent, transposer::Transposer,
-    transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult,
+    context::LazyState,
+    internal_scheduled_event::{InternalScheduledEvent, Source},
+    transposer::Transposer,
+    transposer_frame::TransposerFrame,
+    transposer_function_wrappers::WrappedUpdateResult,
     UpdateContext,
 };
 use futures::channel::oneshot::{channel, Sender};
@@ -34,18 +37,12 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         frame: TransposerFrame<T>,
         event_arc: Arc<InternalScheduledEvent<T>>,
         state: Option<T::InputState>,
-    ) -> (
-        Self,
-        Option<Sender<T::InputState>>,
-    ) {
+    ) -> (Self, Option<Sender<T::InputState>>) {
         let (state, state_sender) = match state {
             Some(s) => (LazyState::Ready(s), None),
             None => {
                 let (state_sender, state_reciever) = channel();
-                (
-                    LazyState::Pending(state_reciever),
-                    Some(state_sender),
-                )
+                (LazyState::Pending(state_reciever), Some(state_sender))
             }
         };
 
@@ -62,7 +59,6 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
     }
 
     pub fn init(self: Pin<&mut Self>, notification_reciever: Option<Sender<()>>) {
-
         // this is safe because we are adjusting the lifetime
         // to be the lifetime of the pinned struct
 
@@ -103,9 +99,10 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
             ptr.as_mut().unwrap()
         };
 
-        let fut = frame_ref
-            .transposer
-            .handle_scheduled(this.event_arc.time, &event_ref.payload, cx_ref);
+        let fut =
+            frame_ref
+                .transposer
+                .handle_scheduled(this.event_arc.time, &event_ref.payload, cx_ref);
         let fut = Box::new(fut);
         this.update_fut = MaybeUninit::new(fut);
     }
@@ -124,15 +121,8 @@ impl<'a, T: Transposer + 'a> Future for CurriedScheduleFuture<'a, T> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
-        let update_fut: Pin<&mut _> = unsafe {
-            Pin::new_unchecked(this
-                .update_fut
-                .as_mut_ptr()
-                .as_mut()
-                .unwrap()
-                .as_mut()
-            )
-        };
+        let update_fut: Pin<&mut _> =
+            unsafe { Pin::new_unchecked(this.update_fut.as_mut_ptr().as_mut().unwrap().as_mut()) };
         match update_fut.poll(cx) {
             Poll::Ready(()) => {
                 // rip apart our future, polling after ready is not allowed anyway.
@@ -141,11 +131,15 @@ impl<'a, T: Transposer + 'a> Future for CurriedScheduleFuture<'a, T> {
 
                 let update_cx = std::mem::replace(&mut this.update_cx, MaybeUninit::uninit());
                 let update_cx = unsafe { update_cx.assume_init() };
-                
+
                 let frame = std::mem::replace(&mut this.frame, MaybeUninit::uninit());
                 let frame = unsafe { frame.assume_init() };
 
-                Poll::Ready(WrappedUpdateResult::new(frame, update_cx))
+                Poll::Ready(WrappedUpdateResult::new(
+                    frame,
+                    update_cx,
+                    Source::Schedule(this.event_arc.clone()),
+                ))
             }
             Poll::Pending => Poll::Pending,
         }

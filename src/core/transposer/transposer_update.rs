@@ -3,9 +3,11 @@ use super::{
     internal_scheduled_event::InternalScheduledEvent, transposer::Transposer,
     transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult,
 };
-use futures::{Future, channel::oneshot::{Receiver, Sender, channel}};
+use futures::{
+    channel::oneshot::{channel, Receiver, Sender},
+    Future,
+};
 use pin_project::pin_project;
-use core::panic;
 use std::{
     pin::Pin,
     sync::Arc,
@@ -13,7 +15,7 @@ use std::{
 };
 
 #[pin_project]
-pub(super) struct TransposerUpdate<'a, T: Transposer> (#[pin] TransposerUpdateInner<'a, T>);
+pub(super) struct TransposerUpdate<'a, T: Transposer>(#[pin] TransposerUpdateInner<'a, T>);
 pub(super) enum TransposerUpdatePoll<T: Transposer> {
     Ready(ReadyResult<T>),
     NeedsState,
@@ -54,7 +56,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
         cx: &mut Context<'_>,
     ) -> TransposerUpdatePoll<T> {
         let inner = self.project().0;
-        inner.poll(input_state, cx) 
+        inner.poll(input_state, cx)
     }
 }
 
@@ -69,7 +71,7 @@ enum TransposerUpdateInner<'a, T: Transposer> {
     Done,
 }
 
-impl<'a, T: Transposer> Default for TransposerUpdateInner<'a, T>{
+impl<'a, T: Transposer> Default for TransposerUpdateInner<'a, T> {
     fn default() -> Self {
         TransposerUpdateInner::Done
     }
@@ -78,11 +80,11 @@ impl<'a, T: Transposer> Default for TransposerUpdateInner<'a, T>{
 #[pin_project]
 struct UpdateInput<'a, T: Transposer> {
     #[pin]
-    future: CurriedInputFuture<'a, T>
+    future: CurriedInputFuture<'a, T>,
 }
 
 #[pin_project]
-struct UpdateSchedule<'a, T: Transposer>{
+struct UpdateSchedule<'a, T: Transposer> {
     #[pin]
     future: CurriedScheduleFuture<'a, T>,
 
@@ -97,24 +99,18 @@ enum StateNotify<S> {
     Incomplete {
         state_sender: Sender<S>,
     },
-    None
+    None,
 }
 
 impl<S> StateNotify<S> {
     pub fn try_send(&mut self, state: Option<S>) -> Result<(), S> {
         match state {
             Some(state) => match std::mem::take(self) {
-                StateNotify::Complete { state_sender, .. } => {
-                    state_sender.send(state)
-                }
-                StateNotify::Incomplete { state_sender } => {
-                    state_sender.send(state)
-                }
-                StateNotify::None => {
-                    Err(state)
-                }
-            }
-            None => Ok(())
+                StateNotify::Complete { state_sender, .. } => state_sender.send(state),
+                StateNotify::Incomplete { state_sender } => state_sender.send(state),
+                StateNotify::None => Err(state),
+            },
+            None => Ok(()),
         }
     }
 }
@@ -140,9 +136,7 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
         state: T::InputState,
     ) -> Self {
         let future = CurriedInputFuture::new(frame, time, inputs, state);
-        let update_input = UpdateInput {
-            future,
-        };
+        let update_input = UpdateInput { future };
         TransposerUpdateInner::Input(update_input)
     }
 
@@ -153,7 +147,7 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
     ) -> Self {
         let (future, state_notify) = CurriedScheduleFuture::new(frame, event_arc, state);
         let state_notify = match state_notify {
-            Some(state_sender) => StateNotify::Incomplete{state_sender},
+            Some(state_sender) => StateNotify::Incomplete { state_sender },
             None => StateNotify::None,
         };
         let update_schedule = UpdateSchedule {
@@ -173,15 +167,15 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
                 let update_schedule = update_schedule.project();
                 let prev_state_notify = std::mem::take(update_schedule.state_notify);
                 let notification_reciever = match prev_state_notify {
-                    StateNotify::Complete{ .. } => panic!(),
-                    StateNotify::Incomplete{ state_sender } => {
+                    StateNotify::Complete { .. } => panic!(),
+                    StateNotify::Incomplete { state_sender } => {
                         let (notification_sender, notification_receiver) = channel();
                         *update_schedule.state_notify = StateNotify::Complete {
                             state_sender,
                             notification_receiver,
                         };
                         Some(notification_sender)
-                    },
+                    }
                     StateNotify::None => None,
                 };
                 update_schedule.future.init(notification_reciever);
@@ -192,13 +186,9 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
 
     pub fn time(&self) -> T::Time {
         match self {
-            TransposerUpdateInner::Input(update_input) => {
-                update_input.future.time()
-            }
-            TransposerUpdateInner::Schedule(update_schedule) => {
-                update_schedule.future.time()
-            }
-            TransposerUpdateInner::Done => panic!()
+            TransposerUpdateInner::Input(update_input) => update_input.future.time(),
+            TransposerUpdateInner::Schedule(update_schedule) => update_schedule.future.time(),
+            TransposerUpdateInner::Done => panic!(),
         }
     }
 
@@ -217,7 +207,7 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
             TransposerUpdateProject::Input(update_input) => {
                 let update_input = update_input.project();
                 update_input.future.poll(cx)
-            },
+            }
             TransposerUpdateProject::Schedule(update_schedule) => {
                 let update_schedule = update_schedule.project();
                 let _ = update_schedule.state_notify.try_send(input_state);
@@ -225,8 +215,10 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
 
                 if let Poll::Pending = result {
                     if let StateNotify::Complete {
-                        notification_receiver, ..
-                    } = update_schedule.state_notify {
+                        notification_receiver,
+                        ..
+                    } = update_schedule.state_notify
+                    {
                         match notification_receiver.try_recv().unwrap() {
                             Some(()) => return TransposerUpdatePoll::NeedsState,
                             None => return TransposerUpdatePoll::Pending,
@@ -236,7 +228,7 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
 
                 result
             }
-            TransposerUpdateProject::Done => panic!()
+            TransposerUpdateProject::Done => panic!(),
         };
 
         match result {
@@ -261,11 +253,11 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
                             result,
                         });
                     }
-                    Self::Done => unreachable!()
+                    Self::Done => unreachable!(),
                 }
                 TransposerUpdatePoll::Pending
             }
-            Poll::Pending => TransposerUpdatePoll::Pending
+            Poll::Pending => TransposerUpdatePoll::Pending,
         }
     }
 
@@ -288,4 +280,3 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
     //     }
     // }
 }
-

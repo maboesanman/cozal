@@ -1,8 +1,9 @@
 use super::{
-    context::LazyState, transposer::Transposer, transposer_frame::TransposerFrame,
-    transposer_function_wrappers::WrappedUpdateResult, UpdateContext,
+    context::LazyState, internal_scheduled_event::Source, transposer::Transposer,
+    transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult,
+    UpdateContext,
 };
-use futures::{Future, future::MaybeDone};
+use futures::Future;
 use std::{
     marker::PhantomPinned,
     mem::MaybeUninit,
@@ -80,7 +81,9 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
         };
 
         // initialize update_fut
-        let fut = frame_ref.transposer.handle_input(this.time, input_ref, cx_ref);
+        let fut = frame_ref
+            .transposer
+            .handle_input(this.time, input_ref, cx_ref);
         let fut = Box::new(fut);
         this.update_fut = MaybeUninit::new(fut);
     }
@@ -104,15 +107,8 @@ impl<'a, T: Transposer + 'a> Future for CurriedInputFuture<'a, T> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
-        let update_fut: Pin<&mut _> = unsafe {
-            Pin::new_unchecked(this
-                .update_fut
-                .as_mut_ptr()
-                .as_mut()
-                .unwrap()
-                .as_mut()
-            )
-        };
+        let update_fut: Pin<&mut _> =
+            unsafe { Pin::new_unchecked(this.update_fut.as_mut_ptr().as_mut().unwrap().as_mut()) };
         match update_fut.poll(cx) {
             Poll::Ready(()) => {
                 // rip apart our future, polling after ready is not allowed anyway.
@@ -121,11 +117,15 @@ impl<'a, T: Transposer + 'a> Future for CurriedInputFuture<'a, T> {
 
                 let update_cx = std::mem::replace(&mut this.update_cx, MaybeUninit::uninit());
                 let update_cx = unsafe { update_cx.assume_init() };
-                
+
                 let frame = std::mem::replace(&mut this.frame, MaybeUninit::uninit());
                 let frame = unsafe { frame.assume_init() };
 
-                Poll::Ready(WrappedUpdateResult::new(frame, update_cx))
+                Poll::Ready(WrappedUpdateResult::new(
+                    frame,
+                    update_cx,
+                    Source::Input(this.time),
+                ))
             }
             Poll::Pending => Poll::Pending,
         }

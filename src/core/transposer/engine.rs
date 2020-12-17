@@ -1,8 +1,6 @@
 use core::ops::Deref;
 use core::pin::Pin;
-use futures::stream::Fuse;
-use futures::task::{Context, Poll};
-use futures::{Stream, StreamExt};
+use futures::task::Context;
 use pin_project::pin_project;
 use std::cmp::min;
 
