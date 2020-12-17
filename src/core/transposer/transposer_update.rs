@@ -12,10 +12,53 @@ use std::{
     task::{Context, Poll},
 };
 
-// pub struct TransposerUpdate<'a, T: Transposer> (TransposerUpdateInner<'a, T>);
+#[pin_project]
+pub(super) struct TransposerUpdate<'a, T: Transposer> (#[pin] TransposerUpdateInner<'a, T>);
+pub(super) enum TransposerUpdatePoll<T: Transposer> {
+    Ready(ReadyResult<T>),
+    NeedsState,
+    Pending,
+}
+
+impl<'a, T: Transposer> TransposerUpdate<'a, T> {
+    pub fn new_input(
+        frame: TransposerFrame<T>,
+        time: T::Time,
+        inputs: Vec<T::Input>,
+        state: T::InputState,
+    ) -> Self {
+        Self(TransposerUpdateInner::new_input(frame, time, inputs, state))
+    }
+
+    pub fn new_schedule(
+        frame: TransposerFrame<T>,
+        event_arc: Arc<InternalScheduledEvent<T>>,
+        state: Option<T::InputState>,
+    ) -> Self {
+        Self(TransposerUpdateInner::new_schedule(frame, event_arc, state))
+    }
+
+    pub fn init(self: Pin<&mut Self>) {
+        let inner = self.project().0;
+        inner.init();
+    }
+
+    pub fn time(self: Pin<&Self>) -> T::Time {
+        self.get_ref().0.time()
+    }
+
+    pub fn poll(
+        mut self: Pin<&mut Self>,
+        input_state: Option<T::InputState>,
+        cx: &mut Context<'_>,
+    ) -> TransposerUpdatePoll<T> {
+        let inner = self.project().0;
+        inner.poll(input_state, cx) 
+    }
+}
 
 #[pin_project(project = TransposerUpdateProject)]
-pub(super) enum TransposerUpdateInner<'a, T: Transposer> {
+enum TransposerUpdateInner<'a, T: Transposer> {
     // Input event processing has begun; future has not returned yet.
     Input(#[pin] UpdateInput<'a, T>),
 
@@ -32,13 +75,13 @@ impl<'a, T: Transposer> Default for TransposerUpdateInner<'a, T>{
 }
 
 #[pin_project]
-pub struct UpdateInput<'a, T: Transposer> {
+struct UpdateInput<'a, T: Transposer> {
     #[pin]
     future: CurriedInputFuture<'a, T>
 }
 
 #[pin_project]
-pub struct UpdateSchedule<'a, T: Transposer>{
+struct UpdateSchedule<'a, T: Transposer>{
     #[pin]
     future: CurriedScheduleFuture<'a, T>,
 
@@ -146,8 +189,8 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
         }
     }
 
-    pub fn time(self: Pin<&Self>) -> T::Time {
-        match self.get_ref() {
+    pub fn time(&self) -> T::Time {
+        match self {
             TransposerUpdateInner::Input(update_input) => {
                 update_input.future.time()
             }
@@ -245,8 +288,3 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
     // }
 }
 
-pub(super) enum TransposerUpdatePoll<T: Transposer> {
-    Ready(ReadyResult<T>),
-    NeedsState,
-    Pending,
-}

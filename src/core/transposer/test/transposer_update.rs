@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use crate::core::transposer::transposer_update::TransposerUpdateInner;
+use crate::core::transposer::transposer_update::TransposerUpdate;
 
 
 #[test]
