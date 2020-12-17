@@ -3,9 +3,8 @@ use super::{
     transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult,
     UpdateContext,
 };
-use futures::channel::oneshot::{channel, Receiver, Sender};
-use futures::{future::Lazy, Future};
-use pin_project::pin_project;
+use futures::channel::oneshot::{channel, Sender};
+use futures::Future;
 use std::{
     marker::PhantomPinned,
     mem::MaybeUninit,
@@ -66,20 +65,27 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
 
         // this is safe because we are adjusting the lifetime
         // to be the lifetime of the pinned struct
+
+        if self.update_fut.is_some() {
+            panic!()
+        }
+
+        let this = unsafe { self.get_unchecked_mut() };
+
         let frame_ref = unsafe {
-            let ptr: *mut _ = &mut self.frame;
+            let ptr: *mut _ = &mut this.frame;
             ptr.as_mut().unwrap()
         };
 
         // and with this
         let event_ref = unsafe {
-            let ptr: *const _ = &self.event_arc;
+            let ptr: *const _ = &this.event_arc;
             ptr.as_ref().unwrap()
         };
 
         // and with this
         let state_ref = unsafe {
-            let ptr: *mut _ = &mut self.state;
+            let ptr: *mut _ = &mut this.state;
             ptr.as_mut().unwrap()
         };
 
@@ -88,35 +94,24 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         // create and initialize context
         let cx: UpdateContext<'a, T>;
         cx = UpdateContext::new_scheduled(
-            self.event_arc.time,
+            this.event_arc.time,
             &mut frame_ref.expire_handle_factory,
             state_ref,
             notification_reciever,
         );
-        let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut self);
-        unsafe {
-            Pin::get_unchecked_mut(mut_ref).update_cx = MaybeUninit::new(cx);
-        }
+        this.update_cx = MaybeUninit::new(cx);
 
         // take ref from newly pinned ref
         let cx_ref = unsafe {
-            let ptr: *mut _ = self.update_cx.as_mut_ptr();
+            let ptr: *mut _ = this.update_cx.as_mut_ptr();
             ptr.as_mut().unwrap()
         };
 
         let fut = frame_ref
             .transposer
-            .handle_scheduled(self.event_arc.time, &event_ref.payload, cx_ref);
+            .handle_scheduled(this.event_arc.time, &event_ref.payload, cx_ref);
         let fut = Box::new(fut);
-        let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut self);
-        unsafe {
-            Pin::get_unchecked_mut(mut_ref).update_fut = Some(fut);
-        }
-    }
-
-    pub fn recover_pinned(self: Pin<&mut Self>) -> (Arc<InternalScheduledEvent<T>>, Option<T::InputState>) {
-        let owned = unsafe { Pin::into_inner_unchecked(self)};
-        owned.recover()
+        this.update_fut = Some(fut);
     }
 
     pub fn recover(self) -> (Arc<InternalScheduledEvent<T>>, Option<T::InputState>) {
@@ -133,10 +128,10 @@ impl<'a, T: Transposer + 'a> Future for CurriedScheduleFuture<'a, T> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let fut: Pin<&mut _> = unsafe {
-            if self.get_unchecked_mut().update_fut.is_none() {
-                panic!()
-            }
-            self.map_unchecked_mut(|curried| curried.update_fut.unwrap().as_mut())
+            self.map_unchecked_mut(|curried| match curried.update_fut.as_mut() {
+                Some(fut) => fut.as_mut(),
+                None => panic!()
+            })
         };
         match fut.poll(cx) {
             Poll::Pending => Poll::Pending,

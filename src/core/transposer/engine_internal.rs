@@ -11,7 +11,7 @@ use crate::{
 
 use super::{
     engine::EngineStateGuard, transposer::Transposer, transposer_frame::TransposerFrame,
-    transposer_function_wrappers::init_events, transposer_update::TransposerUpdate,
+    transposer_function_wrappers::init_events, transposer_update::TransposerUpdateInner,
 };
 
 use super::{transposer_history::TransposerHistory, InputEvent, InternalOutputEvent, OutputEvent};
@@ -25,7 +25,7 @@ pub(super) struct TransposerEngineInternal<'a, T: Transposer + 'a> {
     input_buffer: InputBuffer<T>,
     output_buffer: VecDeque<InternalOutputEvent<T>>,
     needs_rollback: Option<T::Time>,
-    current_update: Option<TransposerUpdate<'a, T>>,
+    current_update: Option<TransposerUpdateInner<'a, T>>,
 }
 
 impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {

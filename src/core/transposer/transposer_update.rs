@@ -12,8 +12,10 @@ use std::{
     task::{Context, Poll},
 };
 
+// pub struct TransposerUpdate<'a, T: Transposer> (TransposerUpdateInner<'a, T>);
+
 #[pin_project(project = TransposerUpdateProject)]
-pub(super) enum TransposerUpdate<'a, T: Transposer> {
+pub(super) enum TransposerUpdateInner<'a, T: Transposer> {
     // Input event processing has begun; future has not returned yet.
     Input(#[pin] UpdateInput<'a, T>),
 
@@ -23,20 +25,20 @@ pub(super) enum TransposerUpdate<'a, T: Transposer> {
     Done,
 }
 
-impl<'a, T: Transposer> Default for TransposerUpdate<'a, T>{
+impl<'a, T: Transposer> Default for TransposerUpdateInner<'a, T>{
     fn default() -> Self {
-        TransposerUpdate::Done
+        TransposerUpdateInner::Done
     }
 }
 
 #[pin_project]
-struct UpdateInput<'a, T: Transposer> {
+pub struct UpdateInput<'a, T: Transposer> {
     #[pin]
     future: CurriedInputFuture<'a, T>
 }
 
 #[pin_project]
-struct UpdateSchedule<'a, T: Transposer>{
+pub struct UpdateSchedule<'a, T: Transposer>{
     #[pin]
     future: CurriedScheduleFuture<'a, T>,
 
@@ -79,14 +81,14 @@ impl<S> Default for StateNotify<S> {
     }
 }
 
-struct ReadyResult<T: Transposer> {
+pub struct ReadyResult<T: Transposer> {
     time: T::Time,
     inputs: Option<Vec<T::Input>>,
     input_state: Option<T::InputState>,
     result: WrappedUpdateResult<T>,
 }
 
-impl<'a, T: Transposer> TransposerUpdate<'a, T> {
+impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
     pub fn new_input(
         frame: TransposerFrame<T>,
         time: T::Time,
@@ -97,7 +99,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
         let update_input = UpdateInput {
             future,
         };
-        TransposerUpdate::Input(update_input)
+        TransposerUpdateInner::Input(update_input)
     }
 
     pub fn new_schedule(
@@ -114,7 +116,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
             future,
             state_notify,
         };
-        TransposerUpdate::Schedule(update_schedule)
+        TransposerUpdateInner::Schedule(update_schedule)
     }
 
     pub fn init(self: Pin<&mut Self>) {
@@ -146,13 +148,13 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
 
     pub fn time(self: Pin<&Self>) -> T::Time {
         match self.get_ref() {
-            TransposerUpdate::Input(update_input) => {
+            TransposerUpdateInner::Input(update_input) => {
                 update_input.future.time()
             }
-            TransposerUpdate::Schedule(update_schedule) => {
+            TransposerUpdateInner::Schedule(update_schedule) => {
                 update_schedule.future.time()
             }
-            TransposerUpdate::Done => panic!()
+            TransposerUpdateInner::Done => panic!()
         }
     }
 
