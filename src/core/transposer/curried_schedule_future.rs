@@ -15,13 +15,13 @@ use std::{
 
 pub(super) struct CurriedScheduleFuture<'a, T: Transposer + 'a> {
     // the curried future; placed first so it is dropped first.
-    update_fut: Option<Box<dyn Future<Output = ()> + 'a>>,
+    update_fut: MaybeUninit<Box<dyn Future<Output = ()> + 'a>>,
 
     // cx is placed second because it references frame and is referenced by fut.
     update_cx: MaybeUninit<UpdateContext<'a, T>>,
 
     // curried arguments to the internal future.
-    frame: TransposerFrame<T>,
+    frame: MaybeUninit<TransposerFrame<T>>,
     event_arc: Arc<InternalScheduledEvent<T>>,
     state: LazyState<T::InputState>,
 
@@ -50,10 +50,10 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         };
 
         let new_self = Self {
-            update_fut: None,
+            update_fut: MaybeUninit::uninit(),
             update_cx: MaybeUninit::uninit(),
-            frame,
-            event_arc: event_arc.clone(),
+            frame: MaybeUninit::new(frame),
+            event_arc,
             state,
             _pin: PhantomPinned,
         };
@@ -66,14 +66,10 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         // this is safe because we are adjusting the lifetime
         // to be the lifetime of the pinned struct
 
-        if self.update_fut.is_some() {
-            panic!()
-        }
-
         let this = unsafe { self.get_unchecked_mut() };
 
         let frame_ref = unsafe {
-            let ptr: *mut _ = &mut this.frame;
+            let ptr: *mut _ = this.frame.as_mut_ptr();
             ptr.as_mut().unwrap()
         };
 
@@ -111,7 +107,7 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
             .transposer
             .handle_scheduled(this.event_arc.time, &event_ref.payload, cx_ref);
         let fut = Box::new(fut);
-        this.update_fut = Some(fut);
+        this.update_fut = MaybeUninit::new(fut);
     }
 
     pub fn recover(self) -> (Arc<InternalScheduledEvent<T>>, Option<T::InputState>) {
@@ -127,17 +123,31 @@ impl<'a, T: Transposer + 'a> Future for CurriedScheduleFuture<'a, T> {
     type Output = WrappedUpdateResult<T>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let fut: Pin<&mut _> = unsafe {
-            self.map_unchecked_mut(|curried| match curried.update_fut.as_mut() {
-                Some(fut) => fut.as_mut(),
-                None => panic!()
-            })
+        let this = unsafe { self.get_unchecked_mut() };
+        let update_fut: Pin<&mut _> = unsafe {
+            Pin::new_unchecked(this
+                .update_fut
+                .as_mut_ptr()
+                .as_mut()
+                .unwrap()
+                .as_mut()
+            )
         };
-        match fut.poll(cx) {
-            Poll::Pending => Poll::Pending,
+        match update_fut.poll(cx) {
             Poll::Ready(()) => {
-                todo!()
+                // rip apart our future, polling after ready is not allowed anyway.
+                let update_fut = std::mem::replace(&mut this.update_fut, MaybeUninit::uninit());
+                std::mem::drop(update_fut);
+
+                let update_cx = std::mem::replace(&mut this.update_cx, MaybeUninit::uninit());
+                let update_cx = unsafe { update_cx.assume_init() };
+                
+                let frame = std::mem::replace(&mut this.frame, MaybeUninit::uninit());
+                let frame = unsafe { frame.assume_init() };
+
+                Poll::Ready(WrappedUpdateResult::new(frame, update_cx))
             }
+            Poll::Pending => Poll::Pending,
         }
     }
 }

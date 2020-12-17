@@ -20,6 +20,7 @@ pub(super) enum TransposerUpdatePoll<T: Transposer> {
     Pending,
 }
 
+#[allow(unused)]
 impl<'a, T: Transposer> TransposerUpdate<'a, T> {
     pub fn new_input(
         frame: TransposerFrame<T>,

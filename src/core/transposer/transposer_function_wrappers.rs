@@ -46,8 +46,15 @@ pub(super) async fn init_events<T: Transposer>(transposer: T) -> WrappedInitResu
 }
 
 pub(super) struct WrappedUpdateResult<T: Transposer> {
+    pub frame: TransposerFrame<T>,
     pub output_events: Vec<InternalOutputEvent<T>>,
     pub exit: bool,
+}
+
+impl<T: Transposer> WrappedUpdateResult<T> {
+    pub fn new<'a>(mutated_frame: TransposerFrame<T>, used_context: UpdateContext<'a, T>) -> Self {
+        todo!()
+    }
 }
 
 // pub(super) async fn handle_input<'a, T: Transposer>(
