@@ -21,6 +21,10 @@ pub(super) enum TransposerUpdatePoll<T: Transposer> {
     NeedsState,
     Pending,
 }
+pub(super) enum TransposerUpdateRecovery<T: Transposer> {
+    Input(Vec<T::Input>, T::InputState),
+    Schedule(Arc<InternalScheduledEvent<T>>, Option<T::InputState>)
+}
 
 #[allow(unused)]
 impl<'a, T: Transposer> TransposerUpdate<'a, T> {
@@ -57,12 +61,26 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
     }
 
     pub fn poll(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         input_state: Option<T::InputState>,
         cx: &mut Context<'_>,
     ) -> TransposerUpdatePoll<T> {
         let inner = self.project().0;
         inner.poll(input_state, cx)
+    }
+
+    pub fn recover(self) -> TransposerUpdateRecovery<T> {
+        match self.0 {
+            TransposerUpdateInner::Input(update_input) => {
+                let (time, inputs, state) = update_input.future.recover();
+                TransposerUpdateRecovery::Input(inputs, state)
+            }
+            TransposerUpdateInner::Schedule(update_schedule) => {
+                let (event_arc, state) = update_schedule.future.recover();
+                TransposerUpdateRecovery::Schedule(event_arc, state)
+            }
+            TransposerUpdateInner::Done => panic!()
+        }
     }
 }
 
@@ -76,6 +94,7 @@ enum TransposerUpdateInner<'a, T: Transposer> {
 
     Done,
 }
+
 
 impl<'a, T: Transposer> Default for TransposerUpdateInner<'a, T> {
     fn default() -> Self {
@@ -265,23 +284,4 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
             Poll::Pending => TransposerUpdatePoll::Pending,
         }
     }
-
-    // pub fn recover_pinned(self: Pin<&mut Self>) -> (T::Time, Vec<T::Input>, Option<T::InputState>) {
-    //     let owned = unsafe { Pin::into_inner_unchecked(self)};
-    //     owned.recover()
-    // }
-
-    // #[allow(dead_code)]
-    // pub fn recover(self) -> (T::Time, Vec<T::Input>, Option<T::InputState>) {
-    //     match self {
-    //         Self::Input(fut) => {
-    //             let (time, inputs, in_state) = fut.recover();
-    //             (time, inputs, Some(in_state))
-    //         }
-    //         Self::Schedule((fut, _send)) => {
-    //             let (event_arc, in_state) = fut.recover();
-    //             (event_arc.time, Vec::new(), in_state)
-    //         }
-    //     }
-    // }
 }
