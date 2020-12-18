@@ -17,16 +17,20 @@ jobs:
     - name: Checkout repo
       uses: actions/checkout@v2
 
+    - name: Checkout repository
+      uses: actions/checkout@v2
 
-    - name: Install nightly
-      run: rustup toolchain install nightly
-    - name: Build
-      run: rustup run nightly cargo build --verbose
-    - name: install tarupaulin
-      run: rustup run nightly cargo install cargo-tarpaulin
-    - name: Run tests + coverage
-      run: rustup run nightly cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out Xml
-    - name: Upload to codecov.io
-      uses: codecov/codecov-action@v1
+    - name: Install nightly toolchain
+      uses: actions-rs/toolchain@v1
       with:
-        fail_ci_if_error:     true
+        toolchain: nightly
+        override: true
+
+    - name: Run cargo-tarpaulin
+      uses: actions-rs/tarpaulin@v0.1
+      with:
+        version: '0.15.0'
+        args: '-- --test-threads 1'
+
+    - name: Upload to codecov.io
+      uses: codecov/codecov-action@v1.0.2
