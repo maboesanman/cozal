@@ -128,10 +128,10 @@ impl<S> Default for StateNotify<S> {
 }
 
 pub struct ReadyResult<T: Transposer> {
-    time: T::Time,
-    inputs: Option<Vec<T::Input>>,
-    input_state: Option<T::InputState>,
-    result: WrappedUpdateResult<T>,
+    pub time: T::Time,
+    pub inputs: Option<Vec<T::Input>>,
+    pub input_state: Option<T::InputState>,
+    pub(super) result: WrappedUpdateResult<T>,
 }
 
 impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
@@ -248,7 +248,7 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
                             inputs: Some(inputs),
                             input_state: Some(input_state),
                             result,
-                        });
+                        })
                     }
                     Self::Schedule(update_schedule) => {
                         let (event_arc, input_state) = update_schedule.future.recover();
@@ -257,11 +257,10 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
                             inputs: None,
                             input_state,
                             result,
-                        });
+                        })
                     }
                     Self::Done => unreachable!(),
                 }
-                TransposerUpdatePoll::Pending
             }
             Poll::Pending => TransposerUpdatePoll::Pending,
         }

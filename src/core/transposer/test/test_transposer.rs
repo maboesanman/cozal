@@ -47,7 +47,7 @@ impl TestTransposer {
 impl Transposer for TestTransposer {
     type Time = usize;
 
-    type InputState = ();
+    type InputState = usize;
 
     type Input = usize;
 
@@ -68,7 +68,7 @@ impl Transposer for TestTransposer {
         cx: &'a mut UpdateContext<'a, Self>,
     ) {
         for payload in inputs {
-            self.event_calls.push(EventCall::Scheduled(*payload));
+            self.event_calls.push(EventCall::Input(*payload));
             if payload % 2 == 1 {
                 let _ = cx.schedule_event(time * 2, payload * 2);
             };
