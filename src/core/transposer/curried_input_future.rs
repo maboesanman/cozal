@@ -1,6 +1,6 @@
 use super::{
-    context::LazyState, transposer::Transposer, transposer_frame::TransposerFrame,
-    transposer_function_wrappers::WrappedUpdateResult, UpdateContext,
+    context::LazyState, internal_scheduled_event::Source, transposer::Transposer,
+    transposer_frame::TransposerFrame, wrapped_update_result::WrappedUpdateResult, UpdateContext,
 };
 use futures::Future;
 use std::{
@@ -30,11 +30,12 @@ pub(super) struct CurriedInputFuture<'a, T: Transposer + 'a> {
 // lots of unsafe shenanegans goin on up in here
 impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
     pub fn new(
-        frame: TransposerFrame<T>,
+        mut frame: TransposerFrame<T>,
         time: T::Time,
         inputs: Vec<T::Input>,
         state: T::InputState,
     ) -> Self {
+        frame.internal.set_source(Source::Input(time));
         Self {
             update_fut: MaybeUninit::uninit(),
             update_cx: MaybeUninit::uninit(),
@@ -70,13 +71,7 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
 
         // create and initialize context
         let cx: UpdateContext<'a, T>;
-        cx = UpdateContext::new_input(
-            this.time,
-            &mut frame_ref.schedule,
-            &mut frame_ref.expire_handles,
-            &mut frame_ref.expire_handle_factory,
-            state_ref,
-        );
+        cx = UpdateContext::new_input(&mut frame_ref.internal, state_ref);
         this.update_cx = MaybeUninit::new(cx);
 
         // take ref from newly pinned ref

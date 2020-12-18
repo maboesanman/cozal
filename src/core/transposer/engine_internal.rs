@@ -11,7 +11,7 @@ use crate::{
 
 use super::{
     engine::EngineStateGuard, transposer::Transposer, transposer_frame::TransposerFrame,
-    transposer_function_wrappers::init_events, transposer_update::TransposerUpdate,
+    transposer_update::TransposerUpdate, InitContext,
 };
 
 use super::{transposer_history::TransposerHistory, InputEvent, InternalOutputEvent, OutputEvent};
@@ -30,12 +30,15 @@ pub(super) struct TransposerEngineInternal<'a, T: Transposer + 'a> {
 
 impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
     pub async fn new(transposer: T) -> TransposerEngineInternal<'a, T> {
-        let result = init_events(transposer).await;
-        let output_buffer = VecDeque::from(result.output_events);
+        let mut frame = TransposerFrame::new(transposer);
+
+        let mut context = InitContext::new();
+        T::init_events(&mut frame.transposer, &mut context).await;
+        let output_buffer = VecDeque::from(context.output_events);
 
         TransposerEngineInternal {
-            current_transposer_frame: Arc::new(RwLock::new(result.initial_frame.clone())),
-            history: TransposerHistory::new(result.initial_frame),
+            current_transposer_frame: Arc::new(RwLock::new(frame.clone())),
+            history: TransposerHistory::new(frame),
             input_buffer: BTreeMap::new(),
             output_buffer,
             needs_rollback: None,
@@ -227,7 +230,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
     pub fn size_hint(&self) -> (usize, Option<usize>) {
         match self.current_transposer_frame.try_read() {
             Ok(frame) => {
-                let min = frame.schedule.len() - frame.expire_handles.len();
+                let min = frame.internal.schedule.len() - frame.internal.expire_handles.len();
                 (min, None)
             }
             Err(_) => (0, None),

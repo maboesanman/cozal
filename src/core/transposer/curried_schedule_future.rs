@@ -3,7 +3,7 @@ use super::{
     internal_scheduled_event::{InternalScheduledEvent, Source},
     transposer::Transposer,
     transposer_frame::TransposerFrame,
-    transposer_function_wrappers::WrappedUpdateResult,
+    wrapped_update_result::WrappedUpdateResult,
     UpdateContext,
 };
 use futures::channel::oneshot::{channel, Sender};
@@ -34,10 +34,11 @@ pub(super) struct CurriedScheduleFuture<'a, T: Transposer + 'a> {
 
 impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
     pub fn new(
-        frame: TransposerFrame<T>,
+        mut frame: TransposerFrame<T>,
         event_arc: Arc<InternalScheduledEvent<T>>,
         state: Option<T::InputState>,
     ) -> (Self, Option<Sender<T::InputState>>) {
+        frame.internal.set_source(Source::Schedule(event_arc.clone()));
         let (state, state_sender) = match state {
             Some(s) => (LazyState::Ready(s), None),
             None => {
@@ -86,10 +87,7 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         // create and initialize context
         let cx: UpdateContext<'a, T>;
         cx = UpdateContext::new_scheduled(
-            this.event_arc.clone(),
-            &mut frame_ref.schedule,
-            &mut frame_ref.expire_handles,
-            &mut frame_ref.expire_handle_factory,
+            &mut frame_ref.internal,
             state_ref,
             notification_reciever,
         );

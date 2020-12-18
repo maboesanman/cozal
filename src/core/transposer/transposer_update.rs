@@ -1,7 +1,7 @@
 use super::{
     curried_input_future::CurriedInputFuture, curried_schedule_future::CurriedScheduleFuture,
     internal_scheduled_event::InternalScheduledEvent, transposer::Transposer,
-    transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult,
+    transposer_frame::TransposerFrame, wrapped_update_result::WrappedUpdateResult,
 };
 use futures::{
     channel::oneshot::{channel, Receiver, Sender},
