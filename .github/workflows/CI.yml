@@ -11,14 +11,24 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - name: Checkout repo
+      uses: actions/checkout@v2
+
     - name: Install stable
       run: rustup toolchain install stable
     - name: Build
       run: rustup run stable cargo build --verbose
-    - name: Run tests
-      run: rustup run stable cargo test --verbose
+
+    - name: Install nightly
+      run: rustup toolchain install nightly
+    - name: install tarupaulin
+      run: rustup run nightly cargo install cargo-tarpaulin
+    - name: Run tests + coverage
+      run: rustup run nightly cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out Xml
+    - name: Upload to codecov.io
+      uses: codecov/codecov-action@v1
+      with:
+        fail_ci_if_error:     true
