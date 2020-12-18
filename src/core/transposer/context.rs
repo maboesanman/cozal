@@ -1,12 +1,14 @@
 use crate::core::Event;
 use futures::channel::oneshot::{Receiver, Sender};
 use std::{
-    collections::HashMap, future::ready, pin::Pin, sync::atomic::AtomicBool, sync::atomic::Ordering,
+    collections::HashMap,
+    sync::{Arc, Weak},
 };
 
 use super::{
     expire_handle::{ExpireHandle, ExpireHandleFactory},
-    ScheduledEvent, Transposer,
+    internal_scheduled_event::{InternalScheduledEvent, Source},
+    InternalOutputEvent, ScheduledEvent, Transposer,
 };
 
 /// This is the interface through which you can do a variety of functions in your transposer.
@@ -137,66 +139,75 @@ impl<S> LazyState<S> {
 /// the primary features are scheduling and expiring events,
 /// though there are more methods to interact with the engine.
 pub struct UpdateContext<'a, T: Transposer> {
-    pub(super) time: T::Time,
-    pub(super) new_events: Vec<ScheduledEvent<T>>,
-    pub(super) emitted_events: Vec<T::Output>,
-    pub(super) expired_events: Vec<ExpireHandle>,
+    // internal tracking
+    trigger: Source<T>,
+    event_schedule_index: usize,
 
-    // this is really an AtomicNonZeroU64
-    pub(super) expire_handle_factory: &'a mut ExpireHandleFactory,
-    pub(super) new_expire_handles: HashMap<usize, ExpireHandle>,
+    // mutable references into the current transposer frame
+    schedule: &'a mut im::OrdSet<Arc<InternalScheduledEvent<T>>>,
+    expire_handles: &'a mut im::HashMap<ExpireHandle, Weak<InternalScheduledEvent<T>>>,
+    expire_handle_factory: &'a mut ExpireHandleFactory,
 
-    pub(super) input_state: &'a mut LazyState<T::InputState>,
+    // access to the input state
+    input_state: &'a mut LazyState<T::InputState>,
     pub(super) input_state_requester: Option<Sender<()>>,
 
-    // todo add seeded deterministic random function
+    // values to output
+    pub(super) output_events: Vec<InternalOutputEvent<T>>,
     pub(super) exit: bool,
 }
 
 impl<'a, T: Transposer> UpdateContext<'a, T> {
     pub(super) fn new_input(
         time: T::Time,
+        // this can't be a mutable reference to the frame because the borrow needs to be split.
+        schedule: &'a mut im::OrdSet<Arc<InternalScheduledEvent<T>>>,
+        expire_handles: &'a mut im::HashMap<ExpireHandle, Weak<InternalScheduledEvent<T>>>,
         expire_handle_factory: &'a mut ExpireHandleFactory,
         input_state: &'a mut LazyState<T::InputState>,
     ) -> Self {
         Self {
-            time,
+            trigger: Source::Input(time),
+            event_schedule_index: 0,
 
-            new_events: Vec::new(),
-            emitted_events: Vec::new(),
-            expired_events: Vec::new(),
-
+            schedule,
+            expire_handles,
             expire_handle_factory,
-            new_expire_handles: HashMap::new(),
 
             input_state,
             input_state_requester: None,
 
+            output_events: Vec::new(),
             exit: false,
         }
     }
 
     pub(super) fn new_scheduled(
-        time: T::Time,
+        event_arc: Arc<InternalScheduledEvent<T>>,
+        schedule: &'a mut im::OrdSet<Arc<InternalScheduledEvent<T>>>,
+        expire_handles: &'a mut im::HashMap<ExpireHandle, Weak<InternalScheduledEvent<T>>>,
         expire_handle_factory: &'a mut ExpireHandleFactory,
         input_state: &'a mut LazyState<T::InputState>,
         input_state_requester: Option<Sender<()>>,
     ) -> Self {
         Self {
-            time,
+            trigger: Source::Schedule(event_arc),
+            event_schedule_index: 0,
 
-            new_events: Vec::new(),
-            emitted_events: Vec::new(),
-            expired_events: Vec::new(),
-
+            schedule,
+            expire_handles,
             expire_handle_factory,
-            new_expire_handles: HashMap::new(),
 
             input_state,
             input_state_requester,
 
+            output_events: Vec::new(),
             exit: false,
         }
+    }
+
+    fn time(&self) -> T::Time {
+        self.trigger.time()
     }
 
     pub async fn get_input_state(&mut self) -> Result<&T::InputState, &str> {
@@ -210,14 +221,22 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
     /// As long as the time you supply is not less than the current time,
     /// the event can be scheduled.
     pub fn schedule_event(&mut self, time: T::Time, payload: T::Scheduled) -> Result<(), &str> {
-        if time < self.time {
-            return Err("time must be in the future");
+        if time < self.time() {
+            return Err("new event cannot sort before current event");
         }
 
-        self.new_events.push(Event {
-            timestamp: time,
+        let new_event = InternalScheduledEvent {
+            source: self.trigger.clone(),
+            source_index: self.event_schedule_index,
+            expire_handle: None,
+            time,
             payload,
-        });
+        };
+
+        let new_event = Arc::new(new_event);
+
+        self.schedule.insert(new_event);
+        self.event_schedule_index += 1;
         Ok(())
     }
 
@@ -228,18 +247,26 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, &str> {
-        if time < self.time {
-            return Err("time must be in the future");
+        if time < self.time() {
+            return Err("new event cannot sort before current event");
         }
 
-        let index = self.new_events.len();
         let handle = self.expire_handle_factory.next();
 
-        self.new_events.push(Event {
-            timestamp: time,
+        let new_event = InternalScheduledEvent {
+            source: self.trigger.clone(),
+            source_index: self.event_schedule_index,
+            expire_handle: Some(handle),
+            time,
             payload,
-        });
-        self.new_expire_handles.insert(index, handle);
+        };
+
+        let new_event = Arc::new(new_event);
+        let new_event_weak = Arc::downgrade(&new_event.clone());
+
+        self.schedule.insert(new_event);
+        self.expire_handles.insert(handle, new_event_weak);
+        self.event_schedule_index += 1;
 
         Ok(handle)
     }
@@ -249,12 +276,26 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
     /// If you need to emit an event in the future at a scheduled time, schedule an internal event that can emit
     /// your event when handled.
     pub fn emit_event(&mut self, payload: T::Output) {
-        self.emitted_events.push(payload);
+        let event = Event {
+            timestamp: self.time(),
+            payload,
+        };
+        self.output_events.push(event);
     }
 
     /// This allows you to expire an event currently in the schedule, as long as you have an [`ExpireHandle`].
-    pub fn expire_event(&mut self, handle: ExpireHandle) {
-        self.expired_events.push(handle);
+    pub fn expire_event(&mut self, handle: ExpireHandle) -> Result<(), &str> {
+        match self.expire_handles.get(&handle) {
+            Some(weak) => {
+                if let Some(arc) = weak.upgrade() {
+                    self.schedule.remove(&arc);
+                    Ok(())
+                } else {
+                    Err("expired")
+                }
+            }
+            None => Err("invalid expire handle"),
+        }
     }
 
     /// This allows you to exit the transposer, closing the output stream.

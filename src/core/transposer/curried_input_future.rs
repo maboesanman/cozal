@@ -1,7 +1,6 @@
 use super::{
-    context::LazyState, internal_scheduled_event::Source, transposer::Transposer,
-    transposer_frame::TransposerFrame, transposer_function_wrappers::WrappedUpdateResult,
-    UpdateContext,
+    context::LazyState, transposer::Transposer, transposer_frame::TransposerFrame,
+    transposer_function_wrappers::WrappedUpdateResult, UpdateContext,
 };
 use futures::Future;
 use std::{
@@ -71,7 +70,13 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
 
         // create and initialize context
         let cx: UpdateContext<'a, T>;
-        cx = UpdateContext::new_input(this.time, &mut frame_ref.expire_handle_factory, state_ref);
+        cx = UpdateContext::new_input(
+            this.time,
+            &mut frame_ref.schedule,
+            &mut frame_ref.expire_handles,
+            &mut frame_ref.expire_handle_factory,
+            state_ref,
+        );
         this.update_cx = MaybeUninit::new(cx);
 
         // take ref from newly pinned ref
@@ -121,11 +126,7 @@ impl<'a, T: Transposer + 'a> Future for CurriedInputFuture<'a, T> {
                 let frame = std::mem::replace(&mut this.frame, MaybeUninit::uninit());
                 let frame = unsafe { frame.assume_init() };
 
-                Poll::Ready(WrappedUpdateResult::new(
-                    frame,
-                    update_cx,
-                    Source::Input(this.time),
-                ))
+                Poll::Ready(WrappedUpdateResult::new(frame, update_cx))
             }
             Poll::Pending => Poll::Pending,
         }

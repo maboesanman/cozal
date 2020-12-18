@@ -86,7 +86,9 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         // create and initialize context
         let cx: UpdateContext<'a, T>;
         cx = UpdateContext::new_scheduled(
-            this.event_arc.time,
+            this.event_arc.clone(),
+            &mut frame_ref.schedule,
+            &mut frame_ref.expire_handles,
             &mut frame_ref.expire_handle_factory,
             state_ref,
             notification_reciever,
@@ -135,11 +137,7 @@ impl<'a, T: Transposer + 'a> Future for CurriedScheduleFuture<'a, T> {
                 let frame = std::mem::replace(&mut this.frame, MaybeUninit::uninit());
                 let frame = unsafe { frame.assume_init() };
 
-                Poll::Ready(WrappedUpdateResult::new(
-                    frame,
-                    update_cx,
-                    Source::Schedule(this.event_arc.clone()),
-                ))
+                Poll::Ready(WrappedUpdateResult::new(frame, update_cx))
             }
             Poll::Pending => Poll::Pending,
         }

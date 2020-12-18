@@ -52,31 +52,12 @@ pub(super) struct WrappedUpdateResult<T: Transposer> {
 }
 
 impl<T: Transposer> WrappedUpdateResult<T> {
-    pub fn new<'a>(
-        mut mutated_frame: TransposerFrame<T>,
-        used_context: UpdateContext<'a, T>,
-        source: Source<T>,
-    ) -> Self {
+    pub fn new<'a>(mutated_frame: TransposerFrame<T>, used_context: UpdateContext<'a, T>) -> Self {
         let UpdateContext {
-            new_events,
-            emitted_events,
-            expired_events,
-            mut new_expire_handles,
+            output_events,
             exit,
             ..
         } = used_context;
-        let time = source.time();
-        process_new_events(
-            &mut mutated_frame,
-            source,
-            new_events,
-            &mut new_expire_handles,
-        );
-
-        remove_expired_events(&mut mutated_frame, expired_events);
-
-        let output_events = prepare_output_events::<T>(time, emitted_events);
-
         WrappedUpdateResult {
             frame: mutated_frame,
             output_events,
@@ -113,20 +94,6 @@ fn process_new_events<T: Transposer>(
 
         // add new event to schedule
         frame.schedule.insert(new_event);
-    }
-}
-
-fn remove_expired_events<T: Transposer>(
-    frame: &mut TransposerFrame<T>,
-    expired_events: Vec<ExpireHandle>,
-) {
-    for h in expired_events {
-        if let Some(e) = frame.expire_handles.get(&h) {
-            if let Some(arc) = e.upgrade() {
-                frame.schedule.remove(&arc);
-            }
-            frame.expire_handles.remove(&h);
-        }
     }
 }
 
