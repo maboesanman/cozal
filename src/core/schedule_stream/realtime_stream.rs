@@ -38,7 +38,7 @@ impl<St: StatefulScheduleStream> Stream for RealtimeStream<St>
 where
     St::Time: Timestamp,
 {
-    type Item = (St::State, St::Item);
+    type Item = (St::Time, St::State, St::Item);
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
@@ -46,7 +46,7 @@ where
         let time = St::Time::get_timestamp(&Instant::now(), this.reference);
 
         match this.stream.poll(time, cx) {
-            (s, SchedulePoll::Ready(p)) => Poll::Ready(Some((s, p))),
+            (s, SchedulePoll::Ready(t, p)) => Poll::Ready(Some((t, s, p))),
             (_, SchedulePoll::Scheduled(new_time)) => {
                 let instant = new_time.get_instant(&this.reference);
                 let instant = tokio::time::Instant::from_std(instant);

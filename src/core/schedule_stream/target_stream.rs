@@ -39,14 +39,14 @@ impl<St: StatefulScheduleStream> TargetStream<St> {
 }
 
 impl<St: StatefulScheduleStream> Stream for TargetStream<St> {
-    type Item = (St::State, St::Item);
+    type Item = (St::Time, St::State, St::Item);
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.project();
         *this.next_target = None;
 
         match this.stream.poll(*this.target.lock().unwrap(), cx) {
-            (s, SchedulePoll::Ready(p)) => Poll::Ready(Some((s, p))),
+            (s, SchedulePoll::Ready(t, p)) => Poll::Ready(Some((t, s, p))),
             (_, SchedulePoll::Scheduled(new_time)) => {
                 *this.next_target = Some(new_time);
 

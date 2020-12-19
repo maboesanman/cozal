@@ -9,7 +9,7 @@ where
     T: Ord + Copy,
 {
     /// Represents that a value is ready and does not occur after the time polled
-    Ready(P),
+    Ready(T, P),
 
     /// Represents that a value is ready, but occurs in the future, so the stream should be polled after time t.
     ///
