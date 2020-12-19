@@ -9,7 +9,7 @@ pub(super) struct WrappedUpdateResult<T: Transposer> {
 }
 
 impl<T: Transposer> WrappedUpdateResult<T> {
-    pub fn new<'a>(mutated_frame: TransposerFrame<T>, used_context: UpdateContext<'a, T>) -> Self {
+    pub fn new<'a>(mutated_frame: TransposerFrame<T>, used_context: UpdateContext<T>) -> Self {
         let UpdateContext {
             output_events,
             exit,

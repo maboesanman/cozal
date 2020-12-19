@@ -10,7 +10,7 @@ use crate::{
 };
 
 use super::{
-    engine::EngineStateGuard, transposer::Transposer, transposer_frame::TransposerFrame,
+    transposer::Transposer, transposer_frame::TransposerFrame,
     transposer_update::TransposerUpdate, InitContext,
 };
 
@@ -30,20 +30,21 @@ pub(super) struct TransposerEngineInternal<'a, T: Transposer + 'a> {
 
 impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
     pub async fn new(transposer: T) -> TransposerEngineInternal<'a, T> {
-        let mut frame = TransposerFrame::new(transposer);
+        // let mut frame = TransposerFrame::new(transposer);
 
-        let mut context = InitContext::new();
-        T::init_events(&mut frame.transposer, &mut context).await;
-        let output_buffer = VecDeque::from(context.output_events);
+        // let mut context = InitContext::new();
+        // T::init_events(&mut frame.transposer, &mut context).await;
+        // let output_buffer = VecDeque::from(context.output_events);
 
-        TransposerEngineInternal {
-            current_transposer_frame: Arc::new(RwLock::new(frame.clone())),
-            history: TransposerHistory::new(frame),
-            input_buffer: BTreeMap::new(),
-            output_buffer,
-            needs_rollback: None,
-            current_update: None,
-        }
+        // TransposerEngineInternal {
+        //     current_transposer_frame: Arc::new(RwLock::new(frame.clone())),
+        //     history: TransposerHistory::new(frame),
+        //     input_buffer: BTreeMap::new(),
+        //     output_buffer,
+        //     needs_rollback: None,
+        //     current_update: None,
+        // }
+        todo!()
     }
 
     pub fn try_stage_update(&mut self) {
@@ -173,7 +174,7 @@ impl<'a, T: Transposer + 'a> TransposerEngineInternal<'a, T> {
         time: T::Time,
         in_state: T::InputState,
         cx: &mut Context<'_>,
-    ) -> (EngineStateGuard<T>, SchedulePoll<T::Time, OutputEvent<T>>) {
+    ) -> (T, SchedulePoll<T::Time, OutputEvent<T>>) {
         todo!()
         // let poll = loop {
         //     self.try_stage_update();

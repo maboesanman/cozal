@@ -38,7 +38,9 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         event_arc: Arc<InternalScheduledEvent<T>>,
         state: Option<T::InputState>,
     ) -> (Self, Option<Sender<T::InputState>>) {
-        frame.internal.set_source(Source::Schedule(event_arc.clone()));
+        frame
+            .internal
+            .set_source(Source::Schedule(event_arc.clone()));
         let (state, state_sender) = match state {
             Some(s) => (LazyState::Ready(s), None),
             None => {
@@ -86,11 +88,8 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
 
         // create and initialize context
         let cx: UpdateContext<'a, T>;
-        cx = UpdateContext::new_scheduled(
-            &mut frame_ref.internal,
-            state_ref,
-            notification_reciever,
-        );
+        cx =
+            UpdateContext::new_scheduled(&mut frame_ref.internal, state_ref, notification_reciever);
         this.update_cx = MaybeUninit::new(cx);
 
         // take ref from newly pinned ref

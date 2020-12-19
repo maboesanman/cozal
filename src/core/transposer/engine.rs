@@ -10,10 +10,7 @@ use crate::{
     core::Event,
 };
 
-use super::{
-    engine_internal::{InputStreamItem, TransposerEngineInternal},
-    transposer::Transposer,
-};
+use super::{engine_internal::{InputStreamItem, TransposerEngineInternal}, transposer::Transposer, transposer_frame::TransposerFrame, transposer_update::TransposerUpdate};
 
 /// A struct which implements the [`StatefulScheduleStream`] trait for a [`Transposer`].
 ///
@@ -27,29 +24,28 @@ pub struct TransposerEngine<
     'a,
     T: Transposer + 'a,
     S: StatefulScheduleStream<Time = T::Time, Item = InputStreamItem<T>, State = T::InputState>
-        + Unpin
         + Send,
 > {
     #[pin]
     input_stream: S,
 
-    internal: TransposerEngineInternal<'a, T>,
+    state: EngineState<'a, T>
 }
 
 impl<
         'a,
         T: Transposer + 'a,
         S: StatefulScheduleStream<Time = T::Time, Item = InputStreamItem<T>, State = T::InputState>
-            + Unpin
             + Send,
     > TransposerEngine<'a, T, S>
 {
     /// create a new TransposerEngine, consuming the input stream.
     pub async fn new(transposer: T, input_stream: S) -> TransposerEngine<'a, T, S> {
-        TransposerEngine {
-            input_stream: input_stream,
-            internal: TransposerEngineInternal::new(transposer).await,
-        }
+        // TransposerEngine {
+        //     input_stream: input_stream,
+        //     internal: TransposerEngineInternal::new(transposer).await,
+        // }
+        todo!()
     }
 }
 
@@ -63,63 +59,50 @@ impl<
 {
     type Time = T::Time;
     type Item = Event<T::Time, RollbackPayload<T::Output>>;
-    type State = EngineStateGuard<T>;
+    type State = T;
 
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
     ) -> (Self::State, SchedulePoll<Self::Time, Self::Item>) {
-        let projection = self.project();
-        let mut input_stream = projection.input_stream;
-        let internal = projection.internal;
+        // let projection = self.project();
+        // let mut input_stream = projection.input_stream;
+        // let internal = projection.internal;
 
-        // insert events until there are no more input events ready, then poll internal
-        loop {
-            match input_stream.as_mut().poll(time, cx) {
-                (in_state, SchedulePoll::Ready(event)) => internal.insert(event, in_state),
-                (in_state, SchedulePoll::Scheduled(next_input_time)) => {
-                    break match internal.poll(next_input_time, in_state, cx) {
-                        // If the input stream is scheduled and we are scheduled, then we need to be woken at whichever is earliest.
-                        (out_state, SchedulePoll::Scheduled(next_output_time)) => {
-                            let next_time = min(next_input_time, next_output_time);
-                            (out_state, SchedulePoll::Scheduled(next_time))
-                        }
-                        // if the input stream is scheduled and we are pending then we need to be woken at the input scheduled time.
-                        (out_state, SchedulePoll::Pending) => {
-                            (out_state, SchedulePoll::Scheduled(next_input_time))
-                        }
-                        // ready and done are both fine to return as is.
-                        poll => poll,
-                    };
-                }
-                (in_state, SchedulePoll::Pending) => break internal.poll(time, in_state, cx),
-                (in_state, SchedulePoll::Done) => break internal.poll(time, in_state, cx),
-            }
-        }
+        // // insert events until there are no more input events ready, then poll internal
+        // loop {
+        //     match input_stream.as_mut().poll(time, cx) {
+        //         (in_state, SchedulePoll::Ready(event)) => internal.insert(event, in_state),
+        //         (in_state, SchedulePoll::Scheduled(next_input_time)) => {
+        //             break match internal.poll(next_input_time, in_state, cx) {
+        //                 // If the input stream is scheduled and we are scheduled, then we need to be woken at whichever is earliest.
+        //                 (out_state, SchedulePoll::Scheduled(next_output_time)) => {
+        //                     let next_time = min(next_input_time, next_output_time);
+        //                     (out_state, SchedulePoll::Scheduled(next_time))
+        //                 }
+        //                 // if the input stream is scheduled and we are pending then we need to be woken at the input scheduled time.
+        //                 (out_state, SchedulePoll::Pending) => {
+        //                     (out_state, SchedulePoll::Scheduled(next_input_time))
+        //                 }
+        //                 // ready and done are both fine to return as is.
+        //                 poll => poll,
+        //             };
+        //         }
+        //         (in_state, SchedulePoll::Pending) => break internal.poll(time, in_state, cx),
+        //         (in_state, SchedulePoll::Done) => break internal.poll(time, in_state, cx),
+        //     }
+        // }
+        todo!()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.internal.size_hint()
+        // self.internal.size_hint()
+        todo!()
     }
 }
 
-pub struct EngineStateGuard<S> {
-    inner: Box<S>,
-}
-
-impl<S> EngineStateGuard<S> {
-    pub fn new(inner: S) -> Self {
-        Self {
-            inner: Box::new(inner),
-        }
-    }
-}
-
-impl<S> Deref for EngineStateGuard<S> {
-    type Target = S;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
+enum EngineState<'a, T: Transposer> {
+    Waiting(TransposerFrame<T>),
+    Updating(TransposerUpdate<'a, T>),
 }

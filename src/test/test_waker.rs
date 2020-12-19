@@ -1,6 +1,8 @@
-
-use std::{sync::{Arc, atomic::AtomicUsize}, task::{RawWaker, Wake, Waker}};
 use std::sync::atomic::Ordering;
+use std::{
+    sync::{atomic::AtomicUsize, Arc},
+    task::{RawWaker, Wake, Waker},
+};
 pub struct DummyWaker {
     wake_count: AtomicUsize,
 }

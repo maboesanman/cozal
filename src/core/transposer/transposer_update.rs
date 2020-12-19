@@ -23,7 +23,7 @@ pub(super) enum TransposerUpdatePoll<T: Transposer> {
 }
 pub(super) enum TransposerUpdateRecovery<T: Transposer> {
     Input(Vec<T::Input>, T::InputState),
-    Schedule(Arc<InternalScheduledEvent<T>>, Option<T::InputState>)
+    Schedule(Arc<InternalScheduledEvent<T>>, Option<T::InputState>),
 }
 
 #[allow(unused)]
@@ -79,7 +79,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
                 let (event_arc, state) = update_schedule.future.recover();
                 TransposerUpdateRecovery::Schedule(event_arc, state)
             }
-            TransposerUpdateInner::Done => panic!()
+            TransposerUpdateInner::Done => panic!(),
         }
     }
 }
@@ -94,7 +94,6 @@ enum TransposerUpdateInner<'a, T: Transposer> {
 
     Done,
 }
-
 
 impl<'a, T: Transposer> Default for TransposerUpdateInner<'a, T> {
     fn default() -> Self {
