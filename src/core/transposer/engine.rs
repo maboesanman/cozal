@@ -1,14 +1,18 @@
-use core::ops::Deref;
 use core::pin::Pin;
 use futures::{channel::oneshot::Sender, task::Context};
 use pin_project::pin_project;
-use std::{cmp::min, collections::{BTreeMap, VecDeque}, mem::MaybeUninit, unimplemented, unreachable};
+use std::{collections::VecDeque, mem::MaybeUninit, unreachable};
 
-use crate::{core::Event, core::event::RollbackPayload, core::schedule_stream::{Peekable, StatefulSchedulePoll, StatefulScheduleStream}};
+use crate::core::schedule_stream::{Peekable, StatefulSchedulePoll, StatefulScheduleStream};
 
-use super::{InitContext, transposer::Transposer, transposer_frame::TransposerFrame, transposer_update::{ReadyResult, TransposerUpdate, TransposerUpdatePoll}, wrapped_update_result::WrappedUpdateResult};
+use super::{
+    transposer::Transposer,
+    transposer_frame::TransposerFrame,
+    transposer_update::{ReadyResult, TransposerUpdate, TransposerUpdatePoll},
+    wrapped_update_result::WrappedUpdateResult,
+    InitContext,
+};
 
-type InputBuffer<T> = BTreeMap<<T as Transposer>::Time, <T as Transposer>::Input>;
 /// A struct which implements the [`StatefulScheduleStream`] trait for a [`Transposer`].
 ///
 /// This implementation does the following:
@@ -20,8 +24,7 @@ type InputBuffer<T> = BTreeMap<<T as Transposer>::Time, <T as Transposer>::Input
 pub struct TransposerEngine<
     'a,
     T: Transposer + Clone + 'a,
-    S: StatefulScheduleStream<Time = T::Time, Item = T::Input, State = T::InputState>
-        + Send,
+    S: StatefulScheduleStream<Time = T::Time, Item = T::Input, State = T::InputState> + Send,
 > {
     #[pin]
     input_stream: Peekable<S>,
@@ -33,8 +36,7 @@ pub struct TransposerEngine<
 impl<
         'a,
         T: Transposer + Clone + 'a,
-        S: StatefulScheduleStream<Time = T::Time, Item = T::Input, State = T::InputState>
-            + Send,
+        S: StatefulScheduleStream<Time = T::Time, Item = T::Input, State = T::InputState> + Send,
     > TransposerEngine<'a, T, S>
 {
     /// create a new TransposerEngine, consuming the input stream.
@@ -72,7 +74,6 @@ impl<
         'poll: loop {
             match state.as_mut().project() {
                 EngineStateProjection::Waiting(frame) => {
-
                     let next_scheduled_time = frame.get_next_schedule_time();
                     let poll_time = match next_scheduled_time {
                         Some(t) => t,
@@ -80,9 +81,8 @@ impl<
                     };
                     let next_input_time = match input_stream.as_mut().peek(poll_time, cx) {
                         StatefulSchedulePoll::Ready(t, _, _) => Some(*t),
-                        _ => None
+                        _ => None,
                     };
-                    
 
                     // For convenience
                     enum UpdateCase<T> {
@@ -93,7 +93,6 @@ impl<
 
                     // Determine which update type comes next.
                     let mut case = match (next_input_time, next_scheduled_time) {
-                        
                         // if there is nothing upcoming in the schedule or input, there's nothing to do.
                         (None, None) => UpdateCase::None,
 
@@ -116,7 +115,9 @@ impl<
                     }
 
                     match case {
-                        UpdateCase::None => break 'poll StatefulSchedulePoll::Waiting(frame.transposer.clone()),
+                        UpdateCase::None => {
+                            break 'poll StatefulSchedulePoll::Waiting(frame.transposer.clone())
+                        }
                         UpdateCase::Input(next_input_time) => {
                             let mut next_inputs = Vec::new();
                             let mut input_state = MaybeUninit::uninit();
@@ -124,7 +125,9 @@ impl<
                                 match input_stream.as_mut().peek(next_input_time, cx) {
                                     StatefulSchedulePoll::Ready(t, _p, _s) => {
                                         if *t == next_input_time {
-                                            if let StatefulSchedulePoll::Ready(_t, p, s) = input_stream.as_mut().poll(next_input_time, cx) {
+                                            if let StatefulSchedulePoll::Ready(_t, p, s) =
+                                                input_stream.as_mut().poll(next_input_time, cx)
+                                            {
                                                 next_inputs.push(p);
                                                 input_state = MaybeUninit::new(s);
                                             } else {
@@ -133,36 +136,47 @@ impl<
                                         } else {
                                             unreachable!()
                                         }
-                                    },
-                                    _ => break 'input
+                                    }
+                                    _ => break 'input,
                                 }
-                            };
+                            }
 
                             // SAFETY: the first item is guranteed to match, so we definitely have a state.
                             let input_state = unsafe { input_state.assume_init() };
 
                             // SAFETY: this is safe as long as we don't move anything out of an update.
-                            take_mut::take(unsafe { state.as_mut().get_unchecked_mut() }, |current_state| {
-                                if let EngineState::Waiting(frame) = current_state {
-                                    let update = TransposerUpdate::new_input(frame, next_input_time, next_inputs, input_state);
-                                    EngineState::Updating(update, None)
-                                } else {
-                                    // we already are in this branch from the first match
-                                    unreachable!()
-                                }
-                            });
+                            take_mut::take(
+                                unsafe { state.as_mut().get_unchecked_mut() },
+                                |current_state| {
+                                    if let EngineState::Waiting(frame) = current_state {
+                                        let update = TransposerUpdate::new_input(
+                                            frame,
+                                            next_input_time,
+                                            next_inputs,
+                                            input_state,
+                                        );
+                                        EngineState::Updating(update, None)
+                                    } else {
+                                        // we already are in this branch from the first match
+                                        unreachable!()
+                                    }
+                                },
+                            );
                         }
                         UpdateCase::Scheduled(_) => {
                             // SAFETY: this is safe as long as we don't move anything out of an update.
-                            take_mut::take(unsafe { state.as_mut().get_unchecked_mut() }, |state| {
-                                if let EngineState::Waiting(frame) = state {
-                                    let update = TransposerUpdate::new_schedule(frame, None);
-                                    EngineState::Updating(update, None)
-                                } else {
-                                    // we already are in this branch from the first match
-                                    unreachable!()
-                                }
-                            });
+                            take_mut::take(
+                                unsafe { state.as_mut().get_unchecked_mut() },
+                                |state| {
+                                    if let EngineState::Waiting(frame) = state {
+                                        let update = TransposerUpdate::new_schedule(frame, None);
+                                        EngineState::Updating(update, None)
+                                    } else {
+                                        // we already are in this branch from the first match
+                                        unreachable!()
+                                    }
+                                },
+                            );
                         }
                     }
 
@@ -175,12 +189,10 @@ impl<
                     // fall through loop, trying to poll update
                 }
                 EngineStateProjection::Updating(mut update, sender) => {
-
                     // if we have a sender, poll for something to send it.
                     if let Some(sender) = std::mem::take(sender) {
                         let time = update.as_ref().get_ref().time();
                         let state = match input_stream.as_mut().poll(time, cx) {
-
                             // this gives us the state in the past, which is not allowed in this configuration.
                             StatefulSchedulePoll::Ready(_, _, _) => {
                                 panic!("all inputs at time t must be ready at the same time (no pending in the middle of them)")
@@ -192,20 +204,22 @@ impl<
                             StatefulSchedulePoll::Done(s) => s,
 
                             // this says the state is not ready; we cannot proceed until it is.
-                            StatefulSchedulePoll::Pending => break 'poll StatefulSchedulePoll::Pending,
+                            StatefulSchedulePoll::Pending => {
+                                break 'poll StatefulSchedulePoll::Pending
+                            }
                         };
                         let _ = sender.send(state);
                     }
 
-                    
                     match update.as_mut().poll(cx) {
                         TransposerUpdatePoll::Ready(result) => {
                             let ReadyResult {
-                                result: WrappedUpdateResult {
-                                    frame: updated_frame,
-                                    outputs,
-                                    ..
-                                },
+                                result:
+                                    WrappedUpdateResult {
+                                        frame: updated_frame,
+                                        outputs,
+                                        ..
+                                    },
                                 ..
                             } = result;
 
@@ -216,17 +230,17 @@ impl<
                             } else {
                                 EngineState::Emitting(updated_frame, VecDeque::from(outputs))
                             };
-                        },
+                        }
                         TransposerUpdatePoll::NeedsState(new_sender) => {
                             if sender.is_some() {
                                 panic!("updater requested second state");
                             }
 
                             *sender = Some(new_sender);
-                        },
-                        TransposerUpdatePoll::Pending => break 'poll {
-                            StatefulSchedulePoll::Pending
-                        },
+                        }
+                        TransposerUpdatePoll::Pending => {
+                            break 'poll { StatefulSchedulePoll::Pending }
+                        }
                     }
                 }
                 EngineStateProjection::Emitting(frame, output_buffer) => {
@@ -246,7 +260,7 @@ impl<
                     }
 
                     if let Some(output) = output {
-                        break 'poll StatefulSchedulePoll::Ready(time, output, transposer)
+                        break 'poll StatefulSchedulePoll::Ready(time, output, transposer);
                     }
                 }
             }
@@ -260,7 +274,10 @@ enum EngineState<'a, T: Transposer + Clone + 'a> {
     Waiting(TransposerFrame<T>),
 
     // an update is currently in progress.
-    Updating(#[pin] TransposerUpdate<'a, T>, Option<Sender<T::InputState>>),
+    Updating(
+        #[pin] TransposerUpdate<'a, T>,
+        Option<Sender<T::InputState>>,
+    ),
 
     // an update finished with output events, which are not fully emitted yet.
     Emitting(TransposerFrame<T>, VecDeque<T::Output>),

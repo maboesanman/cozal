@@ -1,4 +1,3 @@
-
 /// A modified version of [`futures::task::Poll`], which has two new variants:
 /// [`Scheduled`](self::SchedulePoll::Scheduled) and [`Done`](self::SchedulePoll::Done).
 pub enum StatefulSchedulePoll<T, P, S>
@@ -17,7 +16,7 @@ where
     Scheduled(T, S),
 
     Waiting(S),
-    
+
     /// Represents that a value is not ready yet.
     ///
     /// When a function returns `Pending`, the function *must* also

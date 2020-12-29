@@ -6,7 +6,6 @@ pub type InputEvent<T> = Event<<T as Transposer>::Time, RollbackPayload<<T as Tr
 pub type ScheduledEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Scheduled>;
 pub type OutputEvent<T> =
     Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Output>>;
-pub(super) type InternalOutputEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Output>;
 
 /// A `Transposer` is a type that can update itself in response to events.
 ///

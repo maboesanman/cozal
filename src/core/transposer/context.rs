@@ -1,10 +1,6 @@
-use crate::core::Event;
-use futures::channel::oneshot::{Receiver, Sender, channel};
+use futures::channel::oneshot::{channel, Receiver, Sender};
 
-use super::{
-    expire_handle::ExpireHandle, transposer_frame::TransposerFrameInternal, InternalOutputEvent,
-    Transposer,
-};
+use super::{expire_handle::ExpireHandle, transposer_frame::TransposerFrameInternal, Transposer};
 
 /// This is the interface through which you can do a variety of functions in your transposer.
 ///
@@ -24,10 +20,6 @@ impl<T: Transposer> InitContext<T> {
             frame_internal: TransposerFrameInternal::new(),
             outputs: Vec::new(),
         }
-    }
-
-    fn time(&self) -> T::Time {
-        self.frame_internal.time()
     }
 
     /// This allows you to schedule events to happen in the future.
@@ -67,26 +59,26 @@ impl<S> LazyState<S> {
         loop {
             match self {
                 Self::Ready(s) => break s,
-                Self::Requested(r) => break {
-                    let s = r.await.unwrap();
-                    std::mem::swap(self, &mut Self::Ready(s));
-                    if let Self::Ready(s) = self {
-                        s
-                    } else {
-                        unreachable!()
-                    }
-                },
-                Self::Pending(_) => {
-                    take_mut::take(self, |this| {
-                        if let Self::Pending(s) = this {
-                            let (sender, receiver) = channel();
-                            let _ = s.send(sender);
-                            Self::Requested(receiver)
+                Self::Requested(r) => {
+                    break {
+                        let s = r.await.unwrap();
+                        std::mem::swap(self, &mut Self::Ready(s));
+                        if let Self::Ready(s) = self {
+                            s
                         } else {
                             unreachable!()
                         }
-                    })
-                },
+                    }
+                }
+                Self::Pending(_) => take_mut::take(self, |this| {
+                    if let Self::Pending(s) = this {
+                        let (sender, receiver) = channel();
+                        let _ = s.send(sender);
+                        Self::Requested(receiver)
+                    } else {
+                        unreachable!()
+                    }
+                }),
             }
         }
     }
@@ -98,7 +90,7 @@ impl<S> LazyState<S> {
             Self::Requested(mut r) => match r.try_recv() {
                 Ok(s) => s,
                 Err(_) => None,
-            }
+            },
         }
     }
 }
@@ -147,10 +139,6 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
             outputs: Vec::new(),
             exit: false,
         }
-    }
-
-    fn time(&self) -> T::Time {
-        self.frame_internal.time()
     }
 
     pub async fn get_input_state(&mut self) -> Result<&T::InputState, &str> {

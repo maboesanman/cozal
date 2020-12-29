@@ -6,7 +6,7 @@ use super::{
     wrapped_update_result::WrappedUpdateResult,
     UpdateContext,
 };
-use futures::channel::oneshot::{Receiver, Sender, channel};
+use futures::channel::oneshot::{channel, Receiver, Sender};
 use futures::Future;
 use std::{
     marker::PhantomPinned,
@@ -89,8 +89,7 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
 
         // create and initialize context
         let cx: UpdateContext<'a, T>;
-        cx =
-            UpdateContext::new_scheduled(&mut frame_ref.internal, state_ref);
+        cx = UpdateContext::new_scheduled(&mut frame_ref.internal, state_ref);
         this.update_cx = MaybeUninit::new(cx);
 
         // take ref from newly pinned ref

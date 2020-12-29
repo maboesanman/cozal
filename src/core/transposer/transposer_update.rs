@@ -4,7 +4,7 @@ use super::{
     transposer_frame::TransposerFrame, wrapped_update_result::WrappedUpdateResult,
 };
 use futures::{
-    channel::oneshot::{channel, Receiver, Sender},
+    channel::oneshot::{Receiver, Sender},
     Future,
 };
 use pin_project::pin_project;
@@ -37,10 +37,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
         Self(TransposerUpdateInner::new_input(frame, time, inputs, state))
     }
 
-    pub fn new_schedule(
-        mut frame: TransposerFrame<T>,
-        state: Option<T::InputState>,
-    ) -> Self {
+    pub fn new_schedule(mut frame: TransposerFrame<T>, state: Option<T::InputState>) -> Self {
         if let Some(event_arc) = frame.internal.schedule.remove_min() {
             Self(TransposerUpdateInner::new_schedule(frame, event_arc, state))
         } else {
@@ -63,10 +60,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
         self.0.time()
     }
 
-    pub fn poll(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> TransposerUpdatePoll<T> {
+    pub fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> TransposerUpdatePoll<T> {
         let inner = self.project().0;
         inner.poll(cx)
     }
@@ -172,10 +166,7 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
         }
     }
 
-    pub fn poll(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> TransposerUpdatePoll<T> {
+    pub fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> TransposerUpdatePoll<T> {
         let result = match self.as_mut().project() {
             TransposerUpdateProject::Input(update_input) => {
                 let update_input = update_input.project();
@@ -199,29 +190,27 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
         };
 
         match result {
-            Poll::Ready(result) => {
-                match std::mem::take(unsafe { self.get_unchecked_mut() }) {
-                    Self::Input(update_input) => {
-                        let (time, inputs, input_state) = update_input.future.recover();
-                        TransposerUpdatePoll::Ready(ReadyResult {
-                            time,
-                            inputs: Some(inputs),
-                            input_state: Some(input_state),
-                            result,
-                        })
-                    }
-                    Self::Schedule(update_schedule) => {
-                        let (event_arc, input_state) = update_schedule.future.recover();
-                        TransposerUpdatePoll::Ready(ReadyResult {
-                            time: event_arc.time,
-                            inputs: None,
-                            input_state,
-                            result,
-                        })
-                    }
-                    Self::Done => unreachable!(),
+            Poll::Ready(result) => match std::mem::take(unsafe { self.get_unchecked_mut() }) {
+                Self::Input(update_input) => {
+                    let (time, inputs, input_state) = update_input.future.recover();
+                    TransposerUpdatePoll::Ready(ReadyResult {
+                        time,
+                        inputs: Some(inputs),
+                        input_state: Some(input_state),
+                        result,
+                    })
                 }
-            }
+                Self::Schedule(update_schedule) => {
+                    let (event_arc, input_state) = update_schedule.future.recover();
+                    TransposerUpdatePoll::Ready(ReadyResult {
+                        time: event_arc.time,
+                        inputs: None,
+                        input_state,
+                        result,
+                    })
+                }
+                Self::Done => unreachable!(),
+            },
             Poll::Pending => TransposerUpdatePoll::Pending,
         }
     }

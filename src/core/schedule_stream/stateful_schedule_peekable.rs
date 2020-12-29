@@ -1,7 +1,7 @@
 use super::{StatefulSchedulePoll, StatefulScheduleStream};
+use pin_project::pin_project;
 use std::pin::Pin;
 use std::task::Context;
-use pin_project::pin_project;
 
 #[pin_project]
 pub struct Peekable<St: StatefulScheduleStream> {
@@ -21,7 +21,7 @@ impl<St: StatefulScheduleStream> Peekable<St> {
     pub fn peek(
         self: Pin<&mut Self>,
         time: St::Time,
-        cx: &mut Context<'_>
+        cx: &mut Context<'_>,
     ) -> &StatefulSchedulePoll<St::Time, St::Item, St::State> {
         let this = self.project();
         if this.peeked.is_none() {
@@ -56,16 +56,10 @@ impl<St: StatefulScheduleStream> StatefulScheduleStream for Peekable<St> {
                 StatefulSchedulePoll::Scheduled(_scheduled_time, _s) => {
                     this.stream.poll(poll_time, cx)
                 }
-                StatefulSchedulePoll::Waiting(_peek_time) => {
-                    this.stream.poll(poll_time, cx)
-                }
-                StatefulSchedulePoll::Pending => {
-                    StatefulSchedulePoll::Pending
-                }
-                StatefulSchedulePoll::Done(s) => {
-                    StatefulSchedulePoll::Done(s)
-                }
-            }
+                StatefulSchedulePoll::Waiting(_peek_time) => this.stream.poll(poll_time, cx),
+                StatefulSchedulePoll::Pending => StatefulSchedulePoll::Pending,
+                StatefulSchedulePoll::Done(s) => StatefulSchedulePoll::Done(s),
+            },
         }
     }
 }

@@ -1,7 +1,11 @@
-use super::{StatefulSchedulePoll, StatefulScheduleStream, timestamp::Timestamp};
+use super::{timestamp::Timestamp, StatefulSchedulePoll, StatefulScheduleStream};
 use futures::{Future, Stream};
 use pin_project::pin_project;
-use std::{pin::Pin, task::{Context, Poll}, time::Instant};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+    time::Instant,
+};
 use tokio::time::{delay_for, Delay};
 
 /// Stream for the [`to_realtime`](super::schedule_stream_ext::ScheduleStreamExt::to_realtime) method.
@@ -28,7 +32,7 @@ where
             stream,
             reference,
             delay: delay_for(std::time::Duration::from_secs(0)),
-            state: None
+            state: None,
         }
     }
 }

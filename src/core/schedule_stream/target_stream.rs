@@ -3,7 +3,6 @@ use futures::Stream;
 use pin_project::pin_project;
 use std::{
     pin::Pin,
-    sync::Mutex,
     task::{Context, Poll},
 };
 
@@ -54,7 +53,7 @@ impl<St: StatefulScheduleStream> Stream for TargetStream<St> {
 
                 Poll::Pending
             }
-            StatefulSchedulePoll::Waiting(s) => Poll::Pending,
+            StatefulSchedulePoll::Waiting(_) => Poll::Pending,
             StatefulSchedulePoll::Pending => Poll::Pending,
             StatefulSchedulePoll::Done(_) => Poll::Ready(None),
         }
