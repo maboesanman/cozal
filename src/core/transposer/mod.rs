@@ -9,7 +9,6 @@ pub use transposer::*;
 
 pub(self) mod curried_input_future;
 pub(self) mod curried_schedule_future;
-pub(self) mod engine_internal;
 pub(self) mod expire_handle;
 pub(self) mod internal_scheduled_event;
 pub(self) mod transposer_frame;
