@@ -1,4 +1,4 @@
-use super::{SchedulePoll, StatefulScheduleStream};
+use super::{StatefulSchedulePoll, StatefulScheduleStream};
 use futures::Stream;
 use pin_project::pin_project;
 use std::{
@@ -12,25 +12,27 @@ use std::{
 pub struct TargetStream<St: StatefulScheduleStream> {
     #[pin]
     stream: St,
-    target: Mutex<St::Time>,
+    target: St::Time,
     next_target: Option<St::Time>,
+    state: Option<St::State>,
 }
 
 impl<St: StatefulScheduleStream> TargetStream<St> {
     pub(super) fn new(stream: St, target: St::Time) -> Self {
         Self {
             stream,
-            target: Mutex::new(target),
+            target,
             next_target: None,
+            state: None,
         }
     }
 
-    pub fn set_target(&self, target: St::Time) {
-        *self.target.lock().unwrap() = target;
+    pub fn set_target(self: Pin<&mut Self>, target: St::Time) {
+        *self.project().target = target;
     }
 
-    pub fn get_next_target(&self) -> Option<St::Time> {
-        self.next_target
+    pub fn get_next_target(self: Pin<&mut Self>) -> Option<St::Time> {
+        self.into_ref().get_ref().next_target
     }
 
     pub fn into_inner(self) -> St {
@@ -39,21 +41,22 @@ impl<St: StatefulScheduleStream> TargetStream<St> {
 }
 
 impl<St: StatefulScheduleStream> Stream for TargetStream<St> {
-    type Item = (St::Time, St::State, St::Item);
+    type Item = (St::Time, St::Item, St::State);
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.project();
         *this.next_target = None;
 
-        match this.stream.poll(*this.target.lock().unwrap(), cx) {
-            (s, SchedulePoll::Ready(t, p)) => Poll::Ready(Some((t, s, p))),
-            (_, SchedulePoll::Scheduled(new_time)) => {
-                *this.next_target = Some(new_time);
+        match this.stream.poll(*this.target, cx) {
+            StatefulSchedulePoll::Ready(t, p, s) => Poll::Ready(Some((t, p, s))),
+            StatefulSchedulePoll::Scheduled(t, _) => {
+                *this.next_target = Some(t);
 
                 Poll::Pending
             }
-            (_, SchedulePoll::Pending) => Poll::Pending,
-            (_, SchedulePoll::Done) => Poll::Ready(None),
+            StatefulSchedulePoll::Waiting(s) => Poll::Pending,
+            StatefulSchedulePoll::Pending => Poll::Pending,
+            StatefulSchedulePoll::Done(_) => Poll::Ready(None),
         }
     }
 

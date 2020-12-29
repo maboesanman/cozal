@@ -1,34 +1,6 @@
-use super::StatefulScheduleStream;
+use super::{StatefulSchedulePoll, StatefulScheduleStream};
 use std::pin::Pin;
 use std::task::Context;
-
-/// A modified version of [`futures::task::Poll`], which has two new variants:
-/// [`Scheduled`](self::SchedulePoll::Scheduled) and [`Done`](self::SchedulePoll::Done).
-pub enum SchedulePoll<T, P>
-where
-    T: Ord + Copy,
-{
-    /// Represents that a value is ready and does not occur after the time polled
-    Ready(T, P),
-
-    /// Represents that a value is ready, but occurs in the future, so the stream should be polled after time t.
-    ///
-    /// When a function returns `Scheduled`, the function *may never wake the task*.
-    /// the contract is that repeated polling will continue to return scheduled(t) for the same t
-    /// until new information becomes availavle (via the input stream) or until poll is called
-    /// with a new, greater value of t.
-    Scheduled(T),
-
-    /// Represents that a value is not ready yet.
-    ///
-    /// When a function returns `Pending`, the function *must* also
-    /// ensure that the current task is scheduled to be awoken when
-    /// progress can be made.
-    Pending,
-
-    /// Represents the end of the stream.
-    Done,
-}
 
 /// A modified stream that allows for 'scheduling' events.
 pub trait ScheduleStream {
@@ -67,7 +39,7 @@ pub trait ScheduleStream {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> SchedulePoll<Self::Time, Self::Item>;
+    ) -> StatefulSchedulePoll<Self::Time, Self::Item, ()>;
 
     /// Returns the bounds on the remaining length of the stream.
     ///
@@ -90,8 +62,8 @@ where
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> (Self::State, SchedulePoll<Self::Time, Self::Item>) {
-        ((), self.poll_next(time, cx))
+    ) -> StatefulSchedulePoll<Self::Time, Self::Item, Self::State> {
+        self.poll_next(time, cx)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

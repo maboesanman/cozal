@@ -1,4 +1,4 @@
-use super::SchedulePoll;
+use super::StatefulSchedulePoll;
 use std::pin::Pin;
 use std::task::Context;
 
@@ -48,7 +48,7 @@ pub trait StatefulScheduleStream {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> (Self::State, SchedulePoll<Self::Time, Self::Item>);
+    ) -> StatefulSchedulePoll<Self::Time, Self::Item, Self::State>;
 
     /// Returns the bounds on the remaining length of the stream.
     ///

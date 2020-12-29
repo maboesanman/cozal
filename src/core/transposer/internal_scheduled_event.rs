@@ -45,11 +45,20 @@ impl<T: Transposer> PartialEq for InternalScheduledEvent<T> {
     }
 }
 
-#[derive(Clone)]
 pub(super) enum Source<T: Transposer> {
     Init,
     Input(T::Time),
     Schedule(Arc<InternalScheduledEvent<T>>),
+}
+
+impl<T: Transposer> Clone for Source<T> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Init => Self::Init,
+            Self::Input(t) => Self::Input(*t),
+            Self::Schedule(arc) => Self::Schedule(arc.clone()),
+        }
+    }
 }
 
 impl<T: Transposer> Source<T> {
@@ -57,7 +66,7 @@ impl<T: Transposer> Source<T> {
         match self {
             Self::Init => T::Time::default(),
             Self::Input(time) => *time,
-            Self::Schedule(event) => event.time,
+            Self::Schedule(schedule) => schedule.time,
         }
     }
 }

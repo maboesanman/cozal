@@ -6,7 +6,7 @@ use super::{
     wrapped_update_result::WrappedUpdateResult,
     UpdateContext,
 };
-use futures::channel::oneshot::{channel, Sender};
+use futures::channel::oneshot::{Receiver, Sender, channel};
 use futures::Future;
 use std::{
     marker::PhantomPinned,
@@ -37,15 +37,16 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         mut frame: TransposerFrame<T>,
         event_arc: Arc<InternalScheduledEvent<T>>,
         state: Option<T::InputState>,
-    ) -> (Self, Option<Sender<T::InputState>>) {
+    ) -> (Self, Option<Receiver<Sender<T::InputState>>>) {
         frame
             .internal
             .set_source(Source::Schedule(event_arc.clone()));
-        let (state, state_sender) = match state {
+
+        let (state, receiver) = match state {
             Some(s) => (LazyState::Ready(s), None),
             None => {
-                let (state_sender, state_reciever) = channel();
-                (LazyState::Pending(state_reciever), Some(state_sender))
+                let (sender, reciever) = channel();
+                (LazyState::Pending(sender), Some(reciever))
             }
         };
 
@@ -58,10 +59,10 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
             _pin: PhantomPinned,
         };
 
-        (new_self, state_sender)
+        (new_self, receiver)
     }
 
-    pub fn init(self: Pin<&mut Self>, notification_reciever: Option<Sender<()>>) {
+    pub fn init(self: Pin<&mut Self>) {
         // this is safe because we are adjusting the lifetime
         // to be the lifetime of the pinned struct
 
@@ -89,7 +90,7 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         // create and initialize context
         let cx: UpdateContext<'a, T>;
         cx =
-            UpdateContext::new_scheduled(&mut frame_ref.internal, state_ref, notification_reciever);
+            UpdateContext::new_scheduled(&mut frame_ref.internal, state_ref);
         this.update_cx = MaybeUninit::new(cx);
 
         // take ref from newly pinned ref

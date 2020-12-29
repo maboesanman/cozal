@@ -1,5 +1,5 @@
 use crate::core::Event;
-use futures::channel::oneshot::{Receiver, Sender};
+use futures::channel::oneshot::{Receiver, Sender, channel};
 
 use super::{
     expire_handle::ExpireHandle, transposer_frame::TransposerFrameInternal, InternalOutputEvent,
@@ -15,14 +15,14 @@ pub struct InitContext<T: Transposer> {
     pub(super) frame_internal: TransposerFrameInternal<T>,
 
     // values to output
-    pub(super) output_events: Vec<InternalOutputEvent<T>>,
+    pub(super) outputs: Vec<T::Output>,
 }
 
 impl<T: Transposer> InitContext<T> {
     pub(super) fn new() -> Self {
         Self {
             frame_internal: TransposerFrameInternal::new(),
-            output_events: Vec::new(),
+            outputs: Vec::new(),
         }
     }
 
@@ -52,31 +52,41 @@ impl<T: Transposer> InitContext<T> {
     /// If you need to emit an event in the future at a scheduled time, schedule an internal event that can emit
     /// your event when handled.
     pub fn emit_event(&mut self, payload: T::Output) {
-        let event = Event {
-            timestamp: self.time(),
-            payload,
-        };
-        self.output_events.push(event);
+        self.outputs.push(payload);
     }
 }
 
 pub(super) enum LazyState<S> {
     Ready(S),
-    Pending(Receiver<S>),
+    Requested(Receiver<S>),
+    Pending(Sender<Sender<S>>),
 }
 
 impl<S> LazyState<S> {
     pub async fn get(&mut self) -> &S {
-        match self {
-            Self::Ready(s) => s,
-            Self::Pending(r) => {
-                let s = r.await.unwrap();
-                std::mem::swap(self, &mut Self::Ready(s));
-                if let Self::Ready(s) = self {
-                    s
-                } else {
-                    unreachable!()
-                }
+        loop {
+            match self {
+                Self::Ready(s) => break s,
+                Self::Requested(r) => break {
+                    let s = r.await.unwrap();
+                    std::mem::swap(self, &mut Self::Ready(s));
+                    if let Self::Ready(s) = self {
+                        s
+                    } else {
+                        unreachable!()
+                    }
+                },
+                Self::Pending(_) => {
+                    take_mut::take(self, |this| {
+                        if let Self::Pending(s) = this {
+                            let (sender, receiver) = channel();
+                            let _ = s.send(sender);
+                            Self::Requested(receiver)
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                },
             }
         }
     }
@@ -85,6 +95,10 @@ impl<S> LazyState<S> {
         match self {
             Self::Ready(s) => Some(s),
             Self::Pending(_) => None,
+            Self::Requested(mut r) => match r.try_recv() {
+                Ok(s) => s,
+                Err(_) => None,
+            }
         }
     }
 }
@@ -99,10 +113,9 @@ pub struct UpdateContext<'a, T: Transposer> {
 
     // access to the input state
     input_state: &'a mut LazyState<T::InputState>,
-    pub(super) input_state_requester: Option<Sender<()>>,
 
     // values to output
-    pub(super) output_events: Vec<InternalOutputEvent<T>>,
+    pub(super) outputs: Vec<T::Output>,
     pub(super) exit: bool,
 }
 
@@ -116,9 +129,8 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
             frame_internal,
 
             input_state,
-            input_state_requester: None,
 
-            output_events: Vec::new(),
+            outputs: Vec::new(),
             exit: false,
         }
     }
@@ -126,15 +138,13 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
     pub(super) fn new_scheduled(
         frame_internal: &'a mut TransposerFrameInternal<T>,
         input_state: &'a mut LazyState<T::InputState>,
-        input_state_requester: Option<Sender<()>>,
     ) -> Self {
         Self {
             frame_internal,
 
             input_state,
-            input_state_requester,
 
-            output_events: Vec::new(),
+            outputs: Vec::new(),
             exit: false,
         }
     }
@@ -144,9 +154,6 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
     }
 
     pub async fn get_input_state(&mut self) -> Result<&T::InputState, &str> {
-        if let Some(requester) = std::mem::take(&mut self.input_state_requester) {
-            let _ = requester.send(());
-        }
         Ok(self.input_state.get().await)
     }
 
@@ -172,11 +179,7 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
     /// If you need to emit an event in the future at a scheduled time, schedule an internal event that can emit
     /// your event when handled.
     pub fn emit_event(&mut self, payload: T::Output) {
-        let event = Event {
-            timestamp: self.time(),
-            payload,
-        };
-        self.output_events.push(event);
+        self.outputs.push(payload);
     }
 
     /// This allows you to expire an event currently in the schedule, as long as you have an [`ExpireHandle`].

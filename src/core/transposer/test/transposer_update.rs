@@ -22,7 +22,7 @@ fn test_input() {
 
     let (waker, _) = DummyWaker::new();
     let mut context = Context::from_waker(&waker);
-    let result = update_ref.poll(None, &mut context);
+    let result = update_ref.poll(&mut context);
 
     match result {
         TransposerUpdatePoll::Ready(ready_result) => {
@@ -32,7 +32,7 @@ fn test_input() {
             let result = ready_result.result;
 
             assert_eq!(
-                result.output_events.first().unwrap().payload,
+                *result.outputs.first().unwrap(),
                 vec![
                     EventCall::Input(7),
                     EventCall::Input(6),

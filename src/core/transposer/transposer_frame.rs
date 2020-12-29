@@ -19,6 +19,14 @@ impl<T: Transposer> TransposerFrame<T> {
             internal: TransposerFrameInternal::new(),
         }
     }
+
+    pub fn time(&self) -> T::Time {
+        self.internal.time()
+    }
+
+    pub fn get_next_schedule_time(&self) -> Option<T::Time> {
+        self.internal.get_next_schedule_time()
+    }
 }
 
 #[derive(Clone)]
@@ -116,5 +124,9 @@ impl<T: Transposer> TransposerFrameInternal<T> {
             }
             None => Err("invalid expire handle"),
         }
+    }
+
+    pub fn get_next_schedule_time(&self) -> Option<T::Time> {
+        self.schedule.get_min().map(|next| next.time)
     }
 }

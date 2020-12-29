@@ -1,11 +1,7 @@
-use super::{schedule_stream::SchedulePoll, timestamp::Timestamp, StatefulScheduleStream};
+use super::{StatefulSchedulePoll, StatefulScheduleStream, timestamp::Timestamp};
 use futures::{Future, Stream};
 use pin_project::pin_project;
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-    time::Instant,
-};
+use std::{pin::Pin, task::{Context, Poll}, time::Instant};
 use tokio::time::{delay_for, Delay};
 
 /// Stream for the [`to_realtime`](super::schedule_stream_ext::ScheduleStreamExt::to_realtime) method.
@@ -19,6 +15,8 @@ where
     stream: St,
     #[pin]
     delay: Delay,
+
+    state: Option<St::State>,
 }
 
 impl<St: StatefulScheduleStream> RealtimeStream<St>
@@ -30,6 +28,7 @@ where
             stream,
             reference,
             delay: delay_for(std::time::Duration::from_secs(0)),
+            state: None
         }
     }
 }
@@ -38,7 +37,7 @@ impl<St: StatefulScheduleStream> Stream for RealtimeStream<St>
 where
     St::Time: Timestamp,
 {
-    type Item = (St::Time, St::State, St::Item);
+    type Item = (St::Time, St::Item, St::State);
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
@@ -46,8 +45,12 @@ where
         let time = St::Time::get_timestamp(&Instant::now(), this.reference);
 
         match this.stream.poll(time, cx) {
-            (s, SchedulePoll::Ready(t, p)) => Poll::Ready(Some((t, s, p))),
-            (_, SchedulePoll::Scheduled(new_time)) => {
+            StatefulSchedulePoll::Ready(t, p, s) => {
+                *this.state = None;
+                Poll::Ready(Some((t, p, s)))
+            }
+            StatefulSchedulePoll::Scheduled(new_time, s) => {
+                *this.state = Some(s);
                 let instant = new_time.get_instant(&this.reference);
                 let instant = tokio::time::Instant::from_std(instant);
 
@@ -56,8 +59,15 @@ where
 
                 Poll::Pending
             }
-            (_, SchedulePoll::Pending) => Poll::Pending,
-            (_, SchedulePoll::Done) => Poll::Ready(None),
+            StatefulSchedulePoll::Waiting(s) => {
+                *this.state = Some(s);
+                Poll::Pending
+            }
+            StatefulSchedulePoll::Pending => Poll::Pending,
+            StatefulSchedulePoll::Done(s) => {
+                *this.state = Some(s);
+                Poll::Ready(None)
+            }
         }
     }
 

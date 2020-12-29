@@ -11,8 +11,8 @@ license = "MIT"
 
 [dependencies]
 async-trait = "0.1.40"
-lazy_static = "1.4.0"
 pin-project = "0.4.23"
+take_mut = "0.2.2"
 futures = "0.3.5"
 im = "15.0.0"
 

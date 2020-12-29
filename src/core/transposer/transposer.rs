@@ -19,7 +19,7 @@ pub(super) type InternalOutputEvent<T> = Event<<T as Transposer>::Time, <T as Tr
 /// The name comes from the idea that we are converting a stream of events into another stream of events,
 /// perhaps in the way a stream of music notes can be *transposed* into another stream of music notes.
 #[async_trait]
-pub trait Transposer: Clone + Unpin + Send + Sync {
+pub trait Transposer: Sized + Unpin + Send + Sync {
     /// The type used as the 'time' for events. This must be Ord and Copy because it is frequently used for comparisons,
     /// and it must be [`Default`] because the default value is used for the timestamp of events emitted.
     /// by the init function.
