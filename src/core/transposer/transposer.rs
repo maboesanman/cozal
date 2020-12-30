@@ -56,7 +56,7 @@ pub trait Transposer: Sized + Unpin + Send + Sync {
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`InitContext`] documentation.
-    async fn init_events(&mut self, cx: &mut InitContext<Self>);
+    async fn init(&mut self, cx: &mut InitContext<Self>);
 
     /// The function to respond to input.
     ///

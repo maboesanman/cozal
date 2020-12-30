@@ -75,8 +75,14 @@ impl<
             match state.as_mut().project() {
                 EngineStateProjection::Waiting(frame) => {
                     let next_scheduled_time = match frame.get_next_schedule_time() {
-                        Some(t) => if t <= time { Some(t) } else { None }
-                        None => None
+                        Some(t) => {
+                            if t <= time {
+                                Some(t)
+                            } else {
+                                None
+                            }
+                        }
+                        None => None,
                     };
                     let poll_time = match next_scheduled_time {
                         Some(t) => t,
@@ -291,7 +297,7 @@ impl<'a, T: Transposer + Clone + 'a> EngineState<'a, T> {
         let mut frame = TransposerFrame::new(transposer);
 
         let mut context = InitContext::new();
-        T::init_events(&mut frame.transposer, &mut context).await;
+        T::init(&mut frame.transposer, &mut context).await;
         let output_buffer = VecDeque::from(context.outputs);
 
         if output_buffer.is_empty() {

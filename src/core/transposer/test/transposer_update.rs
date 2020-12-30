@@ -1,11 +1,11 @@
-use std::{pin::Pin, sync::Arc, task::Context};
+use std::{pin::Pin, task::Context};
 
 use crate::{
     core::transposer::{transposer_frame::TransposerFrame, transposer_update::TransposerUpdate},
     test::test_waker::DummyWaker,
 };
 
-use super::test_transposer::{EventCall, TestTransposer};
+use super::test_transposer::{HandleRecord, TestTransposer};
 
 use crate::core::transposer::transposer_update::TransposerUpdatePoll;
 
@@ -21,27 +21,25 @@ fn test_input() {
     update_ref.as_mut().init_pinned();
 
     let (waker, _) = DummyWaker::new();
-    let mut context = Context::from_waker(&waker);
-    let result = update_ref.poll(&mut context);
+    let mut cx = Context::from_waker(&waker);
+    let result = update_ref.poll(&mut cx);
 
     match result {
         TransposerUpdatePoll::Ready(ready_result) => {
             assert_eq!(ready_result.inputs, Some(vec![7, 6, 5]));
             assert_eq!(ready_result.input_state, Some(17));
 
-            let result = ready_result.result;
+            let mut result = ready_result.result;
 
-            assert_eq!(
-                *result.outputs.first().unwrap(),
-                vec![
-                    EventCall::Input(7),
-                    EventCall::Input(6),
-                    EventCall::Input(5)
-                ]
-            );
             let frame = result.frame;
+            assert_eq!(result.outputs.len(), 1);
+            let output = result.outputs.pop().unwrap();
 
-            assert_eq!(frame.internal.schedule.len(), 2);
+            assert_eq!(output, (17, HandleRecord::Input(12, vec![7, 6, 5])));
+
+            let transposer = frame.transposer;
+
+            assert_eq!(transposer.handle_record.len(), 1);
         }
         _ => assert!(false, "result not ready"),
     }

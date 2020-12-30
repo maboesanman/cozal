@@ -1,44 +1,26 @@
-use crate::core::transposer::ScheduledEvent;
+use crate::core::transposer::{InitContext, UpdateContext};
 use crate::core::Transposer;
-use crate::core::{
-    event::RollbackPayload,
-    transposer::{InitContext, UpdateContext},
-    Event,
-};
 use async_trait::async_trait;
-use futures::Stream;
-use std::task::Poll;
-
-pub(crate) struct EmptyStream {}
-
-impl Stream for EmptyStream {
-    type Item = Event<usize, RollbackPayload<usize>>;
-
-    fn poll_next(
-        self: std::pin::Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        Poll::Pending
-    }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum EventCall {
-    Input(usize),
-    Scheduled(usize),
+pub(crate) enum HandleRecord {
+    Input(usize, Vec<usize>),
+    Scheduled(usize, usize),
 }
 
 #[derive(Clone)]
 pub(crate) struct TestTransposer {
-    pub init_events: Vec<ScheduledEvent<Self>>,
-    pub event_calls: Vec<EventCall>,
+    init_events: Vec<(usize, usize)>,
+
+    pub handle_record: im::Vector<HandleRecord>,
 }
 
 impl TestTransposer {
-    pub fn new(init_events: Vec<ScheduledEvent<Self>>) -> Self {
+    pub fn new(init_events: Vec<(usize, usize)>) -> Self {
         Self {
             init_events,
-            event_calls: Vec::new(),
+
+            handle_record: im::Vector::new(),
         }
     }
 }
@@ -53,11 +35,11 @@ impl Transposer for TestTransposer {
 
     type Scheduled = usize;
 
-    type Output = Vec<EventCall>;
+    type Output = (usize, HandleRecord);
 
-    async fn init_events(&mut self, cx: &mut InitContext<Self>) {
-        for event in self.init_events.iter() {
-            let _ = cx.schedule_event(event.timestamp, event.payload);
+    async fn init(&mut self, cx: &mut InitContext<Self>) {
+        for (time, payload) in self.init_events.drain(..) {
+            let _ = cx.schedule_event(time, payload);
         }
     }
 
@@ -67,13 +49,15 @@ impl Transposer for TestTransposer {
         inputs: &'a [Self::Input],
         cx: &'a mut UpdateContext<'a, Self>,
     ) {
+        let mut vec = Vec::new();
         for payload in inputs {
-            self.event_calls.push(EventCall::Input(*payload));
-            if payload % 2 == 1 {
-                let _ = cx.schedule_event(time * 2, payload * 2);
-            };
+            vec.push(*payload);
         }
-        cx.emit_event(self.event_calls.clone());
+        let record = HandleRecord::Input(time, vec);
+        self.handle_record.push_back(record.clone());
+
+        let state = *cx.get_input_state().await.unwrap();
+        cx.emit_event((state, record));
     }
 
     async fn handle_scheduled<'a>(
@@ -82,10 +66,10 @@ impl Transposer for TestTransposer {
         payload: &Self::Scheduled,
         cx: &'a mut UpdateContext<'a, Self>,
     ) {
-        self.event_calls.push(EventCall::Scheduled(*payload));
-        if payload % 2 == 1 {
-            let _ = cx.schedule_event(time * 2, payload * 2);
-        };
-        cx.emit_event(self.event_calls.clone());
+        let record = HandleRecord::Scheduled(time, *payload);
+        self.handle_record.push_back(record.clone());
+
+        let state = *cx.get_input_state().await.unwrap();
+        cx.emit_event((state, record));
     }
 }
