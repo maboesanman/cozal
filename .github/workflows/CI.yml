@@ -25,8 +25,8 @@ jobs:
     
     - name: Install additional components
       run: |
-        # rustup component add llvm-tools-preview
-        # cargo install cargo-binutils rustfilt
+        rustup component add llvm-tools-preview
+        cargo install cargo-binutils rustfilt
 
     - name: Build test binary
       run: |
