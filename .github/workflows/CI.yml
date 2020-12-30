@@ -22,6 +22,32 @@ jobs:
       with:
         toolchain: nightly
         override: true
+    
+    - name: Install additional components
+      run: |
+        rustup component add llvm-tools-preview
+        cargo install cargo-binutils rustfilt
+        apt-get install jq
 
-    - name: Run tests
-      run: cargo test --verbose
+    - name: Build test binary
+      run: |
+        executable=$(RUSTFLAGS="-Zinstrument-coverage" cargo test --no-run --message-format=json | tail -n2 | head -n1 | jq -r .executable)
+        cargo profdata -- merge -sparse default.profraw -o default.profdata
+    
+    - name: Run tests and collect coverage
+      run: |
+        cargo cov -- export $executable \
+          --Xdemangler=rustfilt 
+          --instr-profile=default.profdata \
+          --format=lcov \
+          --ignore-filename-regex="(.*\.cargo/registry/.*)|(.*\.rustup/.*)|(.*test.*)" \
+          > default.lcov
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.codecov_token }}
+        file: ./default.lcov
+        flags: Test
+        name: Cargo Tests
+        fail_ci_if_error: true
