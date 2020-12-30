@@ -35,13 +35,10 @@ jobs:
 
     - name: Run tests
       run: $EXECUTABLE
-
-    - name: Build profdata
+    
+    - name: Collect coverage
       run: |
         cargo profdata -- merge -sparse default.profraw -o default.profdata
-    
-    - name: Run tests and collect coverage
-      run: |
         cargo cov -- export $EXECUTABLE \
           --Xdemangler=rustfilt \
           --instr-profile=default.profdata \
