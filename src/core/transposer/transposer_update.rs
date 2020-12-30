@@ -46,7 +46,7 @@ impl<'a, T: Transposer> TransposerUpdate<'a, T> {
     }
 
     pub fn init_pinned(self: Pin<&mut Self>) {
-        let inner = self.project().0;
+        let inner: Pin<&mut TransposerUpdateInner<'a, T>> = self.project().0;
         inner.init();
     }
 
@@ -148,11 +148,13 @@ impl<'a, T: Transposer> TransposerUpdateInner<'a, T> {
         match self.project() {
             TransposerUpdateProject::Input(update_input) => {
                 let update_input = update_input.project();
-                update_input.future.init();
+                let future: Pin<&mut CurriedInputFuture<T>> = update_input.future;
+                future.init();
             }
             TransposerUpdateProject::Schedule(update_schedule) => {
                 let update_schedule = update_schedule.project();
-                update_schedule.future.init();
+                let future: Pin<&mut CurriedScheduleFuture<T>> = update_schedule.future;
+                future.init();
             }
             _ => {}
         }
