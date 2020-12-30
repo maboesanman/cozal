@@ -25,19 +25,22 @@ jobs:
     
     - name: Install additional components
       run: |
-        sudo apt-get install jq
         rustup component add llvm-tools-preview
         cargo install cargo-binutils rustfilt
 
     - name: Build test binary
       run: |
-        executable=$(RUSTFLAGS="-Zinstrument-coverage" cargo test --no-run --message-format=json | tail -n2 | head -n1 | jq -r .executable)
+        export EXECUTABLE=$(RUSTFLAGS="-Zinstrument-coverage" cargo test --no-run --message-format=json | tail -n2 | head -n1 | jq -r .executable)
+        echo "::set-env name=EXECUTABLE::$EXECUTABLE"
+
+    - name: Build profdata
+      run: |
         cargo profdata -- merge -sparse default.profraw -o default.profdata
     
     - name: Run tests and collect coverage
       run: |
-        cargo cov -- export $executable \
-          --Xdemangler=rustfilt 
+        cargo cov -- export $EXECUTABLE \
+          --Xdemangler=rustfilt \
           --instr-profile=default.profdata \
           --format=lcov \
           --ignore-filename-regex="(.*\.cargo/registry/.*)|(.*\.rustup/.*)|(.*test.*)" \
