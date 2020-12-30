@@ -1,1 +1,4 @@
 /target
+default.profraw
+default.profdata
+default.lcov
