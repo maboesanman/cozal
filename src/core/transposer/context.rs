@@ -1,116 +1,97 @@
-use crate::core::Event;
+use futures::channel::oneshot::{channel, Receiver, Sender};
 
-use super::{
-    expire_handle::{ExpireHandle, ExpireHandleFactory},
-    ScheduledEvent, Transposer,
-};
-use std::{collections::HashMap, sync::atomic::AtomicBool, sync::atomic::Ordering, sync::Mutex};
+use super::{expire_handle::ExpireHandle, transposer_frame::TransposerFrameInternal, Transposer};
 
 /// This is the interface through which you can do a variety of functions in your transposer.
 ///
 /// the primary feature is scheduling events,
 /// though there are more methods to interact with the engine.
 pub struct InitContext<T: Transposer> {
-    // this is really an AtomicNonZeroU64
-    new_events: Mutex<Vec<ScheduledEvent<T>>>,
-    emitted_events: Mutex<Vec<T::Output>>,
+    // mutable references into the current transposer frame
+    pub(super) frame_internal: TransposerFrameInternal<T>,
 
-    expire_handle_factory: ExpireHandleFactory,
-    new_expire_handles: Mutex<HashMap<usize, ExpireHandle>>,
-    // todo add seeded deterministic random function
+    // values to output
+    pub(super) outputs: Vec<T::Output>,
 }
 
 impl<T: Transposer> InitContext<T> {
-    pub(super) fn new(handle_factory: ExpireHandleFactory) -> Self {
+    pub(super) fn new() -> Self {
         Self {
-            new_events: Mutex::new(Vec::new()),
-            emitted_events: Mutex::new(Vec::new()),
-            expire_handle_factory: handle_factory,
-            new_expire_handles: Mutex::new(HashMap::new()),
+            frame_internal: TransposerFrameInternal::new(),
+            outputs: Vec::new(),
         }
-    }
-
-    pub(super) fn destroy(
-        self,
-    ) -> (
-        Vec<ScheduledEvent<T>>,
-        Vec<T::Output>,
-        ExpireHandleFactory,
-        HashMap<usize, ExpireHandle>,
-    ) {
-        (
-            self.new_events.into_inner().unwrap(),
-            self.emitted_events.into_inner().unwrap(),
-            self.expire_handle_factory,
-            self.new_expire_handles.into_inner().unwrap(),
-        )
     }
 
     /// This allows you to schedule events to happen in the future.
     /// As long as the time you supply is not less than the current time,
     /// the event can be scheduled.
-    pub fn schedule_event(&self, time: T::Time, payload: T::Scheduled) -> Result<(), &str> {
-        if time < T::Time::default() {
-            return Err("time must be in the future");
-        }
-
-        let mut new_events = match self.new_events.lock() {
-            Ok(a) => a,
-            Err(_) => {
-                return Err("internal error");
-            }
-        };
-
-        new_events.push(Event {
-            timestamp: time,
-            payload,
-        });
-        Ok(())
+    pub fn schedule_event(&mut self, time: T::Time, payload: T::Scheduled) -> Result<(), &str> {
+        self.frame_internal.schedule_event(time, payload)
     }
 
     /// The same behavior as [`schedule_event`], but now returning an [`ExpireHandle`]
     /// which can be stored and used to cancel the event in the future.
     pub fn schedule_event_expireable(
-        &self,
+        &mut self,
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, &str> {
-        if time < T::Time::default() {
-            return Err("time must be in the future");
-        }
-
-        let mut new_events = match self.new_events.lock() {
-            Ok(a) => a,
-            Err(_) => {
-                return Err("internal error");
-            }
-        };
-        let mut new_expire_handles = match self.new_expire_handles.lock() {
-            Ok(a) => a,
-            Err(_) => {
-                return Err("internal error");
-            }
-        };
-
-        let index = new_events.len();
-        let handle = self.expire_handle_factory.next();
-
-        new_events.push(Event {
-            timestamp: time,
-            payload,
-        });
-        new_expire_handles.insert(index, handle);
-
-        Ok(handle)
+        self.frame_internal.schedule_event_expireable(time, payload)
     }
 
     /// This allows you to emit events from your transposer. the event is emitted at the current time.
     ///
     /// If you need to emit an event in the future at a scheduled time, schedule an internal event that can emit
     /// your event when handled.
-    pub fn emit_event(&self, payload: T::Output) {
-        let mut emitted_events = self.emitted_events.lock().unwrap();
-        emitted_events.push(payload);
+    pub fn emit_event(&mut self, payload: T::Output) {
+        self.outputs.push(payload);
+    }
+}
+
+pub(super) enum LazyState<S> {
+    Ready(S),
+    Requested(Receiver<S>),
+    Pending(Sender<Sender<S>>),
+}
+
+impl<S> LazyState<S> {
+    pub async fn get(&mut self) -> &S {
+        loop {
+            match self {
+                Self::Ready(s) => break s,
+                Self::Requested(r) => {
+                    break {
+                        let s = r.await.unwrap();
+                        std::mem::swap(self, &mut Self::Ready(s));
+                        if let Self::Ready(s) = self {
+                            s
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                }
+                Self::Pending(_) => take_mut::take(self, |this| {
+                    if let Self::Pending(s) = this {
+                        let (sender, receiver) = channel();
+                        let _ = s.send(sender);
+                        Self::Requested(receiver)
+                    } else {
+                        unreachable!()
+                    }
+                }),
+            }
+        }
+    }
+
+    pub fn destroy(self) -> Option<S> {
+        match self {
+            Self::Ready(s) => Some(s),
+            Self::Pending(_) => None,
+            Self::Requested(mut r) => match r.try_recv() {
+                Ok(s) => s,
+                Err(_) => None,
+            },
+        }
     }
 }
 
@@ -118,127 +99,84 @@ impl<T: Transposer> InitContext<T> {
 ///
 /// the primary features are scheduling and expiring events,
 /// though there are more methods to interact with the engine.
-pub struct UpdateContext<T: Transposer> {
-    time: T::Time,
-    // this is really an AtomicNonZeroU64
-    pub(super) new_events: Mutex<Vec<ScheduledEvent<T>>>,
-    pub(super) emitted_events: Mutex<Vec<T::Output>>,
-    pub(super) expired_events: Mutex<Vec<ExpireHandle>>,
+pub struct UpdateContext<'a, T: Transposer> {
+    // mutable references into the current transposer frame
+    frame_internal: &'a mut TransposerFrameInternal<T>,
 
-    pub(super) expire_handle_factory: ExpireHandleFactory,
-    pub(super) new_expire_handles: Mutex<HashMap<usize, ExpireHandle>>,
-    // todo add seeded deterministic random function
-    pub(super) exit: AtomicBool,
+    // access to the input state
+    input_state: &'a mut LazyState<T::InputState>,
+
+    // values to output
+    pub(super) outputs: Vec<T::Output>,
+    pub(super) exit: bool,
 }
 
-impl<T: Transposer> UpdateContext<T> {
-    pub(super) fn new(time: T::Time, handle_factory: ExpireHandleFactory) -> Self {
+impl<'a, T: Transposer> UpdateContext<'a, T> {
+    pub(super) fn new_input(
+        // this can't be a mutable reference to the frame because the borrow needs to be split.
+        frame_internal: &'a mut TransposerFrameInternal<T>,
+        input_state: &'a mut LazyState<T::InputState>,
+    ) -> Self {
         Self {
-            time,
-            new_events: Mutex::new(Vec::new()),
-            emitted_events: Mutex::new(Vec::new()),
-            expired_events: Mutex::new(Vec::new()),
-            expire_handle_factory: handle_factory,
-            new_expire_handles: Mutex::new(HashMap::new()),
-            exit: AtomicBool::new(false),
+            frame_internal,
+
+            input_state,
+
+            outputs: Vec::new(),
+            exit: false,
         }
     }
 
-    pub(super) fn destroy(
-        self,
-    ) -> (
-        Vec<ScheduledEvent<T>>,
-        Vec<T::Output>,
-        Vec<ExpireHandle>,
-        ExpireHandleFactory,
-        HashMap<usize, ExpireHandle>,
-        bool,
-    ) {
-        (
-            self.new_events.into_inner().unwrap(),
-            self.emitted_events.into_inner().unwrap(),
-            self.expired_events.into_inner().unwrap(),
-            self.expire_handle_factory,
-            self.new_expire_handles.into_inner().unwrap(),
-            self.exit.into_inner(),
-        )
+    pub(super) fn new_scheduled(
+        frame_internal: &'a mut TransposerFrameInternal<T>,
+        input_state: &'a mut LazyState<T::InputState>,
+    ) -> Self {
+        Self {
+            frame_internal,
+
+            input_state,
+
+            outputs: Vec::new(),
+            exit: false,
+        }
+    }
+
+    pub async fn get_input_state(&mut self) -> Result<&T::InputState, &str> {
+        Ok(self.input_state.get().await)
     }
 
     /// This allows you to schedule events to happen in the future.
     /// As long as the time you supply is not less than the current time,
     /// the event can be scheduled.
-    pub fn schedule_event(&self, time: T::Time, payload: T::Scheduled) -> Result<(), &str> {
-        if time < self.time {
-            return Err("time must be in the future");
-        }
-
-        let mut new_events = match self.new_events.lock() {
-            Ok(a) => a,
-            Err(_) => {
-                return Err("internal error");
-            }
-        };
-
-        new_events.push(Event {
-            timestamp: time,
-            payload,
-        });
-        Ok(())
+    pub fn schedule_event(&mut self, time: T::Time, payload: T::Scheduled) -> Result<(), &str> {
+        self.frame_internal.schedule_event(time, payload)
     }
 
     /// The same behavior as [`schedule_event`], but now returning an [`ExpireHandle`]
     /// which can be stored and used to cancel the event in the future.
     pub fn schedule_event_expireable(
-        &self,
+        &mut self,
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, &str> {
-        if time < self.time {
-            return Err("time must be in the future");
-        }
-
-        let mut new_events = match self.new_events.lock() {
-            Ok(a) => a,
-            Err(_) => {
-                return Err("internal error");
-            }
-        };
-        let mut new_expire_handles = match self.new_expire_handles.lock() {
-            Ok(a) => a,
-            Err(_) => {
-                return Err("internal error");
-            }
-        };
-
-        let index = new_events.len();
-        let handle = self.expire_handle_factory.next();
-
-        new_events.push(Event {
-            timestamp: time,
-            payload,
-        });
-        new_expire_handles.insert(index, handle);
-
-        Ok(handle)
+        self.frame_internal.schedule_event_expireable(time, payload)
     }
 
     /// This allows you to emit events from your transposer. the event is emitted at the current time.
     ///
     /// If you need to emit an event in the future at a scheduled time, schedule an internal event that can emit
     /// your event when handled.
-    pub fn emit_event(&self, payload: T::Output) {
-        let mut emitted_events = self.emitted_events.lock().unwrap();
-        emitted_events.push(payload);
+    pub fn emit_event(&mut self, payload: T::Output) {
+        self.outputs.push(payload);
     }
 
     /// This allows you to expire an event currently in the schedule, as long as you have an [`ExpireHandle`].
-    pub fn expire_event(&self, handle: ExpireHandle) {
-        let mut expired_events = self.expired_events.lock().unwrap();
-        expired_events.push(handle);
+    pub fn expire_event(&mut self, handle: ExpireHandle) -> Result<(), &str> {
+        self.frame_internal.expire_event(handle)
     }
 
     /// This allows you to exit the transposer, closing the output stream.
-    pub fn exit(&self) {
-        self.exit.fetch_or(true, Ordering::SeqCst);
+    pub fn exit(&mut self) {
+        self.exit = true;
     }
 }

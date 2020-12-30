@@ -6,7 +6,6 @@ pub type InputEvent<T> = Event<<T as Transposer>::Time, RollbackPayload<<T as Tr
 pub type ScheduledEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Scheduled>;
 pub type OutputEvent<T> =
     Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Output>>;
-pub(super) type InternalOutputEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Output>;
 
 /// A `Transposer` is a type that can update itself in response to events.
 ///
@@ -19,11 +18,13 @@ pub(super) type InternalOutputEvent<T> = Event<<T as Transposer>::Time, <T as Tr
 /// The name comes from the idea that we are converting a stream of events into another stream of events,
 /// perhaps in the way a stream of music notes can be *transposed* into another stream of music notes.
 #[async_trait]
-pub trait Transposer: Clone + Unpin + Send + Sync {
+pub trait Transposer: Sized + Unpin + Send + Sync {
     /// The type used as the 'time' for events. This must be Ord and Copy because it is frequently used for comparisons,
     /// and it must be [`Default`] because the default value is used for the timestamp of events emitted.
     /// by the init function.
     type Time: Copy + Ord + Default + Send + Sync;
+
+    type InputState;
 
     /// The type of the input payloads.
     ///
@@ -55,7 +56,7 @@ pub trait Transposer: Clone + Unpin + Send + Sync {
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`InitContext`] documentation.
-    async fn init_events(&mut self, cx: &InitContext<Self>);
+    async fn init(&mut self, cx: &mut InitContext<Self>);
 
     /// The function to respond to input.
     ///
@@ -66,11 +67,11 @@ pub trait Transposer: Clone + Unpin + Send + Sync {
     ///
     /// `cx` is a context object for performing additional operations like scheduling events.
     /// For more information on `cx` see the [`UpdateContext`] documentation.
-    async fn handle_input(
-        &mut self,
+    async fn handle_input<'a>(
+        &'a mut self,
         time: Self::Time,
-        inputs: &[Self::Input],
-        cx: &UpdateContext<Self>,
+        inputs: &'a [Self::Input],
+        cx: &'a mut UpdateContext<'a, Self>,
     );
 
     /// The function to respond to internally scheduled events.
@@ -79,16 +80,16 @@ pub trait Transposer: Clone + Unpin + Send + Sync {
     ///
     /// `cx` is a context object for performing additional operations like scheduling events.
     /// For more information on `cx` see the [`UpdateContext`] documentation.
-    async fn handle_scheduled(
-        &mut self,
+    async fn handle_scheduled<'a>(
+        &'a mut self,
         time: Self::Time,
         payload: &Self::Scheduled,
-        cx: &UpdateContext<Self>,
+        cx: &'a mut UpdateContext<'a, Self>,
     );
 
     /// Filter out events you know you can't do anything with.
     /// This reduces the amount of events you have to remember for rollback to work
-    fn can_handle(_event: &InputEvent<Self>) -> bool {
+    fn can_handle(_time: Self::Time, _input: &Self::Input) -> bool {
         true
     }
 }

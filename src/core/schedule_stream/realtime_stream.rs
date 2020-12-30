@@ -1,7 +1,4 @@
-use super::{
-    schedule_stream::{SchedulePoll, ScheduleStream},
-    timestamp::Timestamp,
-};
+use super::{timestamp::Timestamp, StatefulSchedulePoll, StatefulScheduleStream};
 use futures::{Future, Stream};
 use pin_project::pin_project;
 use std::{
@@ -13,7 +10,7 @@ use tokio::time::{delay_for, Delay};
 
 /// Stream for the [`to_realtime`](super::schedule_stream_ext::ScheduleStreamExt::to_realtime) method.
 #[pin_project]
-pub struct RealtimeStream<St: ScheduleStream>
+pub struct RealtimeStream<St: StatefulScheduleStream>
 where
     St::Time: Timestamp,
 {
@@ -22,9 +19,11 @@ where
     stream: St,
     #[pin]
     delay: Delay,
+
+    state: Option<St::State>,
 }
 
-impl<St: ScheduleStream> RealtimeStream<St>
+impl<St: StatefulScheduleStream> RealtimeStream<St>
 where
     St::Time: Timestamp,
 {
@@ -33,24 +32,29 @@ where
             stream,
             reference,
             delay: delay_for(std::time::Duration::from_secs(0)),
+            state: None,
         }
     }
 }
 
-impl<St: ScheduleStream> Stream for RealtimeStream<St>
+impl<St: StatefulScheduleStream> Stream for RealtimeStream<St>
 where
     St::Time: Timestamp,
 {
-    type Item = St::Item;
+    type Item = (St::Time, St::Item, St::State);
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
 
         let time = St::Time::get_timestamp(&Instant::now(), this.reference);
 
-        match this.stream.poll_next(time, cx) {
-            SchedulePoll::Ready(p) => Poll::Ready(Some(p)),
-            SchedulePoll::Scheduled(new_time) => {
+        match this.stream.poll(time, cx) {
+            StatefulSchedulePoll::Ready(t, p, s) => {
+                *this.state = None;
+                Poll::Ready(Some((t, p, s)))
+            }
+            StatefulSchedulePoll::Scheduled(new_time, s) => {
+                *this.state = Some(s);
                 let instant = new_time.get_instant(&this.reference);
                 let instant = tokio::time::Instant::from_std(instant);
 
@@ -59,8 +63,15 @@ where
 
                 Poll::Pending
             }
-            SchedulePoll::Pending => Poll::Pending,
-            SchedulePoll::Done => Poll::Ready(None),
+            StatefulSchedulePoll::Waiting(s) => {
+                *this.state = Some(s);
+                Poll::Pending
+            }
+            StatefulSchedulePoll::Pending => Poll::Pending,
+            StatefulSchedulePoll::Done(s) => {
+                *this.state = Some(s);
+                Poll::Ready(None)
+            }
         }
     }
 
