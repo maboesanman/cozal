@@ -26,7 +26,8 @@ jobs:
     - name: Install additional components
       run: |
         rustup component add llvm-tools-preview
-        cargo install cargo-binutils rustfilt
+        cargo install cargo-binutils
+        cargo install rustfilt
         apt-get install jq
 
     - name: Build test binary
