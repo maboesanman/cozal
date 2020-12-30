@@ -25,13 +25,13 @@ jobs:
     
     - name: Install additional components
       run: |
-        rustup component add llvm-tools-preview
-        cargo install cargo-binutils rustfilt
+        # rustup component add llvm-tools-preview
+        # cargo install cargo-binutils rustfilt
 
     - name: Build test binary
       run: |
         export EXECUTABLE=$(RUSTFLAGS="-Zinstrument-coverage" cargo test --no-run --message-format=json | tail -n2 | head -n1 | jq -r .executable)
-        echo "::set-env name=EXECUTABLE::$EXECUTABLE"
+        echo "EXECUTABLE=$EXECUTABLE" >> $GITHUB_ENV
 
     - name: Build profdata
       run: |
