@@ -45,15 +45,15 @@ jobs:
       run: |
         cargo cov -- export $EXECUTABLES \
           --instr-profile=target/debug/coverage/cozal.profdata \
-          --format=lcov \
+          --format=JSON \
           --ignore-filename-regex="(.*\.cargo/registry/.*)|(.*\.rustup/.*)|(.*test.*)" \
-          > target/debug/coverage/cozal.lcov
+          > target/debug/coverage/cozal.json
 
     - name: Upload coverage
       uses: codecov/codecov-action@v1
       with:
         token: ${{ secrets.codecov_token }}
-        file: ./target/debug/coverage/cozal.lcov
+        file: ./target/debug/coverage/cozal.json
         flags: Test
         name: Cargo Tests
         fail_ci_if_error: true
