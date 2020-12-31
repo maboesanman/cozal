@@ -32,7 +32,7 @@ jobs:
 
     - name: Build test binary
       run: |
-        export EXECUTABLES=$(RUSTFLAGS="-Zinstrument-coverage -Clink-dead-code=on" cargo test --no-run --message-format=json | jq -r "select(.profile.test == true) | .executable)
+        export EXECUTABLES=$(RUSTFLAGS="-Zinstrument-coverage -Clink-dead-code=on" cargo test --no-run --message-format=json | jq -r "select(.profile.test == true) | .executable")
         echo "EXECUTABLES=$EXECUTABLES" >> $GITHUB_ENV
 
     - name: Run tests
