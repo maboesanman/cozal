@@ -26,7 +26,7 @@ jobs:
     - name: Install additional components
       run: |
         rustup component add llvm-tools-preview
-        cargo install cargo-binutils rustfilt
+        cargo install cargo-binutils
 
     - name: Build test binary
       run: |
@@ -40,7 +40,6 @@ jobs:
       run: |
         cargo profdata -- merge -sparse default.profraw -o default.profdata
         cargo cov -- export $EXECUTABLE \
-          --Xdemangler=rustfilt \
           --instr-profile=default.profdata \
           --format=lcov \
           --ignore-filename-regex="(.*\.cargo/registry/.*)|(.*\.rustup/.*)|(.*test.*)" \
