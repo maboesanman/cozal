@@ -45,7 +45,6 @@ jobs:
       run: |
         cargo cov -- export $EXECUTABLES \
           --instr-profile=target/debug/coverage/cozal.profdata \
-          --format=JSON \
           --ignore-filename-regex="(.*\.cargo/registry/.*)|(.*\.rustup/.*)|(.*test.*)" \
           > target/debug/coverage/cozal.json
 
