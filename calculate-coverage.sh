@@ -1,15 +1,18 @@
 #!/bin/bash
 
+export LLVM_PROFILE_FILE="target/debug/coverage/cozal-%m.profraw"
+
 # build the test binary with coverage instrumentation
-executable=$(RUSTFLAGS="-Zinstrument-coverage" cargo test --no-run --message-format=json | tail -n2 | head -n1 | jq -r .executable)
+executables=$(RUSTFLAGS="-Zinstrument-coverage" cargo test --tests --no-run --message-format=json | jq -r "select(.profile.test == true) | .executable")
 
 # run instrumented tests
-$executable
+$executables
 
+# combine profraw files
+cargo profdata -- merge -sparse target/debug/coverage/cozal-*.profraw -o target/debug/coverage/cozal.profdata
 # collect coverage
-cargo profdata -- merge -sparse default.profraw -o default.profdata
-cargo cov -- export $executable \
-    --instr-profile=default.profdata \
+cargo cov -- export $executables \
+    --instr-profile=target/debug/coverage/cozal.profdata \
     --format=lcov \
     --ignore-filename-regex="(.*\.cargo/registry/.*)|(.*\.rustup/.*)|(.*test.*)" \
-    > default.lcov
+    > target/debug/coverage/cozal.lcov

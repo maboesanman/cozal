@@ -12,6 +12,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      LLVM_PROFILE_FILE: target/debug/coverage/cozal-%m.profraw
 
     steps:
     - name: Checkout repository
@@ -30,26 +32,28 @@ jobs:
 
     - name: Build test binary
       run: |
-        export EXECUTABLE=$(RUSTFLAGS="-Zinstrument-coverage -Clink-dead-code" cargo test --no-run --message-format=json | tail -n2 | head -n1 | jq -r .executable)
-        echo "EXECUTABLE=$EXECUTABLE" >> $GITHUB_ENV
+        export EXECUTABLES=$(RUSTFLAGS="-Zinstrument-coverage -Clink-dead-code=on" cargo test --no-run --message-format=json | jq -r "select(.profile.test == true) | .executable)
+        echo "EXECUTABLES=$EXECUTABLES" >> $GITHUB_ENV
 
     - name: Run tests
-      run: $EXECUTABLE
+      run: $EXECUTABLES
+
+    - name: Merge raw coverage
+      run: cargo profdata -- merge -sparse target/debug/coverage/cozal-*.profraw -o target/debug/coverage/cozal.profdata
     
     - name: Collect coverage
       run: |
-        cargo profdata -- merge -sparse default.profraw -o default.profdata
-        cargo cov -- export $EXECUTABLE \
-          --instr-profile=default.profdata \
+        cargo cov -- export $EXECUTABLES \
+          --instr-profile=target/debug/coverage/cozal.profdata \
           --format=lcov \
           --ignore-filename-regex="(.*\.cargo/registry/.*)|(.*\.rustup/.*)|(.*test.*)" \
-          > default.lcov
+          > target/debug/coverage/cozal.lcov
 
     - name: Upload coverage
       uses: codecov/codecov-action@v1
       with:
         token: ${{ secrets.codecov_token }}
-        file: ./default.lcov
+        file: ./target/debug/coverage/cozal.lcov
         flags: Test
         name: Cargo Tests
         fail_ci_if_error: true
