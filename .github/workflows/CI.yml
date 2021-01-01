@@ -29,6 +29,7 @@ jobs:
       run: |
         rustup component add llvm-tools-preview
         cargo install cargo-binutils
+        cargo install --git https://github.com/maboesanman/cargo-llvm-codecov-converter.git
 
     - name: Build test binary
       run: |
@@ -46,7 +47,7 @@ jobs:
         cargo cov -- export $EXECUTABLES \
           --instr-profile=target/debug/coverage/cozal.profdata \
           --ignore-filename-regex="(.*\.cargo/registry/.*)|(.*\.rustup/.*)|(.*test.*)" \
-          > target/debug/coverage/cozal.json
+          | cargo llvm-codecov-converter > target/debug/coverage/cozal.json
 
     - name: Upload coverage
       uses: codecov/codecov-action@v1

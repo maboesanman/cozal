@@ -13,6 +13,8 @@ cargo profdata -- merge -sparse target/debug/coverage/cozal-*.profraw -o target/
 # collect coverage
 cargo cov -- export $executables \
     --instr-profile=target/debug/coverage/cozal.profdata \
-    --format=lcov \
     --ignore-filename-regex="(.*\.cargo/registry/.*)|(.*\.rustup/.*)|(.*test.*)" \
-    > target/debug/coverage/cozal.lcov
+    --skip-functions \
+    | cargo llvm-codecov-converter > target/debug/coverage/cozal.json
+
+# cargo llvm-codecov-converter
