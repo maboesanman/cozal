@@ -28,8 +28,7 @@ jobs:
     - name: Install additional components
       run: |
         rustup component add llvm-tools-preview
-        cargo install cargo-binutils
-        cargo install --git https://github.com/maboesanman/cargo-llvm-codecov-converter.git
+        cargo install cargo-binutils cargo-llvm-codecov-converter
 
     - name: Build test binary
       run: |

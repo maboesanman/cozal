@@ -10,6 +10,7 @@ $executables
 
 # combine profraw files
 cargo profdata -- merge -sparse target/debug/coverage/cozal-*.profraw -o target/debug/coverage/cozal.profdata
+
 # collect coverage
 cargo cov -- export $executables \
     --instr-profile=target/debug/coverage/cozal.profdata \
@@ -17,4 +18,3 @@ cargo cov -- export $executables \
     --skip-functions \
     | cargo llvm-codecov-converter > target/debug/coverage/cozal.json
 
-# cargo llvm-codecov-converter
