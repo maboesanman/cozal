@@ -25,7 +25,7 @@ jobs:
         override: true
 
     - name: Run tests and collect coverage
-      uses: maboesanman/rust-codecov@v0.3
+      uses: maboesanman/rust-codecov@v0.4
 
     - name: Upload coverage
       uses: codecov/codecov-action@v1
