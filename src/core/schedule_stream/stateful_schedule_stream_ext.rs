@@ -1,3 +1,4 @@
+#[cfg(realtime)]
 use super::RealtimeStream;
 use super::StatefulScheduleStream;
 use super::TargetStream;
@@ -25,6 +26,7 @@ where
     ///
     /// if your timestamp is an [`Instant`](std::time::Instant), then your reference is of type `()` because instants
     /// are already realtime and need no reference.
+    #[cfg(realtime)]
     fn to_realtime(self, reference: <Self::Time as Timestamp>::Reference) -> RealtimeStream<Self> {
         RealtimeStream::new(self, reference)
     }
