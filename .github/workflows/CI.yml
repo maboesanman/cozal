@@ -12,8 +12,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      LLVM_PROFILE_FILE: target/debug/coverage/cozal-%m.profraw
 
     steps:
     - name: Checkout repository
@@ -22,38 +20,18 @@ jobs:
     - name: Install nightly toolchain
       uses: actions-rs/toolchain@v1
       with:
+        profile: minimal
         toolchain: nightly
         override: true
-    
-    - name: Install additional components
-      run: |
-        rustup component add llvm-tools-preview
-        cargo install cargo-binutils
 
-    - name: Build test binary
-      run: |
-        export EXECUTABLES=$(RUSTFLAGS="-Zinstrument-coverage -Clink-dead-code=on" cargo test --no-run --message-format=json | jq -r "select(.profile.test == true) | .executable")
-        echo "EXECUTABLES=$EXECUTABLES" >> $GITHUB_ENV
-
-    - name: Run tests
-      run: $EXECUTABLES
-
-    - name: Merge raw coverage
-      run: cargo profdata -- merge -sparse target/debug/coverage/cozal-*.profraw -o target/debug/coverage/cozal.profdata
-    
-    - name: Collect coverage
-      run: |
-        cargo cov -- export $EXECUTABLES \
-          --instr-profile=target/debug/coverage/cozal.profdata \
-          --format=lcov \
-          --ignore-filename-regex="(.*\.cargo/registry/.*)|(.*\.rustup/.*)|(.*test.*)" \
-          > target/debug/coverage/cozal.lcov
+    - name: Run tests and collect coverage
+      uses: maboesanman/rust-codecov@v0
 
     - name: Upload coverage
       uses: codecov/codecov-action@v1
       with:
         token: ${{ secrets.codecov_token }}
-        file: ./target/debug/coverage/cozal.lcov
+        file: codecov.json
         flags: Test
         name: Cargo Tests
         fail_ci_if_error: true
