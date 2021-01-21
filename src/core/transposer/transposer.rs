@@ -1,11 +1,5 @@
 use super::context::{InitContext, UpdateContext};
-use crate::core::{event::RollbackPayload, Event};
 use async_trait::async_trait;
-
-pub type InputEvent<T> = Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Input>>;
-pub type ScheduledEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Scheduled>;
-pub type OutputEvent<T> =
-    Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Output>>;
 
 /// A `Transposer` is a type that can update itself in response to events.
 ///

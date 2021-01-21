@@ -1,22 +1,9 @@
 /// A modified version of [`futures::task::Poll`], which has two new variants:
 /// [`Scheduled`](self::SchedulePoll::Scheduled) and [`Done`](self::SchedulePoll::Done).
-pub enum StatefulSchedulePoll<T, P, S>
+pub enum EventStatePoll<T, E, S>
 where
     T: Ord + Copy,
 {
-    /// Represents that a value is ready and does not occur after the time polled
-    Ready(T, P, S),
-
-    /// Represents that a value is ready, but occurs in the future, so the stream should be polled after time t.
-    ///
-    /// When a function returns `Scheduled`, the function *may never wake the task*.
-    /// the contract is that repeated polling will continue to return scheduled(t) for the same t
-    /// until new information becomes availavle (via the input stream) or until poll is called
-    /// with a new, greater value of t.
-    Scheduled(T, S),
-
-    Waiting(S),
-
     /// Represents that a value is not ready yet.
     ///
     /// When a function returns `Pending`, the function *must* also
@@ -24,6 +11,30 @@ where
     /// progress can be made.
     Pending,
 
+    /// An event was previously emitted which is now invalid 
+    /// 
+    /// 
+    Rollback(T),
+
+    /// Represents that a value is ready and does not occur after the time polled
+    Event(T, E, S),
+
+    /// Represents that a value is ready, but occurs in the future, so the stream should be polled after time t.
+    ///
+    /// When a function returns `Scheduled`, the function *may never wake the task*.
+    /// the contract is that repeated polling will continue to return scheduled(t) for the same t
+    /// until new information becomes availavle (via the input stream) or until poll is called
+    /// with a new, greater value of t. 
+    Scheduled(T, S),
+
+    /// Represents that no events will be emitted unless there are new inputs.
+    /// 
+    /// This is distinct from `Pending` because the the responsibility of being awoken is
+    /// pushed to the input stream.
+    Ready(S),
+
     /// Represents the end of the stream.
+    /// 
+    /// the final state is returned.
     Done(S),
 }

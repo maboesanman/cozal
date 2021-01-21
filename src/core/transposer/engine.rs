@@ -3,7 +3,8 @@ use futures::{channel::oneshot::Sender, task::Context};
 use pin_project::pin_project;
 use std::{collections::VecDeque, mem::MaybeUninit, unreachable};
 
-use crate::core::schedule_stream::{Peekable, StatefulSchedulePoll, StatefulScheduleStream};
+
+use crate::core::event_state_stream::{EventStatePoll, EventStateStream};
 
 use super::{
     transposer::Transposer,
@@ -24,10 +25,10 @@ use super::{
 pub struct TransposerEngine<
     'a,
     T: Transposer + Clone + 'a,
-    S: StatefulScheduleStream<Time = T::Time, Item = T::Input, State = T::InputState> + Send,
+    S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState> + Send,
 > {
     #[pin]
-    input_stream: Peekable<S>,
+    input_stream: S,
 
     #[pin]
     state: EngineState<'a, T>,
@@ -36,13 +37,13 @@ pub struct TransposerEngine<
 impl<
         'a,
         T: Transposer + Clone + 'a,
-        S: StatefulScheduleStream<Time = T::Time, Item = T::Input, State = T::InputState> + Send,
+        S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState> + Send,
     > TransposerEngine<'a, T, S>
 {
     /// create a new TransposerEngine, consuming the input stream.
     pub async fn new(transposer: T, input_stream: S) -> TransposerEngine<'a, T, S> {
         TransposerEngine {
-            input_stream: Peekable::new(input_stream),
+            input_stream,
 
             state: EngineState::new(transposer).await,
         }
@@ -52,20 +53,20 @@ impl<
 impl<
         'a,
         T: Transposer + Clone + 'a,
-        S: StatefulScheduleStream<Time = T::Time, Item = T::Input, State = T::InputState>
+        S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>
             + Unpin
             + Send,
-    > StatefulScheduleStream for TransposerEngine<'a, T, S>
+    > EventStateStream for TransposerEngine<'a, T, S>
 {
     type Time = T::Time;
-    type Item = T::Output;
+    type Event = T::Output;
     type State = T;
 
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> StatefulSchedulePoll<Self::Time, Self::Item, Self::State> {
+    ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
         let EngineProjection {
             mut input_stream,
             mut state,
@@ -88,10 +89,11 @@ impl<
                         Some(t) => t,
                         None => time,
                     };
-                    let next_input_time = match input_stream.as_mut().peek(poll_time, cx) {
-                        StatefulSchedulePoll::Ready(t, _, _) => Some(*t),
-                        _ => None,
-                    };
+                    // let next_input_time = match input_stream.as_mut().poll_peek(poll_time, cx) {
+                    //     EventStatePoll::Event(t, _, _) => Some(*t),
+                    //     _ => None,
+                    // };
+                    let next_input_time = None;
 
                     // For convenience
                     enum UpdateCase<T> {
@@ -125,29 +127,30 @@ impl<
 
                     match case {
                         UpdateCase::None => {
-                            break 'poll StatefulSchedulePoll::Waiting(frame.transposer.clone())
+                            break 'poll EventStatePoll::Ready(frame.transposer.clone())
                         }
                         UpdateCase::Input(next_input_time) => {
                             let mut next_inputs = Vec::new();
                             let mut input_state = MaybeUninit::uninit();
                             'input: loop {
-                                match input_stream.as_mut().peek(next_input_time, cx) {
-                                    StatefulSchedulePoll::Ready(t, _p, _s) => {
-                                        if *t == next_input_time {
-                                            if let StatefulSchedulePoll::Ready(_t, p, s) =
-                                                input_stream.as_mut().poll(next_input_time, cx)
-                                            {
-                                                next_inputs.push(p);
-                                                input_state = MaybeUninit::new(s);
-                                            } else {
-                                                unreachable!()
-                                            }
-                                        } else {
-                                            unreachable!()
-                                        }
-                                    }
-                                    _ => break 'input,
-                                }
+                                todo!()
+                                // match input_stream.as_mut().poll_peek(next_input_time, cx) {
+                                //     EventStatePoll::Event(t, _p, _s) => {
+                                //         if *t == next_input_time {
+                                //             if let EventStatePoll::Event(_t, p, s) =
+                                //                 input_stream.as_mut().poll(next_input_time, cx)
+                                //             {
+                                //                 next_inputs.push(p);
+                                //                 input_state = MaybeUninit::new(s);
+                                //             } else {
+                                //                 unreachable!()
+                                //             }
+                                //         } else {
+                                //             unreachable!()
+                                //         }
+                                //     }
+                                //     _ => break 'input,
+                                // }
                             }
 
                             // SAFETY: the first item is guranteed to match, so we definitely have a state.
@@ -203,19 +206,21 @@ impl<
                         let time = update.as_ref().get_ref().time();
                         let state = match input_stream.as_mut().poll(time, cx) {
                             // this gives us the state in the past, which is not allowed in this configuration.
-                            StatefulSchedulePoll::Ready(_, _, _) => {
+                            EventStatePoll::Event(_, _, _) => {
                                 panic!("all inputs at time t must be ready at the same time (no pending in the middle of them)")
                             }
 
                             // these give us the state for the time we asked for.
-                            StatefulSchedulePoll::Scheduled(_, s) => s,
-                            StatefulSchedulePoll::Waiting(s) => s,
-                            StatefulSchedulePoll::Done(s) => s,
+                            EventStatePoll::Scheduled(_, s) => s,
+                            EventStatePoll::Ready(s) => s,
+                            EventStatePoll::Done(s) => s,
 
                             // this says the state is not ready; we cannot proceed until it is.
-                            StatefulSchedulePoll::Pending => {
-                                break 'poll StatefulSchedulePoll::Pending
+                            EventStatePoll::Pending => {
+                                break 'poll EventStatePoll::Pending
                             }
+
+                            EventStatePoll::Rollback(_t) => todo!(),
                         };
                         let _ = sender.send(state);
                     }
@@ -248,7 +253,7 @@ impl<
                             *sender = Some(new_sender);
                         }
                         TransposerUpdatePoll::Pending => {
-                            break 'poll { StatefulSchedulePoll::Pending }
+                            break 'poll { EventStatePoll::Pending }
                         }
                     }
                 }
@@ -269,7 +274,7 @@ impl<
                     }
 
                     if let Some(output) = output {
-                        break 'poll StatefulSchedulePoll::Ready(time, output, transposer);
+                        break 'poll EventStatePoll::Event(time, output, transposer);
                     }
                 }
             }

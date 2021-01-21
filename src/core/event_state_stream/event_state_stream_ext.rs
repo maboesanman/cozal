@@ -1,22 +1,21 @@
 #[cfg(realtime)]
 use super::RealtimeStream;
-use super::StatefulScheduleStream;
-use super::TargetStream;
+use super::EventStateStream;
 
 use super::timestamp::Timestamp;
 
-impl<S> StatefulScheduleStreamTimestampExt for S
+impl<S> EventStateStreamTimestampExt for S
 where
-    S: StatefulScheduleStream + Sized,
-    <Self as StatefulScheduleStream>::Time: Timestamp,
+    S: EventStateStream + Sized,
+    <Self as EventStateStream>::Time: Timestamp,
 {
 }
 
 /// An extension trait for [`ScheduleStream`](super::schedule_stream::ScheduleStream)s
 /// that provides the [`to_realtime`](self::to_realtime) method only (for now).
-pub trait StatefulScheduleStreamTimestampExt: StatefulScheduleStream + Sized
+pub trait EventStateStreamTimestampExt: EventStateStream + Sized
 where
-    <Self as StatefulScheduleStream>::Time: Timestamp,
+    <Self as EventStateStream>::Time: Timestamp,
 {
     /// Adapter for converting a schedule_stream into one that yields the items in realtime.
     ///
@@ -32,10 +31,8 @@ where
     }
 }
 
-impl<S> StatefulScheduleStreamExt for S where S: StatefulScheduleStream + Sized {}
+impl<S> EventStateStreamExt for S where S: EventStateStream + Sized {}
 
-pub trait StatefulScheduleStreamExt: StatefulScheduleStream + Sized {
-    fn to_target(self, target: <Self as StatefulScheduleStream>::Time) -> TargetStream<Self> {
-        TargetStream::new(self, target)
-    }
+pub trait EventStateStreamExt: EventStateStream + Sized {
+    
 }

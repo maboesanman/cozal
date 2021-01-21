@@ -1,13 +1,13 @@
-use super::StatefulSchedulePoll;
+use super::EventStatePoll;
 use std::pin::Pin;
 use std::task::Context;
 
 /// A modified stream that allows for 'scheduling' events.
-pub trait StatefulScheduleStream {
+pub trait EventStateStream {
     /// The time used to compare.
     type Time: Ord + Copy;
     /// Values yielded by the stream.
-    type Item;
+    type Event;
     /// The state for the given time.
     ///
     /// This will usually be a smart pointer to something but this is left to the implementer.
@@ -48,7 +48,7 @@ pub trait StatefulScheduleStream {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> StatefulSchedulePoll<Self::Time, Self::Item, Self::State>;
+    ) -> EventStatePoll<Self::Time, Self::Event, Self::State>;
 
     /// Returns the bounds on the remaining length of the stream.
     ///

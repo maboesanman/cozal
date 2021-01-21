@@ -4,21 +4,22 @@ use im::OrdMap;
 use pin_project::pin_project;
 use std::{pin::Pin, task::Poll};
 
-use crate::core::schedule_stream::{StatefulSchedulePoll, StatefulScheduleStream};
+use crate::core::event_state_stream::{EventStatePoll, EventStateStream};
+
 
 #[pin_project]
-pub struct TestStatefulStream<Time: Ord + Copy, Item: Clone, State: Clone> {
+pub struct TestStatefulStream<Time: Ord + Copy, Event: Clone, State: Clone> {
     #[pin]
-    receiver: Receiver<(Time, Item)>,
+    receiver: Receiver<(Time, Event)>,
 
-    events: OrdMap<Time, Item>,
+    events: OrdMap<Time, Event>,
     current_state: State,
     done: bool,
     working: bool,
 }
 
-impl<Time: Ord + Copy, Item: Clone, State: Clone> TestStatefulStream<Time, Item, State> {
-    pub fn new(current_state: State) -> (Sender<(Time, Item)>, Self) {
+impl<Time: Ord + Copy, Event: Clone, State: Clone> TestStatefulStream<Time, Event, State> {
+    pub fn new(current_state: State) -> (Sender<(Time, Event)>, Self) {
         let (sender, receiver) = unbounded();
         (
             sender,
@@ -41,12 +42,12 @@ impl<Time: Ord + Copy, Item: Clone, State: Clone> TestStatefulStream<Time, Item,
     }
 }
 
-impl<Time: Ord + Copy, Item: Clone, State: Clone> StatefulScheduleStream
-    for TestStatefulStream<Time, Item, State>
+impl<Time: Ord + Copy, Event: Clone, State: Clone> EventStateStream
+    for TestStatefulStream<Time, Event, State>
 {
     type Time = Time;
 
-    type Item = Item;
+    type Event = Event;
 
     type State = State;
 
@@ -54,16 +55,16 @@ impl<Time: Ord + Copy, Item: Clone, State: Clone> StatefulScheduleStream
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         cx: &mut std::task::Context<'_>,
-    ) -> crate::core::schedule_stream::StatefulSchedulePoll<Self::Time, Self::Item, Self::State>
+    ) -> EventStatePoll<Self::Time, Self::Event, Self::State>
     {
         let mut proj = self.project();
         if *proj.working {
-            return StatefulSchedulePoll::Pending;
+            return EventStatePoll::Pending;
         }
         loop {
             match proj.receiver.as_mut().poll_next(cx) {
-                Poll::Ready(Some((event_time, item))) => {
-                    proj.events.insert(event_time, item);
+                Poll::Ready(Some((event_time, Event))) => {
+                    proj.events.insert(event_time, Event);
                 }
                 Poll::Ready(None) => {
                     *proj.done = true;
@@ -74,17 +75,17 @@ impl<Time: Ord + Copy, Item: Clone, State: Clone> StatefulScheduleStream
         }
         let (min, new_events) = proj.events.without_min_with_key();
         match min {
-            Some((event_time, item)) => {
+            Some((event_time, Event)) => {
                 if event_time <= poll_time {
                     *proj.events = new_events;
-                    StatefulSchedulePoll::Ready(event_time, item, proj.current_state.clone())
+                    EventStatePoll::Event(event_time, Event, proj.current_state.clone())
                 } else {
-                    StatefulSchedulePoll::Scheduled(event_time, proj.current_state.clone())
+                    EventStatePoll::Scheduled(event_time, proj.current_state.clone())
                 }
             }
             None => match *proj.done {
-                true => StatefulSchedulePoll::Done(proj.current_state.clone()),
-                false => StatefulSchedulePoll::Waiting(proj.current_state.clone()),
+                true => EventStatePoll::Done(proj.current_state.clone()),
+                false => EventStatePoll::Ready(proj.current_state.clone()),
             },
         }
     }
