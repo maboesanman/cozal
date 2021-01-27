@@ -1,11 +1,4 @@
-use super::{
-    context::LazyState,
-    internal_scheduled_event::{InternalScheduledEvent, Source},
-    transposer::Transposer,
-    transposer_frame::TransposerFrame,
-    wrapped_update_result::WrappedUpdateResult,
-    UpdateContext,
-};
+use super::{UpdateContext, context::LazyState, engine_time::{EngineTime, EngineTimeSchedule}, transposer::Transposer, transposer_frame::TransposerFrame, wrapped_update_result::UpdateResult};
 use futures::channel::oneshot::{channel, Receiver, Sender};
 use futures::Future;
 use std::{
@@ -25,7 +18,8 @@ pub(super) struct CurriedScheduleFuture<'a, T: Transposer + 'a> {
 
     // curried arguments to the internal future.
     frame: MaybeUninit<TransposerFrame<T>>,
-    event_arc: Arc<InternalScheduledEvent<T>>,
+    time: EngineTimeSchedule<T::Time>,
+    payload: T::Scheduled,
     state: LazyState<T::InputState>,
 
     // fut contains a reference to input, so we can't be Unpin
@@ -35,31 +29,43 @@ pub(super) struct CurriedScheduleFuture<'a, T: Transposer + 'a> {
 impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
     pub fn new(
         mut frame: TransposerFrame<T>,
-        event_arc: Arc<InternalScheduledEvent<T>>,
-        state: Option<T::InputState>,
-    ) -> (Self, Option<Receiver<Sender<T::InputState>>>) {
-        frame
-            .internal
-            .set_source(Source::Schedule(event_arc.clone()));
+        time: EngineTimeSchedule<T::Time>,
+        payload: T::Scheduled,
+    ) -> (Self, Receiver<Sender<T::InputState>>) {
+        frame.internal.set_time(time.clone().into());
 
-        let (state, receiver) = match state {
-            Some(s) => (LazyState::Ready(s), None),
-            None => {
-                let (sender, reciever) = channel();
-                (LazyState::Pending(sender), Some(reciever))
-            }
-        };
+        let (sender, receiver) = channel();
 
         let new_self = Self {
             update_fut: MaybeUninit::uninit(),
             update_cx: MaybeUninit::uninit(),
             frame: MaybeUninit::new(frame),
-            event_arc,
-            state,
+            time,
+            payload,
+            state: LazyState::Pending(sender),
             _pin: PhantomPinned,
         };
 
         (new_self, receiver)
+    }
+
+    pub fn new_with_state(
+        mut frame: TransposerFrame<T>,
+        time: EngineTimeSchedule<T::Time>,
+        payload: T::Scheduled,
+        state: T::InputState,
+    ) -> Self {
+        frame.internal.set_time(time.clone().into());
+
+        Self {
+            update_fut: MaybeUninit::uninit(),
+            update_cx: MaybeUninit::uninit(),
+            frame: MaybeUninit::new(frame),
+            time,
+            payload,
+            state: LazyState::Ready(state),
+            _pin: PhantomPinned,
+        }
     }
 
     pub fn init(self: Pin<&mut Self>) {
@@ -74,8 +80,8 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
         };
 
         // and with this
-        let event_ref = unsafe {
-            let ptr: *const _ = &this.event_arc;
+        let payload_ref = unsafe {
+            let ptr: *const _ = &this.payload;
             ptr.as_ref().unwrap()
         };
 
@@ -98,25 +104,23 @@ impl<'a, T: Transposer + 'a> CurriedScheduleFuture<'a, T> {
             ptr.as_mut().unwrap()
         };
 
-        let fut =
-            frame_ref
-                .transposer
-                .handle_scheduled(this.event_arc.time, &event_ref.payload, cx_ref);
+        let fut = frame_ref.transposer.handle_scheduled(this.time.time, payload_ref, cx_ref);
         let fut = Box::new(fut);
         this.update_fut = MaybeUninit::new(fut);
     }
 
-    pub fn recover(self) -> (Arc<InternalScheduledEvent<T>>, Option<T::InputState>) {
-        (self.event_arc, self.state.destroy())
+    pub fn recover(self) -> (EngineTimeSchedule<T::Time>, Option<T::InputState>) {
+        (self.time, self.state.destroy())
     }
 
-    pub fn time(&self) -> T::Time {
-        self.event_arc.time
+    pub fn time(&self) -> Arc<EngineTime<T::Time>> {
+        let frame = unsafe { self.frame.assume_init_ref() };
+        frame.time()
     }
 }
 
 impl<'a, T: Transposer + 'a> Future for CurriedScheduleFuture<'a, T> {
-    type Output = WrappedUpdateResult<T>;
+    type Output = UpdateResult<T>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
@@ -134,7 +138,7 @@ impl<'a, T: Transposer + 'a> Future for CurriedScheduleFuture<'a, T> {
                 let frame = std::mem::replace(&mut this.frame, MaybeUninit::uninit());
                 let frame = unsafe { frame.assume_init() };
 
-                Poll::Ready(WrappedUpdateResult::new(frame, update_cx))
+                Poll::Ready(UpdateResult::from_update_context(frame, update_cx))
             }
             Poll::Pending => Poll::Pending,
         }

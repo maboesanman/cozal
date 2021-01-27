@@ -1,14 +1,10 @@
 use super::{
-    context::LazyState, internal_scheduled_event::Source, transposer::Transposer,
-    transposer_frame::TransposerFrame, wrapped_update_result::WrappedUpdateResult, UpdateContext,
+    context::LazyState, engine_time::EngineTime, transposer::Transposer,
+    transposer_frame::TransposerFrame, wrapped_update_result::UpdateResult, UpdateContext,
 };
+use futures::channel::oneshot::{channel, Receiver, Sender};
 use futures::Future;
-use std::{
-    marker::PhantomPinned,
-    mem::MaybeUninit,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::{marker::PhantomPinned, mem::MaybeUninit, pin::Pin, sync::Arc, task::{Context, Poll}};
 
 pub(super) struct CurriedInputFuture<'a, T: Transposer + 'a> {
     // the curried future; placed first so it is dropped first.
@@ -33,9 +29,28 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
         mut frame: TransposerFrame<T>,
         time: T::Time,
         inputs: Vec<T::Input>,
+    ) -> (Self, Receiver<Sender<T::InputState>>) {
+        frame.internal.set_time(EngineTime::new_input(time));
+        let (sender, receiver) = channel();
+        let new_self = Self {
+            update_fut: MaybeUninit::uninit(),
+            update_cx: MaybeUninit::uninit(),
+            frame: MaybeUninit::new(frame),
+            time,
+            inputs,
+            state: LazyState::Pending(sender),
+            _pin: PhantomPinned,
+        };
+        (new_self, receiver)
+    }
+
+    pub fn new_with_state(
+        mut frame: TransposerFrame<T>,
+        time: T::Time,
+        inputs: Vec<T::Input>,
         state: T::InputState,
     ) -> Self {
-        frame.internal.set_source(Source::Input(time));
+        frame.internal.set_time(EngineTime::new_input(time));
         Self {
             update_fut: MaybeUninit::uninit(),
             update_cx: MaybeUninit::uninit(),
@@ -81,29 +96,24 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
         };
 
         // initialize update_fut
-        let fut = frame_ref
-            .transposer
-            .handle_input(this.time, input_ref, cx_ref);
+        let fut = frame_ref.transposer.handle_input(this.time, input_ref, cx_ref);
         let fut = Box::new(fut);
         this.update_fut = MaybeUninit::new(fut);
     }
 
     // this does not recover frame because it may have been half-mutated
-    pub fn recover(self) -> (T::Time, Vec<T::Input>, T::InputState) {
-        let state = match self.state.destroy() {
-            Some(s) => s,
-            None => unreachable!(),
-        };
-        (self.time, self.inputs, state)
+    pub fn recover(self) -> (T::Time, Vec<T::Input>, Option<T::InputState>) {
+        (self.time, self.inputs, self.state.destroy())
     }
 
-    pub fn time(&self) -> T::Time {
-        self.time
+    pub fn time(&self) -> Arc<EngineTime<T::Time>> {
+        let frame = unsafe { self.frame.assume_init_ref() };
+        frame.time()
     }
 }
 
 impl<'a, T: Transposer + 'a> Future for CurriedInputFuture<'a, T> {
-    type Output = WrappedUpdateResult<T>;
+    type Output = UpdateResult<T>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
@@ -121,7 +131,7 @@ impl<'a, T: Transposer + 'a> Future for CurriedInputFuture<'a, T> {
                 let frame = std::mem::replace(&mut this.frame, MaybeUninit::uninit());
                 let frame = unsafe { frame.assume_init() };
 
-                Poll::Ready(WrappedUpdateResult::new(frame, update_cx))
+                Poll::Ready(UpdateResult::from_update_context(frame, update_cx))
             }
             Poll::Pending => Poll::Pending,
         }

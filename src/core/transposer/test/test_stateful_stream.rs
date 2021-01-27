@@ -78,7 +78,7 @@ impl<Time: Ord + Copy, Event: Clone, State: Clone> EventStateStream
             Some((event_time, Event)) => {
                 if event_time <= poll_time {
                     *proj.events = new_events;
-                    EventStatePoll::Event(event_time, Event, proj.current_state.clone())
+                    EventStatePoll::Event(event_time, Event)
                 } else {
                     EventStatePoll::Scheduled(event_time, proj.current_state.clone())
                 }

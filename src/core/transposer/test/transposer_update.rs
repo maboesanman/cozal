@@ -15,7 +15,7 @@ fn test_input() {
     let frame = TransposerFrame::new(transposer);
     let time = 12;
     let inputs = vec![7, 6, 5];
-    let state = 17;
+    let state = Some(17);
     let mut update = TransposerUpdate::new_input(frame, time, inputs, state);
     let mut update_ref = unsafe { Pin::new_unchecked(&mut update) };
     update_ref.as_mut().init_pinned();
@@ -25,11 +25,11 @@ fn test_input() {
     let result = update_ref.poll(&mut cx);
 
     match result {
-        TransposerUpdatePoll::Ready(ready_result) => {
-            assert_eq!(ready_result.inputs, Some(vec![7, 6, 5]));
-            assert_eq!(ready_result.input_state, Some(17));
+        TransposerUpdatePoll::Ready{ inputs, input_state, result, ..} => {
+            assert_eq!(inputs, Some(vec![7, 6, 5]));
+            assert_eq!(input_state, Some(17));
 
-            let mut result = ready_result.result;
+            let mut result = result;
 
             let frame = result.frame;
             assert_eq!(result.outputs.len(), 1);

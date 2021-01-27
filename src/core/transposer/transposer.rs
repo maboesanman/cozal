@@ -1,4 +1,4 @@
-use super::context::{InitContext, UpdateContext};
+use super::context::{InitContext, InterpolateContext, UpdateContext};
 use async_trait::async_trait;
 
 /// A `Transposer` is a type that can update itself in response to events.
@@ -20,6 +20,8 @@ pub trait Transposer: Sized + Unpin + Send + Sync {
 
     type InputState;
 
+    type OutputState;
+
     /// The type of the input payloads.
     ///
     /// The input events are of type `Event<Self::Time, RollbackPayload<Self::Input>>`
@@ -32,7 +34,7 @@ pub trait Transposer: Sized + Unpin + Send + Sync {
     /// The type of the payloads of scheduled events
     ///
     /// the events in the schedule are all of type `Event<Self::Time, Self::Scheduled>`
-    type Scheduled: Unpin + Send + Sync;
+    type Scheduled: Unpin + Send + Sync + Clone;
 
     /// The type of the output payloads.
     ///
@@ -50,7 +52,10 @@ pub trait Transposer: Sized + Unpin + Send + Sync {
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`InitContext`] documentation.
-    async fn init(&mut self, cx: &mut InitContext<Self>);
+    async fn init<'a>(
+        &'a mut self,
+        cx: &'a mut InitContext<'a, Self>
+    );
 
     /// The function to respond to input.
     ///
@@ -80,6 +85,21 @@ pub trait Transposer: Sized + Unpin + Send + Sync {
         payload: &Self::Scheduled,
         cx: &'a mut UpdateContext<'a, Self>,
     );
+
+    /// The function to interpolate between states
+    ///
+    /// handle_input and handle_scheduled only operate on discrete times.
+    /// If you want the state between two of these times, you have to calculate it.
+    ///
+    /// `base_time` is the time of the `self` parameter
+    /// `interpolated_time` is the time being requested `self`
+    /// `cx is a context object for performing additional operations like requesting state.
+    async fn interpolate<'a>(
+        &'a self,
+        base_time: Self::Time,
+        interpolated_time: Self::Time,
+        cx: &InterpolateContext<'a, Self>,
+    ) -> Self::OutputState;
 
     /// Filter out events you know you can't do anything with.
     /// This reduces the amount of events you have to remember for rollback to work

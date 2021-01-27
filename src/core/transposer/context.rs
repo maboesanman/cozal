@@ -6,20 +6,28 @@ use super::{expire_handle::ExpireHandle, transposer_frame::TransposerFrameIntern
 ///
 /// the primary feature is scheduling events,
 /// though there are more methods to interact with the engine.
-pub struct InitContext<T: Transposer> {
+pub struct InitContext<'a, T: Transposer> {
     // mutable references into the current transposer frame
     pub(super) frame_internal: TransposerFrameInternal<T>,
+
+    // access to the input state
+    input_state: &'a mut LazyState<T::InputState>,
 
     // values to output
     pub(super) outputs: Vec<T::Output>,
 }
 
-impl<T: Transposer> InitContext<T> {
-    pub(super) fn new() -> Self {
+impl<'a, T: Transposer> InitContext<'a, T> {
+    pub(super) fn new(input_state: &'a mut LazyState<T::InputState>) -> Self {
         Self {
             frame_internal: TransposerFrameInternal::new(),
+            input_state,
             outputs: Vec::new(),
         }
+    }
+
+    pub async fn get_input_state(&mut self) -> Result<&T::InputState, &str> {
+        Ok(self.input_state.get().await)
     }
 
     /// This allows you to schedule events to happen in the future.
@@ -171,12 +179,30 @@ impl<'a, T: Transposer> UpdateContext<'a, T> {
     }
 
     /// This allows you to expire an event currently in the schedule, as long as you have an [`ExpireHandle`].
-    pub fn expire_event(&mut self, handle: ExpireHandle) -> Result<(), &str> {
+    pub fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), &str> {
         self.frame_internal.expire_event(handle)
     }
 
     /// This allows you to exit the transposer, closing the output stream.
     pub fn exit(&mut self) {
         self.exit = true;
+    }
+}
+
+pub struct InterpolateContext<'a, T: Transposer> {
+    input_state: &'a mut LazyState<T::InputState>,
+}
+
+impl<'a, T: Transposer> InterpolateContext<'a, T> {
+    pub(super) fn new(
+        input_state: &'a mut LazyState<T::InputState>,
+    ) -> Self {
+        Self {
+            input_state,
+        }
+    }
+
+    pub async fn get_input_state(&mut self) -> Result<&T::InputState, &str> {
+        Ok(self.input_state.get().await)
     }
 }

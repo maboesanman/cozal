@@ -1,7 +1,7 @@
 use core::task::{Poll, Context, Waker};
 use core::pin::Pin;
-use futures::{lock::BiLock, sink::Buffer};
-use std::{cmp::{self, Ordering, Reverse}, collections::{BinaryHeap, VecDeque}};
+use futures::lock::BiLock;
+use std::{cmp::{self, Ordering, Reverse}, collections::BinaryHeap};
 use either::Either;
 use pin_project::pin_project;
 
@@ -12,27 +12,26 @@ struct EventStateSplitInner<S: EventStateStream<Event = Either<L, R>>, L, R> {
     #[pin]
     stream: S,
     
-    left: BufferData<S::Time, L, S::State>,
-    right: BufferData<S::Time, R, S::State>,
+    left: BufferData<S::Time, L>,
+    right: BufferData<S::Time, R>,
     rough_buffer_size: Option<usize>,
 }
 
-struct BufferData<T: Ord + Copy, E, S> {
-    buffer: BinaryHeap<Reverse<BufferItem<T, E, S>>>,
+struct BufferData<T: Ord + Copy, E> {
+    buffer: BinaryHeap<Reverse<BufferItem<T, E>>>,
     latest_emission_time: Option<T>,
     needs_rollback: Option<T>,
     waker: Option<Waker>,
     event_index: usize,
 }
 
-struct BufferItem<T: Ord + Copy, E, S>{
+struct BufferItem<T: Ord + Copy, E>{
     time: T,
     index: usize,
     event: E,
-    state: S,
 }
 
-impl<T: Ord + Copy, E, S> Ord for BufferItem<T, E, S> {
+impl<T: Ord + Copy, E> Ord for BufferItem<T, E> {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.time.cmp(&other.time) {
             Ordering::Equal => self.index.cmp(&other.index),
@@ -41,21 +40,21 @@ impl<T: Ord + Copy, E, S> Ord for BufferItem<T, E, S> {
     }
 }
 
-impl<T: Ord + Copy, E, S> PartialOrd for BufferItem<T, E, S> {
+impl<T: Ord + Copy, E> PartialOrd for BufferItem<T, E> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T: Ord + Copy, E, S> PartialEq for BufferItem<T, E, S> {
+impl<T: Ord + Copy, E> PartialEq for BufferItem<T, E> {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == Ordering::Equal
     }
 }
 
-impl<T: Ord + Copy, E, S> Eq for BufferItem<T, E, S> {}
+impl<T: Ord + Copy, E> Eq for BufferItem<T, E> {}
 
-impl<T: Ord + Copy, E, S> BufferData<T, E, S> {
+impl<T: Ord + Copy, E> BufferData<T, E> {
     fn new() -> Self {
         Self {
             buffer: BinaryHeap::new(),
@@ -83,12 +82,12 @@ impl<T: Ord + Copy, E, S> BufferData<T, E, S> {
         }
     }
 
-    fn pop_viable(&mut self, poll_time: T) -> Option<(T, E, S)> {
+    fn pop_viable(&mut self, poll_time: T) -> Option<(T, E)> {
         match self.buffer.peek() {
             Some(Reverse(item)) => {
                 if item.time <= poll_time {
-                    let Reverse(BufferItem { time, index: _, event, state }) = self.buffer.pop().unwrap();
-                    Some((time, event, state))
+                    let Reverse(BufferItem { time, index: _, event }) = self.buffer.pop().unwrap();
+                    Some((time, event))
                 } else {
                     None
                 }
@@ -97,12 +96,11 @@ impl<T: Ord + Copy, E, S> BufferData<T, E, S> {
         }
     }
 
-    fn buffer_event(&mut self, time: T, event: E, state: S) {
+    fn buffer_event(&mut self, time: T, event: E) {
         let item = BufferItem {
             time,
             index: self.event_index,
             event,
-            state,
         };
         self.event_index += 1;
         self.buffer.push(Reverse(item));
@@ -154,7 +152,7 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                 break EventStatePoll::Rollback(t);
             }
     
-            if let Some((time, event, state)) = this.left.pop_viable(poll_time) {
+            if let Some((time, event)) = this.left.pop_viable(poll_time) {
                 match this.left.latest_emission_time {
                     Some(old) => this.left.latest_emission_time = Some(cmp::max(old, time)),
                     None => this.left.latest_emission_time = Some(time)
@@ -163,7 +161,7 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                     waker.wake();
                 }
                 
-                break EventStatePoll::Event(time, event, state);
+                break EventStatePoll::Event(time, event);
             }
     
             if this.right.full(*this.rough_buffer_size) {
@@ -177,15 +175,15 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                     this.right.rollback(t);
                     this.left.rollback(t);
                 },
-                EventStatePoll::Event(t, Either::Left(e), s) => {
+                EventStatePoll::Event(t, Either::Left(e)) => {
                     match this.left.latest_emission_time {
                         Some(old) => this.left.latest_emission_time = Some(cmp::max(old, t)),
                         None => this.left.latest_emission_time = Some(t)
                     }
-                    break EventStatePoll::Event(t, e, s);
+                    break EventStatePoll::Event(t, e);
                 },
-                EventStatePoll::Event(t, Either::Right(e), s) => {
-                    this.right.buffer_event(t, e, s);
+                EventStatePoll::Event(t, Either::Right(e)) => {
+                    this.right.buffer_event(t, e);
                 },
                 EventStatePoll::Scheduled(mut t, s) => {
                     if let Some(t_buf) = this.left.next_time() {
@@ -222,7 +220,7 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                 break EventStatePoll::Rollback(t);
             }
     
-            if let Some((time, event, state)) = this.right.pop_viable(poll_time) {
+            if let Some((time, event)) = this.right.pop_viable(poll_time) {
                 match this.right.latest_emission_time {
                     Some(old) => this.right.latest_emission_time = Some(cmp::max(old, time)),
                     None => this.right.latest_emission_time = Some(time)
@@ -232,7 +230,7 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                     waker.wake();
                 }
                 
-                break EventStatePoll::Event(time, event, state);
+                break EventStatePoll::Event(time, event);
             }
     
             if this.left.full(*this.rough_buffer_size) {
@@ -246,15 +244,15 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                     this.left.rollback(t);
                     this.right.rollback(t);
                 },
-                EventStatePoll::Event(t, Either::Right(e), s) => {
+                EventStatePoll::Event(t, Either::Right(e)) => {
                     match this.right.latest_emission_time {
                         Some(old) => this.right.latest_emission_time = Some(cmp::max(old, t)),
                         None => this.right.latest_emission_time = Some(t)
                     }
-                    break EventStatePoll::Event(t, e, s);
+                    break EventStatePoll::Event(t, e);
                 },
-                EventStatePoll::Event(t, Either::Left(e), s) => {
-                    this.left.buffer_event(t, e, s);
+                EventStatePoll::Event(t, Either::Left(e)) => {
+                    this.left.buffer_event(t, e);
                 },
                 EventStatePoll::Scheduled(mut t, s) => {
                     if let Some(t_buf) = this.right.next_time() {

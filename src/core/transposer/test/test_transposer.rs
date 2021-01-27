@@ -1,4 +1,4 @@
-use crate::core::transposer::{InitContext, UpdateContext};
+use crate::core::transposer::{InitContext, UpdateContext, context::InterpolateContext};
 use crate::core::Transposer;
 use async_trait::async_trait;
 
@@ -31,13 +31,15 @@ impl Transposer for TestTransposer {
 
     type InputState = usize;
 
+    type OutputState = Self;
+
     type Input = usize;
 
     type Scheduled = usize;
 
     type Output = (usize, HandleRecord);
 
-    async fn init(&mut self, cx: &mut InitContext<Self>) {
+    async fn init<'a>(&'a mut self, cx: &'a mut InitContext<'a, Self>) {
         for (time, payload) in self.init_events.drain(..) {
             let _ = cx.schedule_event(time, payload);
         }
@@ -71,5 +73,14 @@ impl Transposer for TestTransposer {
 
         let state = *cx.get_input_state().await.unwrap();
         cx.emit_event((state, record));
+    }
+
+    async fn interpolate<'a>(
+        &'a self,
+        base_time: Self::Time,
+        interpolated_time: Self::Time,
+        cx: &InterpolateContext<'a, Self>
+    ) -> Self::OutputState {
+        self.clone()
     }
 }

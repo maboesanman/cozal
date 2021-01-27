@@ -49,12 +49,4 @@ pub trait EventStateStream {
         time: Self::Time,
         cx: &mut Context<'_>,
     ) -> EventStatePoll<Self::Time, Self::Event, Self::State>;
-
-    /// Returns the bounds on the remaining length of the stream.
-    ///
-    /// This is behaves exactly the same as regular streams, and is passed through transparently
-    /// in the [`RealtimeStream`](super::realtime_stream::RealtimeStream).
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, None)
-    }
 }

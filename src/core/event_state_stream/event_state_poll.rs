@@ -9,6 +9,8 @@ where
     /// When a function returns `Pending`, the function *must* also
     /// ensure that the current task is scheduled to be awoken when
     /// progress can be made.
+    ///
+    /// The promise that progress can be made only applies if polled at the same time.
     Pending,
 
     /// An event was previously emitted which is now invalid 
@@ -17,7 +19,7 @@ where
     Rollback(T),
 
     /// Represents that a value is ready and does not occur after the time polled
-    Event(T, E, S),
+    Event(T, E),
 
     /// Represents that a value is ready, but occurs in the future, so the stream should be polled after time t.
     ///
