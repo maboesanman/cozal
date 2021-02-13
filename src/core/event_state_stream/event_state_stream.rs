@@ -49,4 +49,27 @@ pub trait EventStateStream {
         time: Self::Time,
         cx: &mut Context<'_>,
     ) -> EventStatePoll<Self::Time, Self::Event, Self::State>;
+
+    /// This is an optional optimization. If you don't plan on using the state,
+    /// you can call this and the implementer may skip the work to do so if they want.
+    ///
+    /// By default this simply calls poll and drops the state, returning `()` instead.
+    ///
+    /// if you do not need to use the state, this should be preferred over poll.
+    /// for example, if you are simply verifying the stream does not have new events before a time t,
+    /// poll_ignore_state could be faster than poll (with a custom implementation).
+    fn poll_ignore_state(
+        self: Pin<&mut Self>,
+        time: Self::Time,
+        cx: &mut Context<'_>,
+    ) -> EventStatePoll<Self::Time, Self::Event, ()> {
+        match self.poll(time, cx) {
+            EventStatePoll::Pending => EventStatePoll::Pending,
+            EventStatePoll::Rollback(t) => EventStatePoll::Rollback(t),
+            EventStatePoll::Event(t, e) => EventStatePoll::Event(t, e),
+            EventStatePoll::Scheduled(t, _) => EventStatePoll::Scheduled(t, ()),
+            EventStatePoll::Ready(_) => EventStatePoll::Ready(()),
+            EventStatePoll::Done(_) => EventStatePoll::Done(()),
+        }
+    }
 }

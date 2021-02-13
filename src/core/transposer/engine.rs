@@ -33,25 +33,34 @@ pub struct TransposerEngine<
     state_map: BTreeMap<Arc<EngineTime<T::Time>>, StateFrame<T>>,
 }
 
-enum StateFrame<T: Transposer> {
+enum StateFrame<T: Transposer + 'a> {
     Init{
+        initial_transposer: T,
+        input_state: Option<T::InputState>,
         transposer_frame: TransposerFrame<T>,
         produced_outputs: bool,
         requested_state: bool,
     },
     Input{
-        transposer_frame: TransposerFrame<T>,
         inputs: Vec<T::Input>,
         input_state: Option<T::InputState>,
+        transposer_frame: TransposerFrame<T>,
         produced_outputs: bool,
         requested_state: bool,
     },
     Schedule{
-        transposer_frame: TransposerFrame<T>,
         input_state: Option<T::InputState>,
+        transposer_frame: TransposerFrame<T>,
         produced_outputs: bool,
         requested_state: bool,
     },
+}
+
+// every frame is either not started, partially computed (if the future returned pending), or ready.
+enum CachedFrame<'a, T: Transposer + 'a> {
+    Empty,
+    Partial(TransposerUpdate<'a, T>),
+    Ready,
 }
 
 impl<T: Transposer> StateFrame<T> {
