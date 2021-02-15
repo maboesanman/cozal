@@ -4,6 +4,9 @@
 #![feature(btree_retain)]
 #![feature(btree_drain_filter)]
 #![feature(maybe_uninit_ref)]
+#![feature(maybe_uninit_extra)]
+#![feature(int_bits_const)]
+#![feature(new_uninit)]
 
 #[cfg(test)]
 mod test;

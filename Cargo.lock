@@ -30,6 +30,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "array-init"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a51c983d65b6691893a791e55aa8bda43bbd9b11f947e5a9581710362277cc95"
+
+[[package]]
 name = "async-trait"
 version = "0.1.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -171,6 +177,7 @@ dependencies = [
 name = "cozal"
 version = "0.0.2"
 dependencies = [
+ "array-init",
  "async-trait",
  "either",
  "flume",
