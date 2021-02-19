@@ -1,14 +1,13 @@
 use crate::core::{Transposer, transposer::TransposerEngine};
 
 #[cfg(realtime)]
-use super::RealtimeStream;
+use super::{timestamp::Timestamp, RealtimeStream};
 use super::EventStateStream;
 
-use super::timestamp::Timestamp;
 
-impl<S> EventStateStreamExt for S where S: EventStateStream + Sized {}
+impl<S> EventStateStreamExt for S where S: EventStateStream {}
 
-pub trait EventStateStreamExt: EventStateStream + Sized {
+pub trait EventStateStreamExt: EventStateStream {
 
     /// Adapter for converting a schedule_stream into one that yields the items in realtime.
     ///
@@ -25,7 +24,15 @@ pub trait EventStateStreamExt: EventStateStream + Sized {
         RealtimeStream::new(self, reference)
     }
 
-    fn to_engine<T: Transposer>(self, initial: T) -> TransposerEngine<T, Self> {
+    fn to_engine<T: Transposer<
+        Time=Self::Time,
+        Input=Self::Event,
+        InputState=Self::State,
+    >>(self, initial: T) -> TransposerEngine<T, Self>
+        where
+            T: Clone,
+            Self: Sized,
+    {
         todo!()
     }
 }

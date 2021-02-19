@@ -2,10 +2,10 @@ use std::{collections::BTreeMap, pin::Pin, sync::Arc, task::Context};
 use futures::channel::oneshot::Sender;
 use pin_project::pin_project;
 
-use super::{Transposer, context::LazyState, curried_init_future::CurriedInitFuture, curried_input_future::CurriedInputFuture, curried_schedule_future::CurriedScheduleFuture, dynamic_index_buffer::{BufferPointer, DynamicBuffer}, engine_time::EngineTime, pin_stack::PinStack, transposer_frame::TransposerFrame, update_result::UpdateResult};
+use super::{Transposer, context::LazyState, dynamic_index_buffer::{BufferPointer, DynamicBuffer}, engine_time::EngineTime, pin_stack::PinStack, transposer_frame::TransposerFrame, update_result::UpdateResult};
 
 #[pin_project]
-struct StateMap<T: Transposer, const N: usize> {
+pub struct StateMap<T: Transposer, const N: usize> {
     // the order here is very important. state_buffer must outlive its pointers stored in update_stack.
     update_stack: PinStack<UpdateItem<T>>,
     state_buffer: DynamicBuffer<CachedState<T>, N>,
@@ -56,9 +56,9 @@ struct CachedState<T: Transposer> {
 }
 
 enum CachedStateUpdate<T: Transposer> {
-    Init(CurriedInitFuture<'static, T>),
-    Input(CurriedInputFuture<'static, T>),
-    Schedule(CurriedScheduleFuture<'static, T>),
+    // Init(CurriedInitFuture<'a, T>),
+    // Input(CurriedInputFuture<'a, T>),
+    // Schedule(CurriedScheduleFuture<'a, T>),
     Ready(UpdateResult<T>),
 }
 

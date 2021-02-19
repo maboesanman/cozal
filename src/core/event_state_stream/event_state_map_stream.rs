@@ -6,7 +6,7 @@ use super::{EventStatePoll, EventStateStream};
 
 
 #[pin_project]
-struct EventStateMapStream<St: EventStateStream, E, S> 
+pub struct EventStateMapStream<St: EventStateStream, E, S> 
 {
     #[pin]
     stream: St,
@@ -16,7 +16,7 @@ struct EventStateMapStream<St: EventStateStream, E, S>
 }
 
 impl<St: EventStateStream, E, S> EventStateMapStream<St, E, S> {
-    fn new(
+    pub fn new(
         stream: St,
         event_transform: fn(St::Event) -> E,
         state_transform: fn(St::State) -> S,

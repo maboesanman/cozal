@@ -7,7 +7,7 @@ pub trait EventStateStream {
     /// The time used to compare.
     type Time: Ord + Copy;
     /// Values yielded by the stream.
-    type Event;
+    type Event: Sized;
     /// The state for the given time.
     ///
     /// This will usually be a smart pointer to something but this is left to the implementer.
@@ -16,7 +16,7 @@ pub trait EventStateStream {
     /// (every point queried at runtime must be recorded for deterministic playback).
     /// Because of this, a smart pointer may be used which can note whether or not the state is actually dereferenced,
     /// and therefore how far back rollback events must be issued downstream and how much data to save.
-    type State;
+    type State: Sized;
 
     /// Attempt to pull out the next value of this stream, registering the
     /// current task for wakeup if the value is not yet available, and returning

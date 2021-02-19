@@ -82,7 +82,7 @@ pub trait Transposer: Sized {
     async fn handle_scheduled<'a>(
         &'a mut self,
         time: Self::Time,
-        payload: &Self::Scheduled,
+        payload: Self::Scheduled,
         cx: &'a mut UpdateContext<'a, Self>,
     );
 
