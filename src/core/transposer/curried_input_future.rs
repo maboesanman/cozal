@@ -1,9 +1,10 @@
 use super::{
     context::LazyState, engine_time::EngineTime, transposer::Transposer,
-    transposer_frame::TransposerFrame, wrapped_update_result::UpdateResult, UpdateContext,
+    transposer_frame::TransposerFrame, update_result::UpdateResult, UpdateContext,
 };
 use futures::channel::oneshot::{channel, Receiver, Sender};
 use futures::Future;
+use core::panic;
 use std::{marker::PhantomPinned, mem::MaybeUninit, pin::Pin, sync::Arc, task::{Context, Poll}};
 
 pub(super) struct CurriedInputFuture<'a, T: Transposer + 'a> {
@@ -16,8 +17,8 @@ pub(super) struct CurriedInputFuture<'a, T: Transposer + 'a> {
     // curried arguments to the internal future.
     frame: MaybeUninit<TransposerFrame<T>>,
     time: T::Time,
-    inputs: Vec<T::Input>,
-    state: LazyState<T::InputState>,
+    inputs: &'a [T::Input],
+    state: &'a mut LazyState<T::InputState>,
 
     // fut contains references to its curried arguments, so it can't be Unpin.
     _pin: PhantomPinned,
@@ -26,30 +27,17 @@ pub(super) struct CurriedInputFuture<'a, T: Transposer + 'a> {
 // lots of unsafe shenanegans goin on up in here
 impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
     pub fn new(
-        mut frame: TransposerFrame<T>,
+        prev_frame: &TransposerFrame<T>,
         time: T::Time,
-        inputs: Vec<T::Input>,
-    ) -> (Self, Receiver<Sender<T::InputState>>) {
-        frame.internal.set_time(EngineTime::new_input(time));
-        let (sender, receiver) = channel();
-        let new_self = Self {
-            update_fut: MaybeUninit::uninit(),
-            update_cx: MaybeUninit::uninit(),
-            frame: MaybeUninit::new(frame),
-            time,
-            inputs,
-            state: LazyState::Pending(sender),
-            _pin: PhantomPinned,
-        };
-        (new_self, receiver)
-    }
-
-    pub fn new_with_state(
-        mut frame: TransposerFrame<T>,
-        time: T::Time,
-        inputs: Vec<T::Input>,
-        state: T::InputState,
+        inputs: &'a [T::Input],
+        state: &'a mut LazyState<T::InputState>,
     ) -> Self {
+        let mut frame = (*prev_frame).clone();
+        if let Some(t) = frame.get_next_schedule_time() {
+            if t.time < time {
+                panic!("events processing out of order.");
+            }
+        }
         frame.internal.set_time(EngineTime::new_input(time));
         Self {
             update_fut: MaybeUninit::uninit(),
@@ -57,7 +45,7 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
             frame: MaybeUninit::new(frame),
             time,
             inputs,
-            state: LazyState::Ready(state),
+            state,
             _pin: PhantomPinned,
         }
     }
@@ -74,13 +62,13 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
 
         // same with this
         let input_ref = unsafe {
-            let ptr: *const _ = &this.inputs;
+            let ptr: *const _ = this.inputs;
             ptr.as_ref().unwrap()
         };
 
         // and with this
         let state_ref = unsafe {
-            let ptr: *mut _ = &mut this.state;
+            let ptr: *mut _ = this.state;
             ptr.as_mut().unwrap()
         };
 
@@ -99,16 +87,6 @@ impl<'a, T: Transposer + 'a> CurriedInputFuture<'a, T> {
         let fut = frame_ref.transposer.handle_input(this.time, input_ref, cx_ref);
         let fut = Box::new(fut);
         this.update_fut = MaybeUninit::new(fut);
-    }
-
-    // this does not recover frame because it may have been half-mutated
-    pub fn recover(self) -> (T::Time, Vec<T::Input>, Option<T::InputState>) {
-        (self.time, self.inputs, self.state.destroy())
-    }
-
-    pub fn time(&self) -> Arc<EngineTime<T::Time>> {
-        let frame = unsafe { self.frame.assume_init_ref() };
-        frame.time()
     }
 }
 

@@ -1,8 +1,8 @@
-use std::{collections::BTreeMap, pin::Pin, task::Context};
+use std::{collections::BTreeMap, pin::Pin, sync::Arc, task::Context};
 use futures::channel::oneshot::Sender;
 use pin_project::pin_project;
 
-use super::{Transposer, dynamic_index_buffer::{BufferPointer, DynamicBuffer}, pin_stack::PinStack, transposer_frame::TransposerFrame};
+use super::{Transposer, context::LazyState, curried_init_future::CurriedInitFuture, curried_input_future::CurriedInputFuture, curried_schedule_future::CurriedScheduleFuture, dynamic_index_buffer::{BufferPointer, DynamicBuffer}, engine_time::EngineTime, pin_stack::PinStack, transposer_frame::TransposerFrame, update_result::UpdateResult};
 
 #[pin_project]
 struct StateMap<T: Transposer, const N: usize> {
@@ -34,19 +34,32 @@ enum UpdateItem<T: Transposer> {
     Init{
         pointer: BufferPointer<CachedState<T>>,
         transposer: T,
+        time: Arc<EngineTime<T::Time>>,
+        input_state: LazyState<T::InputState>,
     },
     Input{
         pointer: BufferPointer<CachedState<T>>,
+        time: Arc<EngineTime<T::Time>>,
         inputs: Vec<T::Input>,
+        input_state: LazyState<T::InputState>,
     },
     Schedule{
         pointer: BufferPointer<CachedState<T>>,
+        time: Arc<EngineTime<T::Time>>,
+        input_state: LazyState<T::InputState>,
     }
 }
 
-enum CachedState<T: Transposer> {
-    Working,
-    Ready(TransposerFrame<T>)
+struct CachedState<T: Transposer> {
+    input_state: LazyState<T::InputState>,
+    update: CachedStateUpdate<T>
+}
+
+enum CachedStateUpdate<T: Transposer> {
+    Init(CurriedInitFuture<'static, T>),
+    Input(CurriedInputFuture<'static, T>),
+    Schedule(CurriedScheduleFuture<'static, T>),
+    Ready(UpdateResult<T>),
 }
 
 pub enum StateMapPoll<T: Transposer> {

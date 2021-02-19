@@ -1,4 +1,4 @@
-use super::{InitContext, context::LazyState, engine_time::EngineTime, transposer::Transposer, transposer_frame::TransposerFrame, wrapped_update_result::UpdateResult};
+use super::{InitContext, context::LazyState, engine_time::EngineTime, transposer::Transposer, transposer_frame::TransposerFrame, update_result::UpdateResult};
 use futures::channel::oneshot::{channel, Receiver, Sender};
 use futures::Future;
 use std::{
@@ -17,7 +17,7 @@ pub(super) struct CurriedInitFuture<'a, T: Transposer + 'a> {
 
     // curried arguments to the internal future.
     frame: MaybeUninit<TransposerFrame<T>>,
-    state: LazyState<T::InputState>,
+    state: &'a mut LazyState<T::InputState>,
 
     // fut contains references to its curried arguments, so it can't be Unpin.
     _pin: PhantomPinned,
@@ -25,31 +25,14 @@ pub(super) struct CurriedInitFuture<'a, T: Transposer + 'a> {
 
 // lots of unsafe shenanegans goin on up in here
 impl<'a, T: Transposer + 'a> CurriedInitFuture<'a, T> {
-    pub fn new(transposer: T) -> (Self, Receiver<Sender<T::InputState>>) {
-        let mut frame = TransposerFrame::new(transposer);
-        frame.internal.set_time(EngineTime::new_init());
-        let (sender, receiver) = channel();
-        let new_self = Self {
-            future: MaybeUninit::uninit(),
-            context: MaybeUninit::uninit(),
-            frame: MaybeUninit::new(frame),
-            state: LazyState::Pending(sender),
-            _pin: PhantomPinned,
-        };
-        (new_self, receiver)
-    }
-
-    pub fn new_with_state(
-        transposer: T,
-        state: T::InputState,
-    ) -> Self {
-        let mut frame = TransposerFrame::new(transposer);
+    pub fn new(transposer: &T, state: &'a mut LazyState<T::InputState>) -> Self {
+        let mut frame = TransposerFrame::new((*transposer).clone());
         frame.internal.set_time(EngineTime::new_init());
         Self {
             future: MaybeUninit::uninit(),
             context: MaybeUninit::uninit(),
             frame: MaybeUninit::new(frame),
-            state: LazyState::Ready(state),
+            state,
             _pin: PhantomPinned,
         }
     }
@@ -66,7 +49,7 @@ impl<'a, T: Transposer + 'a> CurriedInitFuture<'a, T> {
 
         // same with this
         let state_ref = unsafe {
-            let ptr: *mut _ = &mut this.state;
+            let ptr: *mut _ = this.state;
             ptr.as_mut().unwrap()
         };
 
@@ -85,11 +68,6 @@ impl<'a, T: Transposer + 'a> CurriedInitFuture<'a, T> {
         let fut = frame_ref.transposer.init(cx_ref);
         let fut = Box::new(fut);
         this.future = MaybeUninit::new(fut);
-    }
-
-    // this does not recover frame because it may have been half-mutated
-    pub fn recover(self) -> Option<T::InputState> {
-        self.state.destroy()
     }
 }
 

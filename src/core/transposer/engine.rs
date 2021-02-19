@@ -17,23 +17,18 @@ use super::{engine_time::EngineTime, transposer::Transposer, transposer_frame::T
 /// - record the input events for the purpose of storing replay data.
 #[pin_project(project=EngineProjection)]
 pub struct TransposerEngine<
-    'a,
-    T: Transposer + 'a,
-    S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState> + Send,
+    T: Transposer,
+    S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
 > {
     #[pin]
     input_stream: S,
-
-    #[pin]
-    current_update: TransposerUpdate<'a, T>,
-    current_state_sender: Option<futures::channel::oneshot::Sender<T::InputState>>,
 
     input_buffer: BTreeMap<T::Time, Vec<T::Input>>,
     output_buffer: BTreeMap<Arc<EngineTime<T::Time>>, Vec<T::Output>>,
     state_map: BTreeMap<Arc<EngineTime<T::Time>>, StateFrame<T>>,
 }
 
-enum StateFrame<T: Transposer + 'a> {
+enum StateFrame<T: Transposer> {
     Init{
         initial_transposer: T,
         input_state: Option<T::InputState>,
@@ -90,8 +85,6 @@ impl<
     pub async fn new(transposer: T, input_stream: S) -> TransposerEngine<'a, T, S> {
         Self {
             input_stream,
-            current_state_sender: None,
-            current_update: TransposerUpdate::new_init(transposer, None),
             input_buffer: BTreeMap::new(),
             output_buffer: BTreeMap::new(),
             state_map: BTreeMap::new(),

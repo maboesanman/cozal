@@ -21,8 +21,12 @@ impl<T: Transposer> TransposerFrame<T> {
         self.internal.get_time()
     }
 
-    pub fn get_next_schedule_time(&self) -> Option<T::Time> {
+    pub fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
         self.internal.get_next_schedule_time()
+    }
+
+    pub fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
+        self.internal.pop_schedule_event()
     }
 }
 
@@ -31,8 +35,8 @@ pub(super) struct TransposerFrameInternal<T: Transposer> {
     pub current_time: Arc<EngineTime<T::Time>>,
     pub scheduling_index: usize,
     // schedule and expire_handles
-    pub schedule: OrdMap<Arc<EngineTimeSchedule<T::Time>>, T::Scheduled>,
-    pub expire_handles: HashMap<ExpireHandle, Weak<EngineTimeSchedule<T::Time>>>,
+    pub schedule: OrdMap<EngineTimeSchedule<T::Time>, T::Scheduled>,
+    pub expire_handles: HashMap<ExpireHandle, EngineTimeSchedule<T::Time>>,
 
     pub expire_handle_factory: ExpireHandleFactory,
 
@@ -72,7 +76,6 @@ impl<T: Transposer> TransposerFrameInternal<T> {
             parent: self.current_time.clone(),
             parent_index: self.scheduling_index
         };
-        let time = Arc::new(time);
 
         self.schedule.insert(time, payload);
         self.scheduling_index += 1;
@@ -95,9 +98,8 @@ impl<T: Transposer> TransposerFrameInternal<T> {
             parent: self.current_time.clone(),
             parent_index: self.scheduling_index
         };
-        let time = Arc::new(time);
 
-        self.expire_handles.insert(handle, Arc::downgrade(&time));
+        self.expire_handles.insert(handle, time.clone());
         self.schedule.insert(time, payload);
         self.scheduling_index += 1;
 
@@ -106,18 +108,22 @@ impl<T: Transposer> TransposerFrameInternal<T> {
 
     pub fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), &str> {
         match self.expire_handles.get(&handle) {
-            Some(time) => match time.upgrade() {
-                Some(time) => match self.schedule.remove(&time) {
-                    Some(payload) => Ok((time.time, payload)),
-                    None => Err("expired event"),
-                },
+            Some(time) => match self.schedule.remove(&time) {
+                Some(payload) => Ok((time.time, payload)),
                 None => Err("expired event"),
             },
             None => Err("invalid handle"),
         }
     }
 
-    pub fn get_next_schedule_time(&self) -> Option<T::Time> {
-        self.schedule.get_min().map(|(next, _)| next.time)
+    pub fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
+        self.schedule.get_min().map(|(next, _)| next)
+    }
+
+    pub fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
+        let (result, new_schedule) = self.schedule.without_min_with_key();
+        self.schedule = new_schedule;
+
+        result
     }
 }

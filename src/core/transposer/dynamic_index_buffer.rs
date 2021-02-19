@@ -19,36 +19,41 @@ impl<T: Sized, const N: usize> DynamicBuffer<T, N> {
         }
     }
 
-    // this replaces old values with the new inserted value.
-    pub fn insert(self: Pin<&mut Self>, new_index: usize, item: T) -> BufferPointer<T>{
-        let DynamicBufferProject {
-            buffer,
-            max_index,
-        } = self.project();
-
-        let buffer: Pin<&mut [BufferItem<T>; N]> = buffer;
-        let max_index: &mut usize = max_index;
-
-        if new_index > *max_index {
-            *max_index = new_index;
-        }
+    fn insert_index<'a>(self: Pin<&mut Self>, item: T, new_index: usize, important_indices: &[usize]) -> *mut BufferItem<T>{
+        let project = self.project();
+        let buffer: Pin<&mut [BufferItem<T>; N]> = project.buffer;
 
         let iter = buffer.iter().enumerate();
         let (buffer_index, _) = iter.min_by_key(|&(_, x)| {
-            let distance_new = new_index as isize - x.index as isize;
-            let distance_max = *max_index as isize - x.index as isize;
-            x.index.trailing_zeros() + u32::max(distance_new.leading_zeros(), distance_max.leading_zeros()) 
+            let utility = important_indices.iter().map(
+                |&index| (index as isize - x.index as isize
+            ).leading_zeros()).max().unwrap_or(0);
+            let utility = utility + x.index.trailing_zeros();
+            utility
         }).unwrap();
 
         let buffer = unsafe { buffer.get_unchecked_mut()};
         buffer[buffer_index] = BufferItem::new(new_index, item);
         
+        unsafe { buffer.get_unchecked_mut(buffer_index) }
+    }
+
+    // this replaces old values with the new inserted value.
+    pub fn insert<'a>(self: Pin<&mut Self>, item: T, new_index: usize, important_indices: &[usize]) -> BufferPointer<T>{
         BufferPointer {
             index: new_index,
-            ptr: unsafe { buffer.get_unchecked_mut(buffer_index) } as *mut BufferItem<T>,
+            ptr: self.insert_index(item, new_index, important_indices),
 
-            phantom: PhantomData
+            phantom: PhantomData       
         }
+    }
+
+    pub fn reinsert<'a>(self: Pin<&mut Self>, ptr: &mut BufferPointer<T>, item: T, important_indices: &[usize]) -> Result<(), T> {
+        if ptr.access().is_err() {
+            return Err(item);
+        }
+        ptr.ptr = self.insert_index(item, ptr.index, important_indices);
+        Ok(())
     }
 }
 
