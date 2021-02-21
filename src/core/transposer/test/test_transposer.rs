@@ -1,4 +1,4 @@
-use crate::core::transposer::{InitContext, UpdateContext, context::InterpolateContext};
+use crate::core::transposer::context::{InitContext, InputContext, ScheduleContext, InterpolateContext};
 use crate::core::Transposer;
 use async_trait::async_trait;
 
@@ -25,7 +25,7 @@ impl TestTransposer {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Transposer for TestTransposer {
     type Time = usize;
 
@@ -39,17 +39,17 @@ impl Transposer for TestTransposer {
 
     type Output = (usize, HandleRecord);
 
-    async fn init<'a>(&'a mut self, cx: &'a mut InitContext<'a, Self>) {
+    async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>) {
         for (time, payload) in self.init_events.drain(..) {
             let _ = cx.schedule_event(time, payload);
         }
     }
 
-    async fn handle_input<'a>(
-        &'a mut self,
+    async fn handle_input(
+        &mut self,
         time: Self::Time,
-        inputs: &'a [Self::Input],
-        cx: &'a mut UpdateContext<'a, Self>,
+        inputs: &[Self::Input],
+        cx: &mut dyn InputContext<'_, Self>,
     ) {
         let mut vec = Vec::new();
         for payload in inputs {
@@ -62,24 +62,24 @@ impl Transposer for TestTransposer {
         cx.emit_event((state, record));
     }
 
-    async fn handle_scheduled<'a>(
-        &'a mut self,
+    async fn handle_scheduled(
+        &mut self,
         time: Self::Time,
-        payload: &Self::Scheduled,
-        cx: &'a mut UpdateContext<'a, Self>,
+        payload: Self::Scheduled,
+        cx: &mut dyn ScheduleContext<'_, Self>,
     ) {
-        let record = HandleRecord::Scheduled(time, *payload);
+        let record = HandleRecord::Scheduled(time, payload);
         self.handle_record.push_back(record.clone());
 
         let state = *cx.get_input_state().await.unwrap();
         cx.emit_event((state, record));
     }
 
-    async fn interpolate<'a>(
-        &'a self,
+    async fn interpolate(
+        &self,
         base_time: Self::Time,
         interpolated_time: Self::Time,
-        cx: &InterpolateContext<'a, Self>
+        cx: &mut dyn InterpolateContext<'_, Self>
     ) -> Self::OutputState {
         self.clone()
     }

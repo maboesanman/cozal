@@ -1,26 +1,16 @@
-use super::{InitContext, Transposer, context::UpdateContext, transposer_frame::TransposerFrame};
+use super::{engine_context::EngineContext, Transposer};
 
 pub(super) struct UpdateResult<T: Transposer> {
-    pub frame: TransposerFrame<T>,
     pub outputs: Vec<T::Output>,
     pub exit: bool,
 }
 
-impl<T: Transposer> UpdateResult<T> {
-    pub fn from_init_context<'a>(mutated_frame: TransposerFrame<T>, used_context: InitContext<T>) -> Self {
-        let InitContext { outputs, .. } = used_context;
+impl<T: Transposer> From<EngineContext<'_, T>> for UpdateResult<T> {
+    fn from(used_context: EngineContext<T>) -> Self {
+        let EngineContext { outputs, .. } = used_context;
         UpdateResult {
-            frame: mutated_frame,
             outputs,
             exit: false,
-        }
-    }
-    pub fn from_update_context<'a>(mutated_frame: TransposerFrame<T>, used_context: UpdateContext<T>) -> Self {
-        let UpdateContext { outputs, exit, .. } = used_context;
-        UpdateResult {
-            frame: mutated_frame,
-            outputs,
-            exit,
         }
     }
 }

@@ -1,15 +1,18 @@
-use super::{engine_time::EngineTimeSchedule, expire_handle::{ExpireHandle, ExpireHandleFactory}};
+use super::{wrapped_future::WrappedFuture, engine_time::EngineTimeSchedule, expire_handle::{ExpireHandle, ExpireHandleFactory}};
 use super::{engine_time::EngineTime, transposer::Transposer};
+use futures::Future;
 use im::{HashMap, OrdMap};
-use std::sync::{Arc, Weak};
+use std::{pin::Pin, sync::{Arc, Weak}};
 
 #[derive(Clone)]
-pub(super) struct TransposerFrame<T: Transposer> {
+pub(super) struct TransposerFrame<T: Transposer>
+where T::Scheduled: Clone {
     pub transposer: T,
     pub internal: TransposerFrameInternal<T>,
 }
 
-impl<T: Transposer> TransposerFrame<T> {
+impl<T: Transposer> TransposerFrame<T>
+where T::Scheduled: Clone {
     pub fn new(transposer: T) -> Self {
         Self {
             transposer,
@@ -17,21 +20,34 @@ impl<T: Transposer> TransposerFrame<T> {
         }
     }
 
-    pub fn time(&self) -> Arc<EngineTime<T::Time>> {
+    pub fn handle_init(&mut self) -> WrappedFuture<'_, T> {
+        todo!()
+    }
+
+    pub fn handle_input(&mut self, inputs: &[T::Input]) -> WrappedFuture<'_, T> {
+        todo!()
+    }
+
+    pub fn handle_scheduled(&mut self) -> WrappedFuture<'_, T> {
+        todo!()
+    }
+
+    fn time(&self) -> Arc<EngineTime<T::Time>> {
         self.internal.get_time()
     }
 
-    pub fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
+    fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
         self.internal.get_next_schedule_time()
     }
 
-    pub fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
+    fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
         self.internal.pop_schedule_event()
     }
 }
 
 #[derive(Clone)]
-pub(super) struct TransposerFrameInternal<T: Transposer> {
+pub(super) struct TransposerFrameInternal<T: Transposer> 
+where T::Scheduled: Clone {
     pub current_time: Arc<EngineTime<T::Time>>,
     pub scheduling_index: usize,
     // schedule and expire_handles
@@ -43,7 +59,8 @@ pub(super) struct TransposerFrameInternal<T: Transposer> {
     // todo add rng seed info
 }
 
-impl<T: Transposer> TransposerFrameInternal<T> {
+impl<T: Transposer> TransposerFrameInternal<T> 
+where T::Scheduled: Clone {
     pub fn new() -> Self {
         Self {
             current_time: EngineTime::new_init(),

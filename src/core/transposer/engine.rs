@@ -19,7 +19,8 @@ use super::{engine_time::EngineTime, state_map::StateMap, transposer::Transposer
 pub struct TransposerEngine<
     T: Transposer + Clone,
     S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
-> {
+>
+where T::Scheduled: Clone {
     #[pin]
     input_stream: S,
 
@@ -32,9 +33,10 @@ impl<
     T: Transposer + Clone,
     S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
     > TransposerEngine<T, S>
+    where T::Scheduled: Clone 
 {
     /// create a new TransposerEngine, consuming the input stream.
-    pub async fn new(transposer: T, input_stream: S) -> TransposerEngine<T, S> {
+    pub fn new(input_stream: S, initial_transposer: T) -> TransposerEngine<T, S> {
         todo!()
     }
 }
@@ -43,6 +45,7 @@ impl<
     T: Transposer + Clone,
     S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
     > EventStateStream for TransposerEngine<T, S>
+    where T::Scheduled: Clone 
 {
     type Time = T::Time;
     type Event = T::Output;

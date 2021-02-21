@@ -1,8 +1,11 @@
+use either::Either;
+
 use crate::core::{Transposer, transposer::TransposerEngine};
 
 #[cfg(realtime)]
 use super::{timestamp::Timestamp, RealtimeStream};
-use super::EventStateStream;
+use super::{EventStateStream, event_state_split_stream::{EventStateSplitLeft, EventStateSplitRight}};
+use super::event_state_split_stream::{bounded, unbounded};
 
 
 impl<S> EventStateStreamExt for S where S: EventStateStream {}
@@ -31,8 +34,19 @@ pub trait EventStateStreamExt: EventStateStream {
     >>(self, initial: T) -> TransposerEngine<T, Self>
         where
             T: Clone,
+            T::Scheduled: Clone,
             Self: Sized,
     {
-        todo!()
+        TransposerEngine::new(self, initial)
     }
+
+    // fn split_bounded<L, R>(self, buffer_size: usize) -> (
+    //     EventStateSplitLeft<Self, L, R>,
+    //     EventStateSplitRight<Self, L, R>,
+    // )
+    //     where
+    //         Self::Item= Either<L, R>,
+    // {
+    //     bounded(self, buffer_size)
+    // }
 }

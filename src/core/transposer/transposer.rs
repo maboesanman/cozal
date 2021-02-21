@@ -1,4 +1,4 @@
-use super::context::{InitContext, InterpolateContext, UpdateContext};
+use super::context::{InitContext, InputContext, InterpolateContext, ScheduleContext};
 use async_trait::async_trait;
 
 /// A `Transposer` is a type that can update itself in response to events.
@@ -11,7 +11,7 @@ use async_trait::async_trait;
 ///
 /// The name comes from the idea that we are converting a stream of events into another stream of events,
 /// perhaps in the way a stream of music notes can be *transposed* into another stream of music notes.
-#[async_trait]
+#[async_trait(?Send)]
 pub trait Transposer: Sized {
     /// The type used as the 'time' for events. This must be Ord and Copy because it is frequently used for comparisons,
     /// and it must be [`Default`] because the default value is used for the timestamp of events emitted.
@@ -52,9 +52,9 @@ pub trait Transposer: Sized {
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`InitContext`] documentation.
-    async fn init<'a>(
-        &'a mut self,
-        cx: &'a mut InitContext<'a, Self>
+    async fn init(
+        &mut self,
+        cx: &mut dyn InitContext<'_, Self>
     );
 
     /// The function to respond to input.
@@ -66,11 +66,11 @@ pub trait Transposer: Sized {
     ///
     /// `cx` is a context object for performing additional operations like scheduling events.
     /// For more information on `cx` see the [`UpdateContext`] documentation.
-    async fn handle_input<'a>(
-        &'a mut self,
+    async fn handle_input(
+        &mut self,
         time: Self::Time,
-        inputs: &'a [Self::Input],
-        cx: &'a mut UpdateContext<'a, Self>,
+        inputs: &[Self::Input],
+        cx: &mut dyn InputContext<'_, Self>,
     );
 
     /// The function to respond to internally scheduled events.
@@ -79,11 +79,11 @@ pub trait Transposer: Sized {
     ///
     /// `cx` is a context object for performing additional operations like scheduling events.
     /// For more information on `cx` see the [`UpdateContext`] documentation.
-    async fn handle_scheduled<'a>(
-        &'a mut self,
+    async fn handle_scheduled(
+        &mut self,
         time: Self::Time,
         payload: Self::Scheduled,
-        cx: &'a mut UpdateContext<'a, Self>,
+        cx: &mut dyn ScheduleContext<'_, Self>,
     );
 
     /// The function to interpolate between states
@@ -94,11 +94,11 @@ pub trait Transposer: Sized {
     /// `base_time` is the time of the `self` parameter
     /// `interpolated_time` is the time being requested `self`
     /// `cx is a context object for performing additional operations like requesting state.
-    async fn interpolate<'a>(
-        &'a self,
+    async fn interpolate(
+        &self,
         base_time: Self::Time,
         interpolated_time: Self::Time,
-        cx: &InterpolateContext<'a, Self>,
+        cx: &mut dyn InterpolateContext<'_, Self>,
     ) -> Self::OutputState;
 
     /// Filter out events you know you can't do anything with.
