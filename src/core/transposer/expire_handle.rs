@@ -1,5 +1,5 @@
-use std::sync::atomic::Ordering::SeqCst;
-use std::{num::NonZeroU64, sync::atomic::AtomicU64};
+
+use std::{num::NonZeroU64};
 
 /// this is the handle that you use to expire scheduled events.
 #[derive(Hash, Eq, PartialEq, Debug, Copy)]

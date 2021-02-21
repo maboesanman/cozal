@@ -26,9 +26,9 @@ impl<'map, T: Transposer + 'map, const N: usize> StateMap<'map, T, N> {
 
     pub fn poll(
         self: Pin<&mut Self>,
-        time: T::Time,
-        input_buffer: &mut BTreeMap<T::Time, Vec<T::Input>>,
-        cx: Context,
+        _time: T::Time,
+        _input_buffer: &mut BTreeMap<T::Time, Vec<T::Input>>,
+        _cx: Context,
     ) -> StateMapPoll<T>{
         todo!()
     }

@@ -166,7 +166,7 @@ impl<'a, T: Transposer> ExpireEventContext<T> for EngineRebuildContext<'a, T> {
 }
 
 impl<'a, T: Transposer> EmitEventContext<T> for EngineRebuildContext<'a, T> {
-    fn emit_event(&mut self, payload: T::Output) { }
+    fn emit_event(&mut self, _payload: T::Output) { }
 }
 
 impl<'a, T: Transposer> ExitContext for EngineRebuildContext<'a, T> {

@@ -77,9 +77,9 @@ impl Transposer for TestTransposer {
 
     async fn interpolate(
         &self,
-        base_time: Self::Time,
-        interpolated_time: Self::Time,
-        cx: &mut dyn InterpolateContext<'_, Self>
+        _base_time: Self::Time,
+        _interpolated_time: Self::Time,
+        _cx: &mut dyn InterpolateContext<'_, Self>
     ) -> Self::OutputState {
         self.clone()
     }

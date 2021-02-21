@@ -1,12 +1,12 @@
 use core::pin::Pin;
 use std::{cmp::min, collections::BTreeMap, sync::{Arc, Weak}};
-use futures::{future::Pending, task::Context};
+use futures::{task::Context};
 use pin_project::pin_project;
 
 
 use crate::core::{Transposer, event_state_stream::{EventStatePoll, EventStateStream}};
 
-use super::{engine_time::EngineTime, state_map::StateMap, transposer_frame::TransposerFrame};
+use super::{engine_time::EngineTime, state_map::StateMap};
 
 /// A struct which implements the [`StatefulScheduleStream`] trait for a [`Transposer`].
 ///
@@ -38,7 +38,7 @@ impl<
     where T::Scheduled: Clone 
 {
     /// create a new TransposerEngine, consuming the input stream.
-    pub fn new(input_stream: S, initial_transposer: T) -> TransposerEngine<'t, T, S> {
+    pub fn new(_input_stream: S, _initial_transposer: T) -> TransposerEngine<'t, T, S> {
         todo!()
     }
 }
@@ -56,8 +56,8 @@ impl<
 
     fn poll(
         self: Pin<&mut Self>,
-        poll_time: Self::Time,
-        cx: &mut Context<'_>,
+        _poll_time: Self::Time,
+        _cx: &mut Context<'_>,
     ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
         // split the waker here to determine if woken by the input stream or the pending futures in state_map
 

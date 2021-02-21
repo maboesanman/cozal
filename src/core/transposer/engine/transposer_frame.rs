@@ -2,7 +2,7 @@ use crate::core::{Transposer, transposer::expire_handle::ExpireHandle};
 
 use super::{engine_time::EngineTimeSchedule, expire_handle_factory::ExpireHandleFactory, wrapped_future::WrappedFuture};
 use super::{engine_time::EngineTime};
-use futures::Future;
+
 use im::{HashMap, OrdMap};
 use std::{pin::Pin, sync::{Arc, Weak}};
 
@@ -26,7 +26,7 @@ where T::Scheduled: Clone {
         todo!()
     }
 
-    pub fn handle_input(&mut self, inputs: &[T::Input]) -> WrappedFuture<'_, T> {
+    pub fn handle_input(&mut self, _inputs: &[T::Input]) -> WrappedFuture<'_, T> {
         todo!()
     }
 
