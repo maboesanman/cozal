@@ -2,7 +2,9 @@ use std::pin::Pin;
 
 use futures::{Future, channel::oneshot::{channel, Receiver, Sender}};
 
-use super::{Transposer, context::{EmitEventContext, ExitContext, ExpireEventContext, InputStateContext, ScheduleEventContext}, expire_handle::ExpireHandle, transposer_frame::TransposerFrameInternal};
+use crate::core::{Transposer, transposer::{context::{EmitEventContext, ExitContext, ExpireEventContext, InputStateContext, ScheduleEventContext}, expire_handle::ExpireHandle}};
+
+use super::transposer_frame::TransposerFrameInternal;
 
 
 pub(super) enum LazyState<S> {

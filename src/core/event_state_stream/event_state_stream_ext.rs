@@ -27,11 +27,11 @@ pub trait EventStateStreamExt: EventStateStream {
         RealtimeStream::new(self, reference)
     }
 
-    fn to_engine<T: Transposer<
+    fn to_engine<'tr, T: Transposer<
         Time=Self::Time,
         Input=Self::Event,
         InputState=Self::State,
-    >>(self, initial: T) -> TransposerEngine<T, Self>
+    > + 'tr>(self, initial: T) -> TransposerEngine<'tr, T, Self>
         where
             T: Clone,
             T::Scheduled: Clone,

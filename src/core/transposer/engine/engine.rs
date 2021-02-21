@@ -4,9 +4,9 @@ use futures::{future::Pending, task::Context};
 use pin_project::pin_project;
 
 
-use crate::core::event_state_stream::{EventStatePoll, EventStateStream};
+use crate::core::{Transposer, event_state_stream::{EventStatePoll, EventStateStream}};
 
-use super::{engine_time::EngineTime, state_map::StateMap, transposer::Transposer, transposer_frame::TransposerFrame};
+use super::{engine_time::EngineTime, state_map::StateMap, transposer_frame::TransposerFrame};
 
 /// A struct which implements the [`StatefulScheduleStream`] trait for a [`Transposer`].
 ///
@@ -17,7 +17,8 @@ use super::{engine_time::EngineTime, state_map::StateMap, transposer::Transposer
 /// - record the input events for the purpose of storing replay data.
 #[pin_project(project=EngineProjection)]
 pub struct TransposerEngine<
-    T: Transposer + Clone,
+    'transposer,
+    T: Transposer + Clone + 'transposer,
     S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
 >
 where T::Scheduled: Clone {
@@ -26,25 +27,27 @@ where T::Scheduled: Clone {
 
     input_buffer: BTreeMap<T::Time, Vec<T::Input>>,
     output_buffer: BTreeMap<Arc<EngineTime<T::Time>>, Vec<T::Output>>,
-    state_map: StateMap<T, 20>,
+    state_map: StateMap<'transposer, T, 20>,
 }
 
 impl<
-    T: Transposer + Clone,
+    't,
+    T: Transposer + Clone + 't,
     S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
-    > TransposerEngine<T, S>
+    > TransposerEngine<'t, T, S>
     where T::Scheduled: Clone 
 {
     /// create a new TransposerEngine, consuming the input stream.
-    pub fn new(input_stream: S, initial_transposer: T) -> TransposerEngine<T, S> {
+    pub fn new(input_stream: S, initial_transposer: T) -> TransposerEngine<'t, T, S> {
         todo!()
     }
 }
 
 impl<
-    T: Transposer + Clone,
+    't,
+    T: Transposer + Clone + 't,
     S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
-    > EventStateStream for TransposerEngine<T, S>
+    > EventStateStream for TransposerEngine<'t, T, S>
     where T::Scheduled: Clone 
 {
     type Time = T::Time;
@@ -56,6 +59,8 @@ impl<
         poll_time: Self::Time,
         cx: &mut Context<'_>,
     ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
+        // split the waker here to determine if woken by the input stream or the pending futures in state_map
+
         todo!()
     }
 }
