@@ -9,7 +9,7 @@ pub enum EngineTime<T: Ord + Copy + Default> {
 }
 
 impl<T: Ord + Copy + Default> EngineTime<T> {
-    pub fn time(&self) -> T {
+    pub fn raw_time(&self) -> T {
         match self {
             Self::Init => T::default(),
             Self::Input(time) => *time,

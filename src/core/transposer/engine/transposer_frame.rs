@@ -1,6 +1,6 @@
 use crate::core::{Transposer, transposer::expire_handle::ExpireHandle};
 
-use super::{engine_time::EngineTimeSchedule, expire_handle_factory::ExpireHandleFactory, wrapped_future::WrappedFuture};
+use super::{engine_context::LazyState, engine_time::EngineTimeSchedule, expire_handle_factory::ExpireHandleFactory, transposer_update::TransposerUpdate};
 use super::{engine_time::EngineTime};
 
 use im::{HashMap, OrdMap};
@@ -14,7 +14,9 @@ where T::Scheduled: Clone {
 }
 
 impl<T: Transposer> TransposerFrame<T>
-where T::Scheduled: Clone {
+where
+    T: Clone, 
+    T::Scheduled: Clone {
     pub fn new(transposer: T) -> Self {
         Self {
             transposer,
@@ -22,29 +24,31 @@ where T::Scheduled: Clone {
         }
     }
 
-    pub fn handle_init(&mut self) -> WrappedFuture<'_, T> {
-        todo!()
-    }
+    // pub fn prepare_init(
+    //     &mut self
+    // ) -> WrappedFuture<'_, T> {
+    //     self.internal.set_time(EngineTime::new_init());
+    //     WrappedFuture::new(self)
+    // }
 
-    pub fn handle_input(&mut self, _inputs: &[T::Input]) -> WrappedFuture<'_, T> {
-        todo!()
-    }
+    // pub fn prepare_update(
+    //     &mut self,
+    //     next_input_time: Option<T::Time>,
+    // ) -> PrepareUpdateResult<'_, T> {
 
-    pub fn handle_scheduled(&mut self) -> WrappedFuture<'_, T> {
-        todo!()
-    }
+    // }
+}
 
-    fn time(&self) -> Arc<EngineTime<T::Time>> {
-        self.internal.get_time()
-    }
-
-    fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
-        self.internal.get_next_schedule_time()
-    }
-
-    fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
-        self.internal.pop_schedule_event()
-    }
+pub(super) enum PrepareUpdateResult<'a, T: Transposer> {
+    Input{
+        update: TransposerUpdate<'a, T>
+    },
+    Schedule{
+        update: TransposerUpdate<'a, T>,
+        time: T::Time,
+        payload: T::Scheduled,
+    },
+    None,
 }
 
 #[derive(Clone)]
@@ -63,7 +67,7 @@ where T::Scheduled: Clone {
 
 impl<T: Transposer> TransposerFrameInternal<T> 
 where T::Scheduled: Clone {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             current_time: EngineTime::new_init(),
             scheduling_index: 0,
@@ -73,7 +77,7 @@ where T::Scheduled: Clone {
         }
     }
 
-    pub fn set_time(&mut self, new_time: Arc<EngineTime<T::Time>>) {
+    fn set_time(&mut self, new_time: Arc<EngineTime<T::Time>>) {
         if new_time <= self.current_time {
             panic!()
         } else {
@@ -86,7 +90,7 @@ where T::Scheduled: Clone {
     }
 
     pub fn schedule_event(&mut self, time: T::Time, payload: T::Scheduled) -> Result<(), &str> {
-        if time < self.get_time().time() {
+        if time < self.get_time().raw_time() {
             return Err("new event cannot sort before current event");
         }
 
@@ -107,7 +111,7 @@ where T::Scheduled: Clone {
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, &str> {
-        if time < self.get_time().time() {
+        if time < self.get_time().raw_time() {
             return Err("new event cannot sort before current event");
         }
 
@@ -135,11 +139,11 @@ where T::Scheduled: Clone {
         }
     }
 
-    pub fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
+    fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
         self.schedule.get_min().map(|(next, _)| next)
     }
 
-    pub fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
+    fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
         let (result, new_schedule) = self.schedule.without_min_with_key();
         self.schedule = new_schedule;
 

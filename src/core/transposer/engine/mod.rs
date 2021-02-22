@@ -1,5 +1,6 @@
 
-pub(self) mod wrapped_future;
+pub(self) mod transposer_update;
+pub(self) mod transposer_interpolation;
 pub(self) mod engine_time;
 pub(self) mod transposer_frame;
 pub(self) mod update_result;

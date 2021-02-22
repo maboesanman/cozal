@@ -172,3 +172,24 @@ impl<'a, T: Transposer> EmitEventContext<T> for EngineRebuildContext<'a, T> {
 impl<'a, T: Transposer> ExitContext for EngineRebuildContext<'a, T> {
     fn exit(&mut self) { }
 }
+
+pub struct EngineInterpolationContext<'a, T: Transposer> 
+where T::Scheduled: Clone {
+    // access to the input state
+    input_state: &'a mut LazyState<T::InputState>,
+}
+
+impl<'a, T: Transposer> EngineInterpolationContext<'a, T> {
+    pub(super) fn new(input_state: &'a mut LazyState<T::InputState>) -> Self {
+        Self {
+            input_state,
+        }
+    }
+}
+
+// this is gonna be tricky...
+impl<'a, T: Transposer> InputStateContext<'a, T> for EngineInterpolationContext<'a, T> {
+    fn get_input_state<'f>(&'f mut self) -> Pin<&'f mut (dyn Future<Output=Result<&'a T::InputState, &'static str>>)> {
+        unimplemented!()
+    }
+}

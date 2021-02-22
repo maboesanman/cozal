@@ -13,56 +13,45 @@ use super::{engine_context::{EngineContext, LazyState}, engine_time::EngineTime,
 /// future to initialize a TransposerFrame
 ///
 /// the initialization happens AS A SIDE EFFECT OF THIS.
-pub(super) struct WrappedFuture<'a, T: Transposer> 
+pub(super) struct TransposerUpdate<'f, T: Transposer> 
 where T::Scheduled: Clone {
     // the curried future; placed first so it is dropped first.
-    future: MaybeUninit<Box<dyn Future<Output = ()> + 'a>>,
+    future: MaybeUninit<Box<dyn Future<Output = ()> + 'f>>,
 
     // cx is placed second because it references frame and is referenced by fut.
-    context: MaybeUninit<EngineContext<'a, T>>,
+    context: MaybeUninit<EngineContext<'f, T>>,
 
-    // curried arguments to the internal future.
-    frame: &'a mut TransposerFrame<T>,
-
-    // fut contains references to its curried arguments, so it can't be Unpin.
+    // future contains a reference to context.
     _pin: PhantomPinned,
 }
 
 // lots of unsafe shenanegans goin on up in here
-impl<'a, T: Transposer + Clone> WrappedFuture<'a, T> 
+impl<'f, T: Transposer + Clone> TransposerUpdate<'f, T> 
 where T::Scheduled: Clone {
-    pub fn new(
-        frame: &'a mut TransposerFrame<T>,
-    ) -> Self {
-        frame.internal.set_time(EngineTime::new_init());
+    pub fn new() -> Self {
         Self {
             future: MaybeUninit::uninit(),
             context: MaybeUninit::uninit(),
-            frame,
             _pin: PhantomPinned,
         }
     }
 
-    fn setup_helper<'f, 'b>(
-        self: Pin<&'f mut Self>, 
-        state: &'a mut LazyState<T::InputState>,
+    fn setup_helper<'s, 'a>(
+        self: Pin<&'s mut Self>,
+        frame: &'f mut TransposerFrame<T>,
+        state: &'f mut LazyState<T::InputState>,
     ) -> (
-        &'f mut MaybeUninit<Box<dyn Future<Output = ()> + 'a>>,
-        &'b mut T,
-        &'b mut EngineContext<'a, T>
+        &'s mut MaybeUninit<Box<dyn Future<Output = ()> + 'f>>,
+        &'a mut T,
+        &'a mut EngineContext<'f, T>
     ) {
         // this is safe because we are adjusting the lifetime
         // to be the lifetime of the pinned struct
         let this: &mut Self = unsafe { self.get_unchecked_mut() };
 
-        let frame_ref = unsafe {
-            let ptr: *mut _ = this.frame;
-            ptr.as_mut().unwrap()
-        };
-
         // create and initialize context
-        let cx: EngineContext<'a, T>;
-        cx = EngineContext::new(&mut frame_ref.internal, state);
+        let cx: EngineContext<'f, T>;
+        cx = EngineContext::new(&mut frame.internal, state);
         this.context = MaybeUninit::new(cx);
 
         // take ref from newly pinned ref
@@ -71,16 +60,17 @@ where T::Scheduled: Clone {
             ptr.as_mut().unwrap()
         };
 
-        let transposer_ref = &mut frame_ref.transposer;
+        let transposer_ref = &mut frame.transposer;
         (&mut this.future, transposer_ref, cx_ref)
     }
 
     pub fn start_init(
         mut self: Pin<&mut Self>, 
-        state: &'a mut LazyState<T::InputState>,
+        frame: &'f mut TransposerFrame<T>,
+        state: &'f mut LazyState<T::InputState>,
     )
     {
-        let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(state);
+        let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(frame, state);
         // initialize update_fut
         let fut = transposer_ref.init(cx_ref);
         let fut = Box::new(fut);
@@ -89,12 +79,13 @@ where T::Scheduled: Clone {
 
     pub fn start_input(
         mut self: Pin<&mut Self>, 
-        state: &'a mut LazyState<T::InputState>,
+        frame: &'f mut TransposerFrame<T>,
+        state: &'f mut LazyState<T::InputState>,
         time: T::Time,
-        inputs: &'a [T::Input]
+        inputs: &'f [T::Input]
     )
     {
-        let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(state);
+        let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(frame, state);
         // initialize update_fut
         let fut = transposer_ref.handle_input(time, inputs, cx_ref);
         let fut = Box::new(fut);
@@ -103,12 +94,13 @@ where T::Scheduled: Clone {
 
     pub fn start_schedule(
         mut self: Pin<&mut Self>, 
-        state: &'a mut LazyState<T::InputState>,
+        frame: &'f mut TransposerFrame<T>,
+        state: &'f mut LazyState<T::InputState>,
         time: T::Time,
         payload: T::Scheduled,
     )
     {
-        let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(state);
+        let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(frame, state);
         // initialize update_fut
         let fut = transposer_ref.handle_scheduled(time, payload, cx_ref);
         let fut = Box::new(fut);
@@ -116,7 +108,7 @@ where T::Scheduled: Clone {
     }
 }
 
-impl<'a, T: Transposer + Clone> Future for WrappedFuture<'a, T> 
+impl<'a, T: Transposer + Clone> Future for TransposerUpdate<'a, T> 
 where T::Scheduled: Clone {
     type Output = UpdateResult<T>;
 

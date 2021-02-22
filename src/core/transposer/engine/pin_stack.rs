@@ -63,6 +63,10 @@ impl<T: Sized> PinStack<T> {
         chunk.get_unchecked_mut(i)
     }
 
+    pub fn len(&self) -> usize {
+        self.length
+    }
+
     pub fn push(&mut self, item: T) -> Pin<&mut T> {
         self.reserve(1);
         self.length += 1;
@@ -82,6 +86,18 @@ impl<T: Sized> PinStack<T> {
                 let item_mut = self.get_unchecked_mut(self.length);
                 let item = std::mem::replace(item_mut, MaybeUninit::uninit());
                 let item = item.assume_init();
+                Some(item)
+            }
+        }
+    }
+
+    pub fn peek(&self) -> Option<&T> {
+        if self.length == 0 {
+            None
+        } else {
+            unsafe {
+                let item = self.get_unchecked(self.length - 1);
+                let item = item.assume_init_ref();
                 Some(item)
             }
         }
