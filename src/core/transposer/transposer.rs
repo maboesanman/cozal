@@ -1,4 +1,4 @@
-use super::context::{InitContext, InputContext, InterpolateContext, ScheduleContext};
+use super::context::{InitContext, InputContext, ScheduleContext};
 use async_trait::async_trait;
 
 /// A `Transposer` is a type that can update itself in response to events.
@@ -94,11 +94,11 @@ pub trait Transposer: Sized {
     /// `base_time` is the time of the `self` parameter
     /// `interpolated_time` is the time being requested `self`
     /// `cx is a context object for performing additional operations like requesting state.
-    async fn interpolate(
+    fn interpolate(
         &self,
         base_time: Self::Time,
         interpolated_time: Self::Time,
-        cx: &mut dyn InterpolateContext<'_, Self>,
+        input_state: Self::InputState,
     ) -> Self::OutputState;
 
     /// Filter out events you know you can't do anything with.

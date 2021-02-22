@@ -4,7 +4,7 @@ use pin_project::pin_project;
 
 use crate::core::Transposer;
 
-use super::{engine_context::LazyState, engine_time::EngineTime, pin_stack::PinStack, transposer_frame::TransposerFrame, transposer_interpolation::TransposerInterpolation, transposer_update::TransposerUpdate, update_result::UpdateResult};
+use super::{engine_time::EngineTime, lazy_state::LazyState, pin_stack::PinStack, transposer_frame::TransposerFrame, transposer_update::TransposerUpdate, update_result::UpdateResult};
 
 #[pin_project]
 pub struct StateMap<'map, T: Transposer + 'map, const N: usize> {
@@ -13,9 +13,6 @@ pub struct StateMap<'map, T: Transposer + 'map, const N: usize> {
 
     #[pin]
     state_buffer: [StateBufferItem<'map, T>; N],
-
-    #[pin]
-    current_interpolation: Option<(T::Time, TransposerInterpolation<'map, T>)>,
 
     // state_buffer has futures with references into update_stack
     _marker: PhantomPinned,
@@ -26,7 +23,6 @@ impl<'map, T: Transposer + 'map, const N: usize> StateMap<'map, T, N> {
         Self {
             update_stack: PinStack::new(),
             state_buffer: array_init::array_init(|_| StateBufferItem::new_zeroed()),
-            current_interpolation: None,
             _marker: PhantomPinned,
         }
     }
@@ -41,41 +37,13 @@ impl<'map, T: Transposer + 'map, const N: usize> StateMap<'map, T, N> {
     pub fn poll(
         self: Pin<&mut Self>,
         poll_time: T::Time,
+        input_state: T::InputState,
         input_buffer: &mut BTreeMap<T::Time, Vec<T::Input>>,
         _cx: Context,
     ) -> StateMapPoll<T>{
         let project = self.project();
         let update_stack: &mut PinStack<UpdateItem<T>> = project.update_stack;
         let mut state_buffer: Pin<&mut [StateBufferItem<'_, T>]> = project.state_buffer;
-
-        // first drop all the frames that have been invalidated by new inputs.
-        loop {
-            let next_input_buffer_time = input_buffer.first_key_value().map(|(t, _)| EngineTime::new_input(*t));
-            if let Some(next_input_buffer_time) = next_input_buffer_time {
-                if next_input_buffer_time.raw_time() <= poll_time {
-
-                }
-            }
-            
-            let latest_state_time = update_stack.peek().map(|x| x.time.as_ref());
-
-            // match (next_input_buffer_time, latest_state_time) {
-            //     (None, _) => break,
-            //     (Some(_), None) => panic!(),
-            //     (Some(next_input_buffer_time), Some(latest_state_time)) => {
-            //         if next_input_buffer_time.time() > poll_time {
-            //             break
-            //         }
-            //         if latest_state_time < next_input_buffer_time.as_ref() {
-            //             break
-            //         }
-            //         let buffer_index = update_stack.pop().unwrap().buffer_index;
-            //         let update_index = update_stack.len();
-            //         Self::drop_buffered(state_buffer.as_mut(), buffer_index, update_index);
-            //     }
-            // }
-        }
-        // now 
 
         todo!()
     }

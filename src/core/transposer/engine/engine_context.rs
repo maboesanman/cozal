@@ -4,55 +4,9 @@ use futures::{Future, channel::oneshot::{channel, Receiver, Sender}};
 
 use crate::core::{Transposer, transposer::{context::{EmitEventContext, ExitContext, ExpireEventContext, InputStateContext, ScheduleEventContext}, expire_handle::ExpireHandle}};
 
-use super::transposer_frame::TransposerFrameInternal;
+use super::{lazy_state::LazyState, transposer_frame::TransposerFrameInternal};
 
 
-pub(super) enum LazyState<S> {
-    Ready(S),
-    Requested(Receiver<S>),
-    Pending(Sender<Sender<S>>),
-}
-
-impl<S> LazyState<S> {
-    pub async fn get(&mut self) -> &S {
-        loop {
-            match self {
-                Self::Ready(s) => break s,
-                Self::Requested(r) => {
-                    break {
-                        let s = r.await.unwrap();
-                        std::mem::swap(self, &mut Self::Ready(s));
-                        if let Self::Ready(s) = self {
-                            s
-                        } else {
-                            unreachable!()
-                        }
-                    }
-                }
-                Self::Pending(_) => take_mut::take(self, |this| {
-                    if let Self::Pending(s) = this {
-                        let (sender, receiver) = channel();
-                        let _ = s.send(sender);
-                        Self::Requested(receiver)
-                    } else {
-                        unreachable!()
-                    }
-                }),
-            }
-        }
-    }
-
-    pub fn destroy(self) -> Option<S> {
-        match self {
-            Self::Ready(s) => Some(s),
-            Self::Pending(_) => None,
-            Self::Requested(mut r) => match r.try_recv() {
-                Ok(s) => s,
-                Err(_) => None,
-            },
-        }
-    }
-}
 
 /// This is the interface through which you can do a variety of functions in your transposer.
 ///

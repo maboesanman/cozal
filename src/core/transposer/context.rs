@@ -18,10 +18,6 @@ pub trait ScheduleContext<'a, T: Transposer>: InputStateContext<'a, T> + Schedul
 impl<'a, U, T: Transposer> ScheduleContext<'a, T> for U
 where U:  InputStateContext<'a, T> + ScheduleEventContext<T> + ExpireEventContext<T> + EmitEventContext<T> + ExitContext {}
 
-pub trait InterpolateContext<'a, T: Transposer>: InputStateContext<'a, T> {}
-impl<'a, U, T: Transposer> InterpolateContext<'a, T> for U
-where U:InputStateContext<'a, T> {}
-
 pub trait InputStateContext<'a, T: Transposer> {
     fn get_input_state<'f>(&'f mut self) -> Pin<&'f mut (dyn Future<Output=Result<&'a T::InputState, &'static str>>)>;
 }
