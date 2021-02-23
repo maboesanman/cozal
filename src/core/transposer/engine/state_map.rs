@@ -13,9 +13,6 @@ pub struct StateMap<'map, T: Transposer + 'map, const N: usize> {
 
     #[pin]
     state_buffer: [StateBufferItem<'map, T>; N],
-
-    // state_buffer has futures with references into update_stack
-    _marker: PhantomPinned,
 }
 
 impl<'map, T: Transposer + 'map, const N: usize> StateMap<'map, T, N> {
@@ -23,7 +20,6 @@ impl<'map, T: Transposer + 'map, const N: usize> StateMap<'map, T, N> {
         Self {
             update_stack: PinStack::new(),
             state_buffer: array_init::array_init(|_| StateBufferItem::new_zeroed()),
-            _marker: PhantomPinned,
         }
     }
 
