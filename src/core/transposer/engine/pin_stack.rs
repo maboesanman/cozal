@@ -140,6 +140,15 @@ impl<T: Sized> PinStack<T> {
     }
 }
 
+impl<T: Sized> Drop for PinStack<T> {
+    fn drop(&mut self) {
+        // items need to be dropped in reverse order, because they may contain references to previous elements.
+        while let Some(t) = self.pop() {
+            std::mem::drop(t);
+        }
+    }
+}
+
 pub struct RangeMutBy<'a, T: Sized, K, F>
 where
     K: Ord,
