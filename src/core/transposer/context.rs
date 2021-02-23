@@ -2,7 +2,7 @@ use std::pin::Pin;
 
 use futures::Future;
 
-use super::{Transposer, expire_handle::ExpireHandle};
+use super::{Transposer, engine::lazy_state::LazyStateFuture, expire_handle::ExpireHandle};
 
 
 
@@ -19,7 +19,7 @@ impl<'a, U, T: Transposer> ScheduleContext<'a, T> for U
 where U:  InputStateContext<'a, T> + ScheduleEventContext<T> + ExpireEventContext<T> + EmitEventContext<T> + ExitContext {}
 
 pub trait InputStateContext<'a, T: Transposer> {
-    fn get_input_state<'f>(&'f mut self) -> Pin<&'f mut (dyn Future<Output=Result<&'a T::InputState, &'static str>>)>;
+    fn get_input_state<'f>(&'f mut self) -> LazyStateFuture<'f, T::InputState>;
 }
 
 pub trait ScheduleEventContext<T: Transposer> {
@@ -27,17 +27,25 @@ pub trait ScheduleEventContext<T: Transposer> {
         &mut self,
         time: T::Time,
         payload: T::Scheduled,
-    ) -> Result<(), &str>;
+    ) -> Result<(), ScheduleEventError>;
 
     fn schedule_event_expireable(
         &mut self,
         time: T::Time,
         payload: T::Scheduled,
-    ) -> Result<ExpireHandle, &str>;
+    ) -> Result<ExpireHandle, ScheduleEventError>;
+}
+
+pub enum ScheduleEventError {
+    NewEventBeforeCurrent,
 }
 
 pub trait ExpireEventContext<T: Transposer> {
-    fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), &str>;
+    fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), ExpireEventError>;
+}
+pub enum ExpireEventError {
+    ExpiredEvent,
+    InvalidHandle,
 }
 
 pub trait EmitEventContext<T: Transposer> {

@@ -1,12 +1,6 @@
-use std::pin::Pin;
+use crate::core::{Transposer, transposer::{context::{EmitEventContext, ExitContext, ExpireEventContext, ExpireEventError, InputStateContext, ScheduleEventContext, ScheduleEventError}, expire_handle::ExpireHandle}};
 
-use futures::{Future, channel::oneshot::{channel, Receiver, Sender}};
-
-use crate::core::{Transposer, transposer::{context::{EmitEventContext, ExitContext, ExpireEventContext, InputStateContext, ScheduleEventContext}, expire_handle::ExpireHandle}};
-
-use super::{lazy_state::LazyState, transposer_frame::TransposerFrameInternal};
-
-
+use super::{lazy_state::{LazyState, LazyStateFuture}, transposer_frame::TransposerFrameInternal};
 
 /// This is the interface through which you can do a variety of functions in your transposer.
 ///
@@ -15,7 +9,7 @@ use super::{lazy_state::LazyState, transposer_frame::TransposerFrameInternal};
 pub struct EngineContext<'a, T: Transposer> 
 where T::Scheduled: Clone {
     // mutable references into the current transposer frame
-    frame_internal: &'a mut TransposerFrameInternal<T>,
+    frame_internal: &'a mut TransposerFrameInternal<'a, T>,
 
     // access to the input state
     input_state: &'a mut LazyState<T::InputState>,
@@ -26,7 +20,7 @@ where T::Scheduled: Clone {
 }
 
 impl<'a, T: Transposer> EngineContext<'a, T> {
-    pub(super) fn new(frame_internal: &'a mut TransposerFrameInternal<T>, input_state: &'a mut LazyState<T::InputState>) -> Self {
+    pub(super) fn new(frame_internal: &'a mut TransposerFrameInternal<'a, T>, input_state: &'a mut LazyState<T::InputState>) -> Self {
         Self {
             frame_internal,
             input_state,
@@ -38,8 +32,8 @@ impl<'a, T: Transposer> EngineContext<'a, T> {
 
 // this is gonna be tricky...
 impl<'a, T: Transposer> InputStateContext<'a, T> for EngineContext<'a, T> {
-    fn get_input_state<'f>(&'f mut self) -> Pin<&'f mut (dyn Future<Output=Result<&'a T::InputState, &'static str>>)> {
-        unimplemented!()
+    fn get_input_state<'f>(&'f mut self) -> LazyStateFuture<'f, T::InputState> {
+        self.input_state.get()
     }
 }
 
@@ -48,7 +42,7 @@ impl<'a, T: Transposer> ScheduleEventContext<T> for EngineContext<'a, T> {
         &mut self,
         time: T::Time,
         payload: T::Scheduled,
-    ) -> Result<(), &str> {
+    ) -> Result<(), ScheduleEventError> {
         self.frame_internal.schedule_event(time, payload)
     }
 
@@ -56,13 +50,14 @@ impl<'a, T: Transposer> ScheduleEventContext<T> for EngineContext<'a, T> {
         &mut self,
         time: T::Time,
         payload: T::Scheduled,
-    ) -> Result<ExpireHandle, &str> {
+    ) -> Result<ExpireHandle, ScheduleEventError> {
         self.frame_internal.schedule_event_expireable(time, payload)
     }
 }
 
+
 impl<'a, T: Transposer> ExpireEventContext<T> for EngineContext<'a, T> {
-    fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), &str> {
+    fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), ExpireEventError> {
         self.frame_internal.expire_event(handle)
     }
 }
@@ -82,7 +77,7 @@ impl<'a, T: Transposer> ExitContext for EngineContext<'a, T> {
 pub struct EngineRebuildContext<'a, T: Transposer> 
 where T::Scheduled: Clone {
     // mutable references into the current transposer frame
-    frame_internal: &'a mut TransposerFrameInternal<T>,
+    frame_internal: &'a mut TransposerFrameInternal<'a, T>,
 
     // access to the input state
     input_state: &'a mut LazyState<T::InputState>,
@@ -90,8 +85,8 @@ where T::Scheduled: Clone {
 
 // this is gonna be tricky...
 impl<'a, T: Transposer> InputStateContext<'a, T> for EngineRebuildContext<'a, T> {
-    fn get_input_state<'f>(&'f mut self) -> Pin<&'f mut (dyn Future<Output=Result<&'a T::InputState, &'static str>>)> {
-        unimplemented!()
+    fn get_input_state<'f>(&'f mut self) -> LazyStateFuture<'f, T::InputState> {
+        self.input_state.get()
     }
 }
 
@@ -100,7 +95,7 @@ impl<'a, T: Transposer> ScheduleEventContext<T> for EngineRebuildContext<'a, T> 
         &mut self,
         time: T::Time,
         payload: T::Scheduled,
-    ) -> Result<(), &str> {
+    ) -> Result<(), ScheduleEventError> {
         self.frame_internal.schedule_event(time, payload)
     }
 
@@ -108,13 +103,13 @@ impl<'a, T: Transposer> ScheduleEventContext<T> for EngineRebuildContext<'a, T> 
         &mut self,
         time: T::Time,
         payload: T::Scheduled,
-    ) -> Result<ExpireHandle, &str> {
+    ) -> Result<ExpireHandle, ScheduleEventError> {
         self.frame_internal.schedule_event_expireable(time, payload)
     }
 }
 
 impl<'a, T: Transposer> ExpireEventContext<T> for EngineRebuildContext<'a, T> {
-    fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), &str> {
+    fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), ExpireEventError> {
         self.frame_internal.expire_event(handle)
     }
 }
@@ -125,25 +120,4 @@ impl<'a, T: Transposer> EmitEventContext<T> for EngineRebuildContext<'a, T> {
 
 impl<'a, T: Transposer> ExitContext for EngineRebuildContext<'a, T> {
     fn exit(&mut self) { }
-}
-
-pub struct EngineInterpolationContext<'a, T: Transposer> 
-where T::Scheduled: Clone {
-    // access to the input state
-    input_state: &'a mut LazyState<T::InputState>,
-}
-
-impl<'a, T: Transposer> EngineInterpolationContext<'a, T> {
-    pub(super) fn new(input_state: &'a mut LazyState<T::InputState>) -> Self {
-        Self {
-            input_state,
-        }
-    }
-}
-
-// this is gonna be tricky...
-impl<'a, T: Transposer> InputStateContext<'a, T> for EngineInterpolationContext<'a, T> {
-    fn get_input_state<'f>(&'f mut self) -> Pin<&'f mut (dyn Future<Output=Result<&'a T::InputState, &'static str>>)> {
-        unimplemented!()
-    }
 }

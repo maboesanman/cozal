@@ -8,7 +8,7 @@ use std::{
 
 use crate::core::Transposer;
 
-use super::{engine_context::{EngineContext, LazyState}, engine_time::EngineTime, transposer_frame::TransposerFrame, update_result::UpdateResult};
+use super::{engine_context::{EngineContext}, engine_time::EngineTime, lazy_state::LazyState, transposer_frame::TransposerFrame, update_result::UpdateResult};
 
 /// future to initialize a TransposerFrame
 ///
@@ -38,7 +38,7 @@ where T::Scheduled: Clone {
 
     fn setup_helper<'s, 'a>(
         self: Pin<&'s mut Self>,
-        frame: &'f mut TransposerFrame<T>,
+        frame: &'f mut TransposerFrame<'f, T>,
         state: &'f mut LazyState<T::InputState>,
     ) -> (
         &'s mut MaybeUninit<Box<dyn Future<Output = ()> + 'f>>,
@@ -66,7 +66,7 @@ where T::Scheduled: Clone {
 
     pub fn start_init(
         mut self: Pin<&mut Self>, 
-        frame: &'f mut TransposerFrame<T>,
+        frame: &'f mut TransposerFrame<'f, T>,
         state: &'f mut LazyState<T::InputState>,
     )
     {
@@ -79,7 +79,7 @@ where T::Scheduled: Clone {
 
     pub fn start_input(
         mut self: Pin<&mut Self>, 
-        frame: &'f mut TransposerFrame<T>,
+        frame: &'f mut TransposerFrame<'f, T>,
         state: &'f mut LazyState<T::InputState>,
         time: T::Time,
         inputs: &'f [T::Input]
@@ -94,7 +94,7 @@ where T::Scheduled: Clone {
 
     pub fn start_schedule(
         mut self: Pin<&mut Self>, 
-        frame: &'f mut TransposerFrame<T>,
+        frame: &'f mut TransposerFrame<'f, T>,
         state: &'f mut LazyState<T::InputState>,
         time: T::Time,
         payload: T::Scheduled,

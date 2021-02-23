@@ -26,7 +26,7 @@ where T::Scheduled: Clone {
     input_stream: S,
 
     input_buffer: BTreeMap<T::Time, Vec<T::Input>>,
-    output_buffer: BTreeMap<Arc<EngineTime<T::Time>>, Vec<T::Output>>,
+    output_buffer: BTreeMap<EngineTime<'transposer, T::Time>, Vec<T::Output>>,
     state_map: StateMap<'transposer, T, 20>,
 }
 

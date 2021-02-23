@@ -2,13 +2,13 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 
 // this is the time that the internal engine can take on.
-pub enum EngineTime<T: Ord + Copy + Default> {
+pub enum EngineTime<'a, T: Ord + Copy + Default> {
     Init,
     Input(T),
-    Schedule(EngineTimeSchedule<T>),
+    Schedule(EngineTimeSchedule<'a, T>),
 }
 
-impl<T: Ord + Copy + Default> EngineTime<T> {
+impl<'a, T: Ord + Copy + Default> EngineTime<'a, T> {
     pub fn raw_time(&self) -> T {
         match self {
             Self::Init => T::default(),
@@ -17,24 +17,24 @@ impl<T: Ord + Copy + Default> EngineTime<T> {
         }
     }
 
-    pub fn new_init() -> Arc<Self> {
-        Arc::new(EngineTime::Init)
+    pub fn new_init() -> Self {
+        EngineTime::Init
     }
 
-    pub fn new_input(time: T) -> Arc<Self> {
-        Arc::new(EngineTime::Input(time))
+    pub fn new_input(time: T) -> Self {
+        EngineTime::Input(time)
     }
 
-    pub fn new_schedule(time: T, parent: Arc<Self>, parent_index: usize) -> Arc<Self> {
-        Arc::new(EngineTime::Schedule(EngineTimeSchedule{
+    pub fn new_schedule(time: T, parent: &'a Self, parent_index: usize) -> Self {
+        EngineTime::Schedule(EngineTimeSchedule{
             time,
             parent,
             parent_index,
-        }))
+        })
     }
 }
 
-impl<T: Ord + Copy + Default> Ord for EngineTime<T> {
+impl<T: Ord + Copy + Default> Ord for EngineTime<'_, T> {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
             (Self::Init, Self::Init) => Ordering::Equal,
@@ -60,15 +60,15 @@ impl<T: Ord + Copy + Default> Ord for EngineTime<T> {
     }
 }
 
-impl<T: Ord + Copy + Default> PartialOrd for EngineTime<T> {
+impl<T: Ord + Copy + Default> PartialOrd for EngineTime<'_, T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T: Ord + Copy + Default> Eq for EngineTime<T> {}
+impl<T: Ord + Copy + Default> Eq for EngineTime<'_, T> {}
 
-impl<T: Ord + Copy + Default> PartialEq for EngineTime<T> {
+impl<T: Ord + Copy + Default> PartialEq for EngineTime<'_, T> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Init, Self::Init) => true,
@@ -81,21 +81,21 @@ impl<T: Ord + Copy + Default> PartialEq for EngineTime<T> {
     }
 }
 
-impl<T: Ord + Copy + Default> From<EngineTimeSchedule<T>> for Arc<EngineTime<T>> {
-    fn from(time: EngineTimeSchedule<T>) -> Self {
-        Arc::new(EngineTime::Schedule(time))
+impl<'a, T: Ord + Copy + Default> From<EngineTimeSchedule<'a, T>> for EngineTime<'a, T> {
+    fn from(time: EngineTimeSchedule<'a, T>) -> Self {
+        EngineTime::Schedule(time)
     }
 }
 
 
 #[derive(Clone)]
-pub struct EngineTimeSchedule<T: Ord + Copy + Default> {
+pub struct EngineTimeSchedule<'a, T: Ord + Copy + Default> {
     pub time: T,
-    pub parent: Arc<EngineTime<T>>,
+    pub parent: &'a EngineTime<'a, T>,
     pub parent_index: usize,
 }
 
-impl<T: Ord + Copy + Default> Ord for EngineTimeSchedule<T> {
+impl<T: Ord + Copy + Default> Ord for EngineTimeSchedule<'_, T> {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.time.cmp(&other.time) {
             Ordering::Equal => match self.parent.cmp(&other.parent) {
@@ -107,15 +107,15 @@ impl<T: Ord + Copy + Default> Ord for EngineTimeSchedule<T> {
     }
 }
 
-impl<T: Ord + Copy + Default> PartialOrd for EngineTimeSchedule<T> {
+impl<T: Ord + Copy + Default> PartialOrd for EngineTimeSchedule<'_, T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T: Ord + Copy + Default> Eq for EngineTimeSchedule<T> {}
+impl<T: Ord + Copy + Default> Eq for EngineTimeSchedule<'_, T> {}
 
-impl<T: Ord + Copy + Default> PartialEq for EngineTimeSchedule<T> {
+impl<T: Ord + Copy + Default> PartialEq for EngineTimeSchedule<'_, T> {
     fn eq(&self, other: &Self) -> bool {
         self.time == other.time && self.parent_index == other.parent_index && self.parent == other.parent
     }

@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, marker::PhantomPinned, mem::MaybeUninit, pin::Pin, sync::Arc, task::Context};
+use std::{collections::BTreeMap, marker::PhantomPinned, mem::MaybeUninit, pin::Pin, task::Context};
 use futures::channel::oneshot::Sender;
 use pin_project::pin_project;
 
@@ -9,7 +9,7 @@ use super::{engine_time::EngineTime, lazy_state::LazyState, pin_stack::PinStack,
 #[pin_project]
 pub struct StateMap<'map, T: Transposer + 'map, const N: usize> {
     // the order here is very important. state_buffer must outlive its pointers stored in update_stack.
-    update_stack: PinStack<UpdateItem<T>>,
+    update_stack: PinStack<UpdateItem<'map, T>>,
 
     #[pin]
     state_buffer: [StateBufferItem<'map, T>; N],
@@ -95,9 +95,9 @@ impl<'map, T: Transposer + 'map, const N: usize> StateMap<'map, T, N> {
 }
 
 // pointer needs to be the top argument as its target may have pointers into inputs or transposer.
-struct UpdateItem<T: Transposer> {
+struct UpdateItem<'a, T: Transposer> {
     buffer_index: usize,
-    time: Arc<EngineTime<T::Time>>,
+    time: EngineTime<'a, T::Time>,
     input_state: LazyState<T::InputState>,
     data: UpdateItemData<T>,
 }
@@ -140,7 +140,7 @@ impl<'tr, T: Transposer + 'tr> StateBufferItem<'tr, T> {
 
 struct CachedState<'a, T: Transposer> {
     input_state: LazyState<T::InputState>,
-    transposer_frame: TransposerFrame<T>,
+    transposer_frame: TransposerFrame<'a, T>,
     update_future: CachedStateUpdate<'a, T>,
 }
 

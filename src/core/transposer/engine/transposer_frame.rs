@@ -1,26 +1,26 @@
-use crate::core::{Transposer, transposer::expire_handle::ExpireHandle};
+use crate::core::{Transposer, transposer::{context::{ExpireEventError, ScheduleEventError}, expire_handle::ExpireHandle}};
 
-use super::{engine_context::LazyState, engine_time::EngineTimeSchedule, expire_handle_factory::ExpireHandleFactory, transposer_update::TransposerUpdate};
+use super::{ engine_time::EngineTimeSchedule, expire_handle_factory::ExpireHandleFactory, transposer_update::TransposerUpdate};
 use super::{engine_time::EngineTime};
 
 use im::{HashMap, OrdMap};
 use std::{pin::Pin, sync::{Arc, Weak}};
 
 #[derive(Clone)]
-pub(super) struct TransposerFrame<T: Transposer>
+pub(super) struct TransposerFrame<'a, T: Transposer>
 where T::Scheduled: Clone {
     pub transposer: T,
-    pub internal: TransposerFrameInternal<T>,
+    pub internal: TransposerFrameInternal<'a, T>,
 }
 
-impl<T: Transposer> TransposerFrame<T>
+impl<'a, T: Transposer> TransposerFrame<'a, T>
 where
     T: Clone, 
     T::Scheduled: Clone {
-    pub fn new(transposer: T) -> Self {
+    pub fn new(transposer: T, current_time: &'a EngineTime<'a, T::Time>) -> Self {
         Self {
             transposer,
-            internal: TransposerFrameInternal::new(),
+            internal: TransposerFrameInternal::new(current_time),
         }
     }
 
@@ -52,24 +52,24 @@ pub(super) enum PrepareUpdateResult<'a, T: Transposer> {
 }
 
 #[derive(Clone)]
-pub(super) struct TransposerFrameInternal<T: Transposer> 
+pub(super) struct TransposerFrameInternal<'a, T: Transposer> 
 where T::Scheduled: Clone {
-    pub current_time: Arc<EngineTime<T::Time>>,
+    pub current_time: &'a EngineTime<'a, T::Time>,
     pub scheduling_index: usize,
     // schedule and expire_handles
-    pub schedule: OrdMap<EngineTimeSchedule<T::Time>, T::Scheduled>,
-    pub expire_handles: HashMap<ExpireHandle, EngineTimeSchedule<T::Time>>,
+    pub schedule: OrdMap<EngineTimeSchedule<'a, T::Time>, T::Scheduled>,
+    pub expire_handles: HashMap<ExpireHandle, EngineTimeSchedule<'a, T::Time>>,
 
     pub expire_handle_factory: ExpireHandleFactory,
 
     // todo add rng seed info
 }
 
-impl<T: Transposer> TransposerFrameInternal<T> 
+impl<'a, T: Transposer> TransposerFrameInternal<'a, T>
 where T::Scheduled: Clone {
-    fn new() -> Self {
+    fn new(current_time: &'a EngineTime<'a, T::Time>) -> Self {
         Self {
-            current_time: EngineTime::new_init(),
+            current_time,
             scheduling_index: 0,
             schedule: OrdMap::new(),
             expire_handles: HashMap::new(),
@@ -77,7 +77,7 @@ where T::Scheduled: Clone {
         }
     }
 
-    fn set_time(&mut self, new_time: Arc<EngineTime<T::Time>>) {
+    fn set_time(&mut self, new_time: &'a EngineTime<'a, T::Time>) {
         if new_time <= self.current_time {
             panic!()
         } else {
@@ -85,13 +85,9 @@ where T::Scheduled: Clone {
         }
     }
 
-    pub fn get_time(&self) -> Arc<EngineTime<T::Time>> {
-        self.current_time.clone()
-    }
-
-    pub fn schedule_event(&mut self, time: T::Time, payload: T::Scheduled) -> Result<(), &str> {
-        if time < self.get_time().raw_time() {
-            return Err("new event cannot sort before current event");
+    pub fn schedule_event(&mut self, time: T::Time, payload: T::Scheduled) -> Result<(), ScheduleEventError> {
+        if time < self.current_time.raw_time() {
+            return Err(ScheduleEventError::NewEventBeforeCurrent);
         }
 
         let time = EngineTimeSchedule {
@@ -110,9 +106,9 @@ where T::Scheduled: Clone {
         &mut self,
         time: T::Time,
         payload: T::Scheduled,
-    ) -> Result<ExpireHandle, &str> {
-        if time < self.get_time().raw_time() {
-            return Err("new event cannot sort before current event");
+    ) -> Result<ExpireHandle, ScheduleEventError> {
+        if time < self.current_time.raw_time() {
+            return Err(ScheduleEventError::NewEventBeforeCurrent);
         }
 
         let handle = self.expire_handle_factory.next();
@@ -129,13 +125,13 @@ where T::Scheduled: Clone {
         Ok(handle)
     }
 
-    pub fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), &str> {
+    pub fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), ExpireEventError> {
         match self.expire_handles.get(&handle) {
             Some(time) => match self.schedule.remove(&time) {
                 Some(payload) => Ok((time.time, payload)),
-                None => Err("expired event"),
+                None => Err(ExpireEventError::ExpiredEvent),
             },
-            None => Err("invalid handle"),
+            None => Err(ExpireEventError::InvalidHandle),
         }
     }
 

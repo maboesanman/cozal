@@ -7,6 +7,6 @@ pub(self) mod pin_stack;
 pub(self) mod state_map;
 pub(self) mod expire_handle_factory;
 pub(self) mod engine_context;
-pub(self) mod lazy_state;
 
+pub mod lazy_state;
 pub mod engine;
