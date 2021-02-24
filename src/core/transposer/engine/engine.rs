@@ -6,7 +6,7 @@ use pin_project::pin_project;
 
 use crate::core::{Transposer, event_state_stream::{EventStatePoll, EventStateStream}};
 
-use super::{engine_time::EngineTime, state_map::StateMap};
+use super::{engine_time::EngineTime, input_buffer::InputBuffer, state_map::StateMap};
 
 /// A struct which implements the [`StatefulScheduleStream`] trait for a [`Transposer`].
 ///
@@ -25,7 +25,7 @@ where T::Scheduled: Clone {
     #[pin]
     input_stream: S,
 
-    input_buffer: BTreeMap<T::Time, Vec<T::Input>>,
+    input_buffer: InputBuffer<T::Time, T::Input>,
     output_buffer: BTreeMap<EngineTime<'transposer, T::Time>, Vec<T::Output>>,
     state_map: StateMap<'transposer, T, 20>,
 }

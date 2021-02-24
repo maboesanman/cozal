@@ -58,7 +58,7 @@ pub trait EventStateStream {
     /// if you do not need to use the state, this should be preferred over poll.
     /// for example, if you are simply verifying the stream does not have new events before a time t,
     /// poll_ignore_state could be faster than poll (with a custom implementation).
-    fn poll_ignore_state(
+    fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,

@@ -24,19 +24,9 @@ where
         }
     }
 
-    // pub fn prepare_init(
-    //     &mut self
-    // ) -> WrappedFuture<'_, T> {
-    //     self.internal.set_time(EngineTime::new_init());
-    //     WrappedFuture::new(self)
-    // }
-
-    // pub fn prepare_update(
-    //     &mut self,
-    //     next_input_time: Option<T::Time>,
-    // ) -> PrepareUpdateResult<'_, T> {
-
-    // }
+    pub fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
+        self.internal.get_next_schedule_time()
+    }
 }
 
 pub(super) enum PrepareUpdateResult<'a, T: Transposer> {

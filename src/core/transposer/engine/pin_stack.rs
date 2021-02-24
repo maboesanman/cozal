@@ -130,7 +130,7 @@ impl<T: Sized> PinStack<T> {
         }
     }
 
-    pub fn range_mut_by<'a, K, F, R>(&'a mut self, range: R, func: F) -> RangeMutBy<'a, T, K, F>
+    pub fn range_by<'a, K, F, R>(&'a self, range: R, func: F) -> RangeMutBy<'a, T, K, F>
     where
         K: Ord,
         F: Fn(&T) -> K,
@@ -154,7 +154,7 @@ where
     K: Ord,
     F: Fn(&T) -> K,
 {
-    pin_stack: &'a mut PinStack<T>,
+    pin_stack: &'a PinStack<T>,
 
     // index in array
     front: usize,
@@ -169,7 +169,7 @@ where
     K: Ord,
     F: Fn(&T) -> K
 {
-    fn new<R>(pin_stack: &'a mut PinStack<T>, range: R, func: F) -> Self
+    fn new<R>(pin_stack: &'a PinStack<T>, range: R, func: F) -> Self
         where R: RangeBounds<K>
     {
         if pin_stack.length == 0 {
@@ -301,21 +301,21 @@ where
     K: Ord,
     F: Fn(&T) -> K
 {
-    type Item = Pin<&'a mut T>;
+    type Item = (usize, &'a T);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
             return None;
         }
-        let item = self.pin_stack.get_mut(self.front).unwrap();
-        let item = unsafe { item.get_unchecked_mut() as *mut T };
-        let item = unsafe { item.as_mut().unwrap() };
-        let item = unsafe { Pin::new_unchecked(item) };
+        let index = self.front;
+        let item = self.pin_stack.get(index).unwrap();
+        let item = unsafe { item as *const T };
+        let item = unsafe { item.as_ref().unwrap() };
         self.front += 1;
         if self.front > self.back {
             self.done = true;
         }
-        Some(item)
+        Some((index, item))
     }
 }
 
@@ -328,10 +328,10 @@ where
         if self.done {
             return None;
         }
-        let item = self.pin_stack.get_mut(self.back).unwrap();
-        let item = unsafe { item.get_unchecked_mut() as *mut T };
-        let item = unsafe { item.as_mut().unwrap() };
-        let item = unsafe { Pin::new_unchecked(item) };
+        let index = self.back;
+        let item = self.pin_stack.get(index).unwrap();
+        let item = unsafe { item as *const T };
+        let item = unsafe { item.as_ref().unwrap() };
         
         if self.back == 0 {
             self.done = true;
@@ -341,6 +341,6 @@ where
                 self.done = true;
             }
         }
-        Some(item)
+        Some((index, item))
     }
 }

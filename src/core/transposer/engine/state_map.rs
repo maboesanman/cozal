@@ -1,13 +1,15 @@
-use std::{collections::BTreeMap, marker::PhantomPinned, mem::MaybeUninit, pin::Pin, task::Context};
-use futures::channel::oneshot::Sender;
+use std::{cmp::{self, Ordering}, collections::BTreeMap, marker::PhantomPinned, mem::MaybeUninit, pin::Pin, task::Context};
+use cmp::min;
 use pin_project::pin_project;
+use futures::Future;
 
 use crate::core::Transposer;
 
-use super::{engine_time::EngineTime, lazy_state::LazyState, pin_stack::PinStack, transposer_frame::TransposerFrame, transposer_update::TransposerUpdate, update_result::UpdateResult};
+use super::{engine_time::EngineTime, input_buffer::InputBuffer, lazy_state::LazyState, pin_stack::PinStack, transposer_frame::TransposerFrame, transposer_update::TransposerUpdate, update_result::UpdateResult};
 
 #[pin_project]
-pub struct StateMap<'map, T: Transposer + 'map, const N: usize> {
+pub struct StateMap<'map, T: Transposer + Clone + 'map, const N: usize>
+where T::Scheduled: Clone {
     // the order here is very important. state_buffer must outlive its pointers stored in update_stack.
     update_stack: PinStack<UpdateItem<'map, T>>,
 
@@ -15,7 +17,8 @@ pub struct StateMap<'map, T: Transposer + 'map, const N: usize> {
     state_buffer: [StateBufferItem<'map, T>; N],
 }
 
-impl<'map, T: Transposer + 'map, const N: usize> StateMap<'map, T, N> {
+impl<'map, T: Transposer + Clone + 'map, const N: usize> StateMap<'map, T, N>
+where T::Scheduled: Clone {
     pub fn new() -> Self {
         Self {
             update_stack: PinStack::new(),
@@ -23,43 +26,194 @@ impl<'map, T: Transposer + 'map, const N: usize> StateMap<'map, T, N> {
         }
     }
 
+    #[allow(unused)]
     pub fn rollback(
         self: Pin<&mut Self>,
         rollback_time: T::Time,
-    ) {
-
+    ) -> Option<T::Time> {
+        todo!()
     }
 
+    #[allow(unused)]
     pub fn poll(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         poll_time: T::Time,
         input_state: T::InputState,
-        input_buffer: &mut BTreeMap<T::Time, Vec<T::Input>>,
-        _cx: Context,
-    ) -> StateMapPoll<T>{
-        let project = self.project();
-        let update_stack: &mut PinStack<UpdateItem<T>> = project.update_stack;
-        let mut state_buffer: Pin<&mut [StateBufferItem<'_, T>]> = project.state_buffer;
-
-        todo!()
+        input_buffer: &mut InputBuffer<T::Time, T::Input>,
+        cx: &mut Context,
+    ) -> StateMapPoll<T> {
+        match self.as_mut().poll_events(poll_time, input_buffer, cx) {
+            StateMapEventPoll::Ready => {
+                let output_state = self.interpolate(poll_time, input_state);
+                StateMapPoll::Ready(output_state)
+            },
+            StateMapEventPoll::Outputs(o) => StateMapPoll::Outputs(o),
+            StateMapEventPoll::Rollback(t) => StateMapPoll::Rollback(t),
+            StateMapEventPoll::NeedsState(t) => StateMapPoll::NeedsState(t),
+            StateMapEventPoll::Pending => StateMapPoll::Pending,
+        }
     }
 
-    fn poll_future(
-        self: Pin<&mut Self>,
+    #[allow(unused)]
+    pub fn poll_events(
+        mut self: Pin<&mut Self>,
         poll_time: T::Time,
-        input_buffer: &mut BTreeMap<T::Time, Vec<T::Input>>,
-        _cx: Context,
-    ) -> StateMapPoll<T> {
-        todo!()
+        input_buffer: &mut InputBuffer<T::Time, T::Input>,
+        cx: &mut Context,
+    ) -> StateMapEventPoll<T> {
+        if let Some(t) = self.as_mut().rollback_prep(poll_time, input_buffer) {
+            return StateMapEventPoll::Rollback(t);
+        }
+        let this = self.project();
+        let update_stack: &mut PinStack<UpdateItem<'map, T>> = this.update_stack;
+        let mut state_buffer: Pin<&mut [StateBufferItem<'map, T>]> = this.state_buffer;
+
+        // find the most recent buffered state (and index)
+        let range = update_stack.range_by(..=poll_time, |update_item| update_item.time.raw_time());
+        let (last_buffered_update_index, _) = range.rev().find(|(update_index, update_item)| {
+
+            // this update has a buffered state
+            state_buffer.get(update_item.buffer_index).unwrap().update_index == *update_index
+        }).unwrap();
+
+        loop {
+            let last_buffered_update = update_stack.get_mut(last_buffered_update_index).unwrap();
+            // SAFEFY: going from a pinned array to a pinned reference into it. this should be fine.
+            let state_buffer = unsafe { state_buffer.as_mut().get_unchecked_mut() };
+
+            let state_buffer_item = state_buffer.get_mut(last_buffered_update.buffer_index).unwrap();
+            let cached_state = unsafe { state_buffer_item.cached_state.assume_init_mut() };
+            let cached_state = unsafe { Pin::new_unchecked(cached_state) };
+
+            let mut cached_state = cached_state.project();
+            let update_future = cached_state.update_future.as_mut().project();
+            if let CachedStateUpdateProject::Working(transposer_update) = update_future {
+                let transposer_update: Pin<&mut TransposerUpdate<'_, T>> = transposer_update;
+
+                match transposer_update.poll(cx) {
+                    std::task::Poll::Ready(update_result) => {
+                        let update_future = unsafe { cached_state.update_future.get_unchecked_mut()};
+                        *update_future = CachedStateUpdate::Ready;
+                        if last_buffered_update.events_emitted && !update_result.outputs.is_empty() {
+                            *last_buffered_update.project().events_emitted = true;
+                            break StateMapEventPoll::Outputs(update_result.outputs)
+                        }
+                    }
+                    std::task::Poll::Pending => match cached_state.input_state {
+                        LazyState::Requested => break StateMapEventPoll::NeedsState(last_buffered_update.time.raw_time()),
+                        LazyState::Ready(_) => break StateMapEventPoll::Pending,
+                        LazyState::Pending => break StateMapEventPoll::Pending,
+                    }
+                }
+            }
+            // transposer frame depends on items before it in the stack, so it would have to be dropped before its dependencies.
+            let transposer_frame: &mut TransposerFrame<'map, T> = cached_state.transposer_frame;
+            let transposer_frame = transposer_frame as *mut TransposerFrame<'map, T>;
+            let transposer_frame = unsafe { transposer_frame.as_mut().unwrap()};
+
+            // here our update is done, so we can use transposer_frame.
+            if last_buffered_update_index == update_stack.len() - 1 {
+                let next_input_time = input_buffer.first_time();
+                let next_schedule_time = transposer_frame.get_next_schedule_time();
+
+                let (time, data) = match (next_input_time, next_schedule_time) {
+                    (None, None) => break StateMapEventPoll::Ready,
+                    (Some(t), None) => (EngineTime::new_input(t), UpdateItemData::Input(input_buffer.pop_first().unwrap().1)),
+                    (None, Some(t)) => (EngineTime::from(t.clone()), UpdateItemData::Schedule),
+                    (Some(i), Some(s)) => match i.cmp(&s.time) {
+                        Ordering::Less => (EngineTime::new_input(i), UpdateItemData::Input(input_buffer.pop_first().unwrap().1)),
+                        Ordering::Equal => (EngineTime::from(s.clone()), UpdateItemData::Schedule),
+                        Ordering::Greater => (EngineTime::from(s.clone()), UpdateItemData::Schedule),
+                    }
+                };
+
+                update_stack.push(UpdateItem {
+                    buffer_index: usize::MAX,
+                    time,
+                    data,
+                    events_emitted: false,
+                });
+            }
+
+            if update_stack.get(last_buffered_update_index + 1).unwrap().time.raw_time() > poll_time {
+                break StateMapEventPoll::Ready
+            }
+
+            // reinsert next frame into state buffer
+            let (buffer_index, update_index) = Self::get_least_useful_index(state_buffer, &vec![update_stack.len() - 1]);
+            let buffered_state = state_buffer.get_mut(update_index).unwrap();
+            if update_index == last_buffered_update_index {
+                todo!()
+            } else {
+                todo!()
+            }
+        }
     }
 
-    fn poll_past(
+    fn rollback_prep(
         self: Pin<&mut Self>,
         poll_time: T::Time,
-        input_buffer: &mut BTreeMap<T::Time, Vec<T::Input>>,
-        _cx: Context,
-    ) -> StateMapPoll<T> {
-        todo!()
+        input_buffer: &mut InputBuffer<T::Time, T::Input>,
+    ) -> Option<T::Time> {
+        let this = self.project();
+        let update_stack: &mut PinStack<UpdateItem<'map, T>> = this.update_stack;
+        let state_buffer: Pin<&mut [StateBufferItem<'map, T>]> = this.state_buffer;
+
+        let next_input_time = input_buffer.first_time();
+
+        let inputs_handled = next_input_time.map_or(true, |next_input_time| poll_time < next_input_time);
+
+        // rollback internally if we need to
+        if inputs_handled {
+            None
+        } else {
+            let mut needs_rollback: Option<T::Time> = None;
+            loop {
+                let current_time = update_stack.peek().unwrap().time.raw_time();
+                if next_input_time.unwrap() <= current_time {
+                    let UpdateItem {
+                        time,
+                        data,
+                        events_emitted,
+                        ..
+                    } = update_stack.pop().unwrap();
+
+                    if let UpdateItemData::Input(inputs) = data {
+                        input_buffer.extend_front(time.raw_time(), inputs);
+                    }
+
+                    if events_emitted {
+                        needs_rollback = match needs_rollback {
+                            Some(t) => Some(cmp::min(t, time.raw_time())),
+                            None => Some(time.raw_time())
+                        };
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            todo!("remove items from the state buffer");
+
+            needs_rollback
+        }
+    }
+
+    fn interpolate(&self, poll_time: T::Time, input_state: T::InputState) -> T::OutputState {
+        let range = self.update_stack.range_by(..=poll_time, |update_item| update_item.time.raw_time());
+        let (_, latest_update) = range.last().unwrap();
+        let state_buffer_item = self.state_buffer.get(latest_update.buffer_index).unwrap();
+
+        if state_buffer_item.update_index != self.update_stack.len() - 1 {
+            panic!("uh oh");
+        }
+
+        let cached_state = unsafe { state_buffer_item.cached_state.assume_init_ref() };
+        if let CachedStateUpdate::Working(_) = cached_state.update_future {
+            panic!("uh oh");
+        }
+
+        cached_state.transposer_frame.transposer.interpolate(latest_update.time.raw_time(), poll_time, input_state)
     }
 
     fn drop_buffered(buffer: Pin<&mut [StateBufferItem<'map, T>]>, buffer_index: usize, expected_update_index: usize) {
@@ -76,7 +230,7 @@ impl<'map, T: Transposer + 'map, const N: usize> StateMap<'map, T, N> {
     }
 
     // get the buffer index and input_index of the next item to delete.
-    fn get_least_useful_index(buffer: &[StateBufferItem<'map, T>], item: T, new_index: usize, important_indices: &[usize]) -> (usize, usize) {
+    fn get_least_useful_index(buffer: &[StateBufferItem<'map, T>], important_indices: &[usize]) -> (usize, usize) {
         let iter = buffer.iter().enumerate();
         let (buffer_index, item) = iter.min_by_key(|&(_, x)| {
             let utility = important_indices.iter().map(
@@ -90,21 +244,20 @@ impl<'map, T: Transposer + 'map, const N: usize> StateMap<'map, T, N> {
     }
 }
 
+#[pin_project]
 // pointer needs to be the top argument as its target may have pointers into inputs or transposer.
 struct UpdateItem<'a, T: Transposer> {
     buffer_index: usize,
+    #[pin]
     time: EngineTime<'a, T::Time>,
-    input_state: LazyState<T::InputState>,
+    #[pin]
     data: UpdateItemData<T>,
+    events_emitted: bool,
 }
 
 enum UpdateItemData<T: Transposer> {
-    Init{
-        transposer: T,
-    },
-    Input{
-        inputs: Vec<T::Input>,
-    },
+    Init(Box<T>),
+    Input(Vec<T::Input>),
     Schedule
 }
 
@@ -134,26 +287,39 @@ impl<'tr, T: Transposer + 'tr> StateBufferItem<'tr, T> {
     }
 }
 
+#[pin_project(project=CachedStateProject)]
 struct CachedState<'a, T: Transposer> {
-    input_state: LazyState<T::InputState>,
-    transposer_frame: TransposerFrame<'a, T>,
+    // this is first because it has references to other fields.
+    // don't want this to dangle anything
+    #[pin]
     update_future: CachedStateUpdate<'a, T>,
+
+    transposer_frame: TransposerFrame<'a, T>,
+
+    input_state: LazyState<T::InputState>,
+
+    // update_future has references into both transposer_frame and input_state
+    _marker: PhantomPinned,
 }
 
+#[pin_project(project=CachedStateUpdateProject)]
 enum CachedStateUpdate<'a, T: Transposer> {
-    Working(TransposerUpdate<'a, T>),
+    Working(#[pin] TransposerUpdate<'a, T>),
     Ready,
 }
 
 pub enum StateMapPoll<T: Transposer> {
-    Ready{
-        state: T::OutputState,
-    },
+    Ready(T::OutputState),
     Outputs(Vec<T::Output>),
     Rollback(T::Time),
-    NeedsState{
-        time: T::Time,
-        sender: Sender<T::InputState>,
-    },
+    NeedsState(T::Time),
+    Pending,
+}
+
+pub enum StateMapEventPoll<T: Transposer> {
+    Ready,
+    Outputs(Vec<T::Output>),
+    Rollback(T::Time),
+    NeedsState(T::Time),
     Pending,
 }
