@@ -21,4 +21,7 @@ fn basic_test() {
 
     // buffer a non existent item
     assert!(sparse_buffer_stack.buffer(1000, |s, b| *b = (s, b.1 + *s)).is_err());
+
+    // find the last buffered index
+    assert_eq!(sparse_buffer_stack.last_buffered_index_by(69, |x| *x - 17), 66);
 }

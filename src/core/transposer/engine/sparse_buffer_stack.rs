@@ -10,7 +10,6 @@ pub struct SparseBufferStack<'stack, I: Sized + 'stack, B: Clone + 'stack, const
 }
 
 impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferStack<'stack, I, B, N> {
-    #[allow(unused)]
     pub fn new<F>(item: I, constructor: F) -> Self
         where F: FnOnce(&'stack I) -> B
     {
@@ -35,7 +34,6 @@ impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferS
         }
     }
 
-    #[allow(unused)]
     pub fn push<F>(&mut self, constructor: F)
         where F: FnOnce(&'stack I) -> I
     {
@@ -53,7 +51,6 @@ impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferS
     }
 
     // constructor takes a reference to the stack item, and a reference to the previous buffered item.
-    #[allow(unused)]
     pub fn buffer<F>(&mut self, stack_index: usize, constructor: F) -> Result<(), ()>
         where F: FnOnce(&'stack I, &mut B),
     {
@@ -99,6 +96,21 @@ impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferS
         buffer_item.get_buffer(stack_index)
     }
 
+    pub fn last_buffered_index_by<K, F>(&self, reference: K, func: F) -> usize
+    where
+        K: Ord, 
+        F: Fn(&I) -> K
+    {
+        let range = self.stack.range_by(..=reference, |stack_item| func(&stack_item.item));
+        let (last_buffered_stack_index, _) = range.rev().find(|(stack_index, stack_item)| {
+
+            // this stack item has a buffered state
+            self.buffer.get(stack_item.buffer_index).unwrap().stack_index == *stack_index
+        }).unwrap();
+
+        last_buffered_stack_index
+    }
+
     pub fn get_pinned_buffered(self: Pin<&mut Self>, stack_index: usize) -> Option<Pin<&mut B>> {
         if stack_index == usize::MAX {
             panic!("there definitely aren't usize::MAX items in this collection...")
@@ -115,7 +127,6 @@ impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferS
         Some(unsafe { Pin::new_unchecked(buf_ref) })
     } 
 
-    #[allow(unused)]
     pub fn pop(&mut self) -> Option<I> {
         if self.stack.len() > 1 {
             let stack_index = self.stack.len() - 1;
