@@ -1,5 +1,5 @@
 use core::pin::Pin;
-use std::{cmp::min, collections::BTreeMap, sync::{Arc, Weak}};
+use std::collections::BTreeMap;
 use futures::{task::Context};
 use pin_project::pin_project;
 

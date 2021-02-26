@@ -21,13 +21,13 @@ pub trait EventStateStreamExt: EventStateStream {
     /// if your timestamp is an [`Instant`](std::time::Instant), then your reference is of type `()` because instants
     /// are already realtime and need no reference.
     #[cfg(realtime)]
-    fn to_realtime(self, reference: <Self::Time as Timestamp>::Reference) -> RealtimeStream<Self>
+    fn into_realtime(self, reference: <Self::Time as Timestamp>::Reference) -> RealtimeStream<Self>
         where <Self as EventStateStream>::Time: Timestamp
     {
         RealtimeStream::new(self, reference)
     }
 
-    fn to_engine<'tr, T: Transposer<
+    fn into_engine<'tr, T: Transposer<
         Time=Self::Time,
         Input=Self::Event,
         InputState=Self::State,

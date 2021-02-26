@@ -114,7 +114,7 @@ impl<T: Ord + Copy, E> BufferData<T, E> {
             }
         }
         
-        for waker in self.waker.take() {
+        if let Some(waker) = self.waker.take() {
             waker.wake();
         }
     }
@@ -157,7 +157,7 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                     Some(old) => this.left.latest_emission_time = Some(cmp::max(old, time)),
                     None => this.left.latest_emission_time = Some(time)
                 }
-                for waker in this.right.waker.take() {
+                if let Some(waker) = this.right.waker.take() {
                     waker.wake();
                 }
                 
@@ -226,7 +226,7 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                     None => this.right.latest_emission_time = Some(time)
                 }
 
-                for waker in this.left.waker.take() {
+                if let Some(waker) = this.left.waker.take() {
                     waker.wake();
                 }
                 

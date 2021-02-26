@@ -309,7 +309,7 @@ where
         }
         let index = self.front;
         let item = self.pin_stack.get(index).unwrap();
-        let item = unsafe { item as *const T };
+        let item = item as *const T;
         let item = unsafe { item.as_ref().unwrap() };
         self.front += 1;
         if self.front > self.back {
@@ -330,7 +330,7 @@ where
         }
         let index = self.back;
         let item = self.pin_stack.get(index).unwrap();
-        let item = unsafe { item as *const T };
+        let item = item as *const T;
         let item = unsafe { item.as_ref().unwrap() };
         
         if self.back == 0 {

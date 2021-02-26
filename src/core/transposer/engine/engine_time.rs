@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::sync::Arc;
 
 // this is the time that the internal engine can take on.
 pub enum EngineTime<'a, T: Ord + Copy + Default> {
