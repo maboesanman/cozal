@@ -8,12 +8,12 @@ use std::{
 
 use crate::core::Transposer;
 
-use super::{engine_context::{EngineContext}, engine_time::EngineTime, lazy_state::LazyState, transposer_frame::TransposerFrame, update_result::UpdateResult};
+use super::{engine_context::{EngineContext}, lazy_state::LazyState, transposer_frame::TransposerFrame, update_result::UpdateResult};
 
 /// future to initialize a TransposerFrame
 ///
 /// the initialization happens AS A SIDE EFFECT OF THIS.
-pub(super) struct TransposerUpdate<'f, T: Transposer> 
+pub(super) struct TransposerUpdate<'f, T: Transposer>
 where T::Scheduled: Clone {
     // the curried future; placed first so it is dropped first.
     future: MaybeUninit<Box<dyn Future<Output = ()> + 'f>>,

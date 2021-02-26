@@ -63,8 +63,8 @@ impl<Time: Ord + Copy, Event: Clone, State: Clone> EventStateStream
         }
         loop {
             match proj.receiver.as_mut().poll_next(cx) {
-                Poll::Ready(Some((event_time, Event))) => {
-                    proj.events.insert(event_time, Event);
+                Poll::Ready(Some((event_time, event))) => {
+                    proj.events.insert(event_time, event);
                 }
                 Poll::Ready(None) => {
                     *proj.done = true;
@@ -75,10 +75,10 @@ impl<Time: Ord + Copy, Event: Clone, State: Clone> EventStateStream
         }
         let (min, new_events) = proj.events.without_min_with_key();
         match min {
-            Some((event_time, Event)) => {
+            Some((event_time, event)) => {
                 if event_time <= poll_time {
                     *proj.events = new_events;
-                    EventStatePoll::Event(event_time, Event)
+                    EventStatePoll::Event(event_time, event)
                 } else {
                     EventStatePoll::Scheduled(event_time, proj.current_state.clone())
                 }
