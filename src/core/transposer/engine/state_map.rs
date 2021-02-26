@@ -135,17 +135,52 @@ where T::Scheduled: Clone {
                 });
             }
 
-            if update_stack.get(last_buffered_update_index + 1).unwrap().time.raw_time() > poll_time {
+            let working_update_stack: &'map _ = update_stack.get(last_buffered_update_index + 1).unwrap();
+            if working_update_stack.time.raw_time() > poll_time {
                 break StateMapEventPoll::Ready
             }
 
             // reinsert next frame into state buffer
-            let (buffer_index, update_index) = Self::get_least_useful_index(state_buffer, &vec![update_stack.len() - 1]);
-            let buffered_state = state_buffer.get_mut(update_index).unwrap();
-            if update_index == last_buffered_update_index {
-                todo!()
+            let (buffer_index_to_replace, update_index_to_replace) = Self::get_least_useful_index(state_buffer, &[update_stack.len() - 1]);
+            
+            // get and update our buffered state.
+            let buffered_state = state_buffer.get_mut(buffer_index_to_replace).unwrap();
+            buffered_state.update_index = last_buffered_update_index + 1;
+
+            if update_index_to_replace == last_buffered_update_index {
+                // cached_state.transposer_frame is already the correct one; no need to clone.
             } else {
-                todo!()
+                Self::drop_buffered();
+                
+                let previous_buffered_index = update_stack.get(last_buffered_update_index).unwrap().buffer_index;
+                let previous_state_buffer = state_buffer.get_mut(previous_buffered_index).unwrap();
+                let previous_cached_state = unsafe { previous_state_buffer.cached_state.assume_init_ref() };
+                let previous_transposer_frame = previous_cached_state.transposer_frame;
+                cached_state.transposer_frame = previous_transposer_frame.clone();
+            }
+
+            let cached_state = unsafe { buffered_state.cached_state.assume_init_mut() };
+
+            if let CachedStateUpdate::Working(_) = cached_state.update_future {
+                panic!("tried to work with an in progress transposer_frame")
+            }
+            cached_state.transposer_frame.internal.advance_time(&working_update_stack.time);
+            let transposer_update = TransposerUpdate::new();
+            cached_state.update_future = CachedStateUpdate::Working(transposer_update);
+            let cached_state = unsafe { Pin::new_unchecked(cached_state) };
+            cached_state.input_state = LazyState::Pending;
+
+            let cached_state = cached_state.project();
+            let transposer_frame: &mut TransposerFrame<'_, T> = cached_state.transposer_frame;
+            let update_future: Pin<&mut CachedStateUpdate<'_, T>> = cached_state.update_future;
+            let transposer_update: Pin<&mut TransposerUpdate<'_, T>> = match update_future.project() {
+                CachedStateUpdateProject::Working(x) => x,
+                CachedStateUpdateProject::Ready => unreachable!(),
+            };
+            match working_update_stack.data {
+                UpdateItemData::Init(transposer) => transposer_update.start_init(transposer_frame, cached_state.input_state),
+                UpdateItemData::Input(inputs) => transposer_update.start_input(transposer_frame, cached_state.input_state),
+                UpdateItemData::Schedule => transposer_update.start_schedule(transposer_frame,cached_state.input_state),
             }
         }
     }
@@ -157,7 +192,7 @@ where T::Scheduled: Clone {
     ) -> Option<T::Time> {
         let this = self.project();
         let update_stack: &mut PinStack<UpdateItem<'map, T>> = this.update_stack;
-        let state_buffer: Pin<&mut [StateBufferItem<'map, T>]> = this.state_buffer;
+        let mut state_buffer: Pin<&mut [StateBufferItem<'map, T>]> = this.state_buffer;
 
         let next_input_time = input_buffer.first_time();
 
@@ -172,11 +207,12 @@ where T::Scheduled: Clone {
                 let current_time = update_stack.peek().unwrap().time.raw_time();
                 if next_input_time.unwrap() <= current_time {
                     let UpdateItem {
+                        buffer_index,
                         time,
                         data,
                         events_emitted,
-                        ..
                     } = update_stack.pop().unwrap();
+                    let update_index = update_stack.len();
 
                     if let UpdateItemData::Input(inputs) = data {
                         input_buffer.extend_front(time.raw_time(), inputs);
@@ -188,12 +224,12 @@ where T::Scheduled: Clone {
                             None => Some(time.raw_time())
                         };
                     }
+
+                    Self::drop_buffered(state_buffer.as_mut(), buffer_index, update_index)
                 } else {
                     break;
                 }
             }
-
-            todo!("remove items from the state buffer");
 
             needs_rollback
         }

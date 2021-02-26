@@ -67,7 +67,7 @@ where T::Scheduled: Clone {
         }
     }
 
-    fn set_time(&mut self, new_time: &'a EngineTime<'a, T::Time>) {
+    pub fn advance_time(&mut self, new_time: &'a EngineTime<'a, T::Time>) {
         if new_time <= self.current_time {
             panic!()
         } else {
