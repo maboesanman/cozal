@@ -68,16 +68,16 @@ impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferS
         let stack_item: &'stack StackItem<I> = unsafe { stack_item.as_ref().unwrap() };
 
         let (before, remaining) = self.buffer.split_at_mut(buffer_index_to_replace);
-        let (buffer_item, after) = remaining.split_first_mut().ok_or(())?;
+        let (buffer_item, after) = remaining.split_first_mut().unwrap();
 
         if buffer_item.stack_index != stack_index - 1 {
-            let prev_stack_item = self.stack.get(stack_index - 1).ok_or(())?;
+            let prev_stack_item = self.stack.get(stack_index - 1).unwrap();
             let prev_buffer_item = if prev_stack_item.buffer_index < buffer_index_to_replace {
                 before.get(prev_stack_item.buffer_index).unwrap()
             } else {
                 after.get(prev_stack_item.buffer_index - buffer_index_to_replace - 1).unwrap()
             };
-            let item = prev_buffer_item.get_buffer(stack_index - 1).unwrap();
+            let item = prev_buffer_item.get_buffer(stack_index - 1).ok_or(())?;
 
             buffer_item.replace_with(stack_index, item.clone());
         } else {

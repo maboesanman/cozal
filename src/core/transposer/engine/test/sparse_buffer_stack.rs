@@ -10,4 +10,5 @@ fn basic_test() {
         assert!(sparse_buffer_stack.buffer(sparse_buffer_stack.len() - 1, |s, b| *b = (s, b.1 + *s)).is_ok());
     }
     assert!(sparse_buffer_stack.buffer(65, |s, b| *b = (s, b.1 + *s)).is_ok());
+    assert!(sparse_buffer_stack.buffer(67, |s, b| *b = (s, b.1 + *s)).is_err());
 }
