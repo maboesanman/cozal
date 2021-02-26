@@ -2,14 +2,14 @@ use std::{marker::PhantomData, mem::MaybeUninit, pin::Pin};
 
 use super::pin_stack::PinStack;
 
-pub struct SparseBufferStack<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> {
+pub struct SparseBufferStack<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> {
     stack: PinStack<StackItem<I>>,
     buffer: [BufferItem<'stack, I, B>; N],
 
     _marker: PhantomData<&'stack I>,
 }
 
-impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferStack<'stack, I, B, N> {
+impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferStack<'stack, I, B, N> {
     pub fn new<F>(item: I, constructor: F) -> Self
         where F: FnOnce(&'stack I) -> B
     {
@@ -54,8 +54,10 @@ impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferS
     }
 
     // constructor takes a reference to the stack item, and a reference to the previous buffered item.
-    pub fn buffer<F>(self: Pin<&mut Self>, stack_index: usize, constructor: F) -> Result<(), ()>
-        where F: FnOnce(&'stack I, &mut B),
+    pub fn buffer<F, D>(self: Pin<&mut Self>, stack_index: usize, constructor: F, duplicator: D) -> Result<(), ()>
+        where
+            F: FnOnce(&'stack I, &mut B),
+            D: FnOnce(&'_ B) -> B,
     {
         // SAFETY: we don't move the buffered items here; just drop them.
         let this = unsafe { self.get_unchecked_mut() };
@@ -82,7 +84,7 @@ impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferS
             };
             let item = prev_buffer_item.get_buffer(stack_index - 1).ok_or(())?;
 
-            buffer_item.replace_with(stack_index, item.clone());
+            buffer_item.replace_with(stack_index, duplicator(item));
         } else {
             buffer_item.stack_index = stack_index;
         }
