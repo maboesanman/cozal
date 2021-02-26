@@ -56,7 +56,7 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
     // constructor takes a reference to the stack item, and a reference to the previous buffered item.
     pub fn buffer<F, D>(self: Pin<&mut Self>, stack_index: usize, constructor: F, duplicator: D) -> Result<(), ()>
         where
-            F: FnOnce(&'stack I, &mut B),
+            F: FnOnce(&'stack I, Pin<&mut B>),
             D: FnOnce(&'_ B) -> B,
     {
         // SAFETY: we don't move the buffered items here; just drop them.
@@ -89,7 +89,7 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
             buffer_item.stack_index = stack_index;
         }
 
-        constructor(&&stack_item.item, unsafe { buffer_item.item.assume_init_mut()});
+        constructor(&&stack_item.item, unsafe { Pin::new_unchecked(buffer_item.item.assume_init_mut())});
 
         Ok(())
     }

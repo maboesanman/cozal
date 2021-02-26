@@ -12,20 +12,20 @@ fn basic_test() {
     for _ in 0..100 {
         stack_pin.as_mut().push(|x| x + 1);
         let index = stack_pin.borrow().len() - 1;
-        assert!(stack_pin.as_mut().buffer(index, |s, b| *b = (s, b.1 + *s), |b| b.clone()).is_ok());
+        assert!(stack_pin.as_mut().buffer(index, |s, mut b| *b = (s, b.1 + *s), |b| b.clone()).is_ok());
     }
 
     // buffer an item based on an old checkpoint
-    assert!(stack_pin.as_mut().buffer(65, |s, b| *b = (s, b.1 + *s), |b| b.clone()).is_ok());
+    assert!(stack_pin.as_mut().buffer(65, |s, mut b| *b = (s, b.1 + *s), |b| b.clone()).is_ok());
 
     // buffer an item which skips cloning
-    assert!(stack_pin.as_mut().buffer(66, |s, b| *b = (s, b.1 + *s), |b| b.clone()).is_ok());
+    assert!(stack_pin.as_mut().buffer(66, |s, mut b| *b = (s, b.1 + *s), |b| b.clone()).is_ok());
 
     // buffer an item which doesn't have the previous buffer available
-    assert!(stack_pin.as_mut().buffer(69, |s, b| *b = (s, b.1 + *s), |b| b.clone()).is_err());
+    assert!(stack_pin.as_mut().buffer(69, |s, mut b| *b = (s, b.1 + *s), |b| b.clone()).is_err());
 
     // buffer a non existent item
-    assert!(stack_pin.as_mut().buffer(1000, |s, b| *b = (s, b.1 + *s), |b| b.clone()).is_err());
+    assert!(stack_pin.as_mut().buffer(1000, |s, mut b| *b = (s, b.1 + *s), |b| b.clone()).is_err());
 
     // find the last buffered index
     assert_eq!(stack_pin.as_mut().last_buffered_index_by(69, |x| *x - 17), 66);
