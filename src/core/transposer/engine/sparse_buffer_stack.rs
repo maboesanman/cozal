@@ -34,29 +34,35 @@ impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferS
         }
     }
 
-    pub fn push<F>(&mut self, constructor: F)
+    pub fn push<F>(self: Pin<&mut Self>, constructor: F)
         where F: FnOnce(&'stack I) -> I
     {
+        // SAFETY: we don't touch the buffered items here.
+        let this = unsafe { self.get_unchecked_mut() };
+
         // this is fine cause we don't allow stack to hit 0 elements ever.
-        let top = &self.stack.peek().unwrap().item;
+        let top = &this.stack.peek().unwrap().item;
         let top = top as *const I;
 
         // SAFETY: because this is a stack, subsequent values will be dropped first.
         let top: &'stack I = unsafe { top.as_ref().unwrap() };
         let item = constructor(&top);
-        self.stack.push(StackItem {
+        this.stack.push(StackItem {
             buffer_index: 0,
             item
         });
     }
 
     // constructor takes a reference to the stack item, and a reference to the previous buffered item.
-    pub fn buffer<F>(&mut self, stack_index: usize, constructor: F) -> Result<(), ()>
+    pub fn buffer<F>(self: Pin<&mut Self>, stack_index: usize, constructor: F) -> Result<(), ()>
         where F: FnOnce(&'stack I, &mut B),
     {
-        let buffer_index_to_replace = self.get_least_useful_buffer_index();
+        // SAFETY: we don't move the buffered items here; just drop them.
+        let this = unsafe { self.get_unchecked_mut() };
+
+        let buffer_index_to_replace = this.get_least_useful_buffer_index();
         
-        let stack_item = self.stack.get_mut(stack_index).ok_or(())?;
+        let stack_item = this.stack.get_mut(stack_index).ok_or(())?;
         let stack_item = unsafe { stack_item.get_unchecked_mut() };
         stack_item.buffer_index = buffer_index_to_replace;
         let stack_item = stack_item as *const StackItem<I>;
@@ -64,11 +70,11 @@ impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferS
         // SAFETY: the buffer is always dropped before the item, so this is safe.
         let stack_item: &'stack StackItem<I> = unsafe { stack_item.as_ref().unwrap() };
 
-        let (before, remaining) = self.buffer.split_at_mut(buffer_index_to_replace);
+        let (before, remaining) = this.buffer.split_at_mut(buffer_index_to_replace);
         let (buffer_item, after) = remaining.split_first_mut().unwrap();
 
         if buffer_item.stack_index != stack_index - 1 {
-            let prev_stack_item = self.stack.get(stack_index - 1).unwrap();
+            let prev_stack_item = this.stack.get(stack_index - 1).unwrap();
             let prev_buffer_item = if prev_stack_item.buffer_index < buffer_index_to_replace {
                 before.get(prev_stack_item.buffer_index).unwrap()
             } else {
@@ -127,13 +133,16 @@ impl<'stack, I: Sized + 'stack, B: Clone + 'stack, const N: usize> SparseBufferS
         Some(unsafe { Pin::new_unchecked(buf_ref) })
     } 
 
-    pub fn pop(&mut self) -> Option<I> {
-        if self.stack.len() > 1 {
-            let stack_index = self.stack.len() - 1;
-            let buffer_index = self.stack.peek().unwrap().buffer_index;
-            self.drop_buffered(buffer_index, stack_index);
+    pub fn pop(self: Pin<&mut Self>) -> Option<I> {
+        // SAFETY: we don't move the buffered items here; just drop them.
+        let this = unsafe { self.get_unchecked_mut() };
 
-            Some(self.stack.pop().unwrap().item)
+        if this.stack.len() > 1 {
+            let stack_index = this.stack.len() - 1;
+            let buffer_index = this.stack.peek().unwrap().buffer_index;
+            this.drop_buffered(buffer_index, stack_index);
+
+            Some(this.stack.pop().unwrap().item)
         } else {
             None
         }
