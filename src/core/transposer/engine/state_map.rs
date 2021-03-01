@@ -169,7 +169,7 @@ where T::Scheduled: Clone {
                 break StateMapEventPoll::Ready;
             }
 
-            // (re)insert the next buffer into the 
+            // (re)create the next buffer item.
             inner.as_mut().buffer(
                 last_buffered_update_index + 1,
                 |last_buffered_ref: &BufferedItem<T>| {
@@ -204,12 +204,12 @@ where T::Scheduled: Clone {
                     let transposer_frame: &'map mut TransposerFrame<'map, T> = unsafe { transposer_frame.as_mut() }.unwrap();
                     let input_state: &'map mut LazyState<T::InputState> = unsafe { input_state.as_mut() }.unwrap();
 
+                    transposer_frame.advance_time(&update_ref.time);
                     match (&update_ref.time, &update_ref.data) {
                         (EngineTime::Input(time), UpdateItemData::Input(inputs)) => {
                             transposer_update.start_input(
                                 transposer_frame,
                                 input_state,
-                                *time,
                                 inputs
                             );
                         }

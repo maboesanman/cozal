@@ -27,6 +27,10 @@ where
         self.internal.current_time
     }
 
+    pub fn advance_time(&mut self, new_time: &'a EngineTime<'a, T::Time>) {
+        self.internal.advance_time(new_time)
+    }
+
     pub fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<'a, T::Time>> {
         self.internal.get_next_schedule_time()
     }

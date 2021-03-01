@@ -81,10 +81,10 @@ where T::Scheduled: Clone {
         mut self: Pin<&mut Self>, 
         frame: &'f mut TransposerFrame<'f, T>,
         state: &'f mut LazyState<T::InputState>,
-        time: T::Time,
         inputs: &'f [T::Input]
     )
     {
+        let time = frame.get_engine_time().raw_time();
         let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(frame, state);
         // initialize update_fut
         let fut = transposer_ref.handle_input(time, inputs, cx_ref);
