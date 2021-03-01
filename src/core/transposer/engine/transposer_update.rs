@@ -8,7 +8,7 @@ use std::{
 
 use crate::core::Transposer;
 
-use super::{engine_context::{EngineContext}, lazy_state::LazyState, transposer_frame::TransposerFrame, update_result::UpdateResult};
+use super::{engine_context::{EngineContext}, engine_time::EngineTimeSchedule, lazy_state::LazyState, transposer_frame::TransposerFrame, update_result::UpdateResult};
 
 /// future to initialize a TransposerFrame
 ///
@@ -95,14 +95,13 @@ where T::Scheduled: Clone {
     pub fn start_schedule(
         mut self: Pin<&mut Self>, 
         frame: &'f mut TransposerFrame<'f, T>,
-        state: &'f mut LazyState<T::InputState>,
-        time: T::Time,
-        payload: T::Scheduled,
+        state: &'f mut LazyState<T::InputState>
     )
     {
+        let (schedule_time, payload) = frame.pop_schedule_event().unwrap();
         let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(frame, state);
         // initialize update_fut
-        let fut = transposer_ref.handle_scheduled(time, payload, cx_ref);
+        let fut = transposer_ref.handle_scheduled(schedule_time.time, payload, cx_ref);
         let fut = Box::new(fut);
         *future_ref = MaybeUninit::new(fut);
     }

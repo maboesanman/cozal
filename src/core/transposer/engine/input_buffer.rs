@@ -14,13 +14,14 @@ impl<Time: Ord + Copy, Input> InputBuffer<Time, Input> {
         }
     }
 
-    pub fn extend_front(&mut self, time: Time, mut inputs: Vec<Input>) {
+    pub fn extend_front(&mut self, time: Time, inputs: Box<[Input]>) {
         match self.0.get_mut(&time) {
             Some(current) => {
-                inputs.extend(current.drain(..));
-                *current = inputs;
+                let mut new_vec: Vec<_> = inputs.into();
+                new_vec.extend(current.drain(..));
+                *current = new_vec;
             },
-            None => {self.0.insert(time, inputs);},
+            None => {self.0.insert(time, inputs.into());},
         }
     }
 

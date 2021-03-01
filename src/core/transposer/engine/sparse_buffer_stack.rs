@@ -1,6 +1,7 @@
 use std::{marker::PhantomData, mem::MaybeUninit, pin::Pin};
 
 use super::pin_stack::PinStack;
+use pin_project::pin_project;
 
 pub struct SparseBufferStack<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> {
     stack: PinStack<StackItem<I>>,
@@ -10,21 +11,34 @@ pub struct SparseBufferStack<'stack, I: Sized + 'stack, B: Sized + 'stack, const
 }
 
 impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferStack<'stack, I, B, N> {
-    pub fn new<F>(item: I, constructor: F) -> Self
-        where F: FnOnce(&'stack I) -> B
+    pub fn new<Con, Init>(stack_item: I, constructor: Con, initializer: Init) -> Self
+        where
+            Con: FnOnce(&'stack I) -> B,
+            Init: FnOnce(&'stack I, Pin<&mut B>),
     {
         let mut stack = PinStack::new();
         stack.push(StackItem {
             buffer_index: 0,
-            item
+            item: stack_item,
         });
-        let stack_item = stack.peek().unwrap();
-        let stack_item = stack_item as *const StackItem<I>;
+        let stack_item_ref = stack.peek().unwrap();
+        let stack_item_ref = stack_item_ref as *const StackItem<I>;
 
         // SAFETY: the buffer is always dropped before the item, so this is safe.
-        let stack_item: &'stack StackItem<I> = unsafe { stack_item.as_ref().unwrap() };
+        let stack_item_ref: &'stack StackItem<I> = unsafe { stack_item_ref.as_ref().unwrap() };
+        let stack_item_ref = &stack_item_ref.item;
+
         let mut buffer: [BufferItem<'stack, I, B>; N] = array_init::array_init(|_| BufferItem::new_zeroed());
-        buffer[0].replace_with(0, constructor(&stack_item.item));
+        buffer[0].replace_with(0, constructor(stack_item_ref));
+        let buffer_item_ref = buffer.get_mut(0).unwrap();
+
+        // SAFETY: we just assigned this so it must exist.
+        let buffer_item_ref = unsafe { buffer_item_ref.item.assume_init_mut() };
+
+        // SAFETY: this buffer will never move so we can pin it.
+        let buffer_item_ref = unsafe { Pin::new_unchecked(buffer_item_ref) };
+
+        initializer(stack_item_ref, buffer_item_ref);
 
         Self {
             stack,
@@ -54,10 +68,10 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
     }
 
     // constructor takes a reference to the stack item, and a reference to the previous buffered item.
-    pub fn buffer<F, D>(self: Pin<&mut Self>, stack_index: usize, constructor: F, duplicator: D) -> Result<(), ()>
+    pub fn buffer<Dup, Init>(self: Pin<&mut Self>, stack_index: usize, duplicator: Dup, initializer: Init) -> Result<(), ()>
         where
-            F: FnOnce(&'stack I, Pin<&mut B>),
-            D: FnOnce(&'_ B) -> B,
+            Dup: FnOnce(&'_ B) -> B, // reference to previous buffered item
+            Init: FnOnce(&'stack I, Pin<&mut B>), // reference to stack item and pinned mut reference to current buffer
     {
         // SAFETY: we don't move the buffered items here; just drop them.
         let this = unsafe { self.get_unchecked_mut() };
@@ -89,19 +103,31 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
             buffer_item.stack_index = stack_index;
         }
 
-        constructor(&&stack_item.item, unsafe { Pin::new_unchecked(buffer_item.item.assume_init_mut())});
+        initializer(&&stack_item.item, unsafe { Pin::new_unchecked(buffer_item.item.assume_init_mut())});
 
         Ok(())
     }
 
-    pub fn get_buffered(&self, stack_index: usize) -> Option<&B> {
-        if stack_index == usize::MAX {
-            panic!("there definitely aren't usize::MAX items in this collection...")
-        }
-
+    pub fn get(&self, stack_index: usize) -> Option<(&I, Option<&B>)>  {
         let stack_item = self.stack.get(stack_index)?;
-        let buffer_item = self.buffer.get(stack_item.buffer_index)?;
-        buffer_item.get_buffer(stack_index)
+        let buffer_item = self.buffer.get(stack_item.buffer_index);
+        let stack_item = &stack_item.item;
+        let buffer_item = buffer_item.map(|x| x.get_buffer(stack_index)).flatten();
+        Some((stack_item, buffer_item))
+    }
+
+    pub fn get_pinned_mut(self: Pin<&mut Self>, stack_index: usize) -> Option<(Pin<&mut I>, Option<Pin<&mut B>>)> {
+        // SAFETY: we never move the buffered item after making it, so we can safely return a pinned pointer to it.
+        let this = unsafe { self.get_unchecked_mut() };
+
+        let stack_item = this.stack.get_mut(stack_index)?;
+        let buffer_item = this.buffer.get_mut(stack_item.buffer_index);
+        let stack_item = stack_item.project().item;
+        let buffer_item = buffer_item.map(|x| x.get_buffer_mut(stack_index)).flatten();
+        // SAFETY: we never move the buffered item after making it, so we can safely return a pinned pointer to it.
+        let buffer_item = buffer_item.map(|x| unsafe { Pin::new_unchecked(x) });
+        
+        Some((stack_item, buffer_item))
     }
 
     pub fn last_buffered_index_by<K, F>(&self, reference: K, func: F) -> usize
@@ -119,21 +145,15 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         last_buffered_stack_index
     }
 
-    pub fn get_pinned_buffered(self: Pin<&mut Self>, stack_index: usize) -> Option<Pin<&mut B>> {
-        if stack_index == usize::MAX {
-            panic!("there definitely aren't usize::MAX items in this collection...")
-        }
-
-        // SAFETY: we never move the buffered item after making it, so we can safely return a pinned pointer to it.
-        let this = unsafe { self.get_unchecked_mut() };
-
-        let stack_item = this.stack.get(stack_index)?;
-        let buffer_item = this.buffer.get_mut(stack_item.buffer_index)?;
-        let buf_ref = buffer_item.get_buffer_mut(stack_index)?;
-        
-        // SAFETY: we never move the buffered item after making it, so we can safely return a pinned pointer to it.
-        Some(unsafe { Pin::new_unchecked(buf_ref) })
-    } 
+    pub fn last_index_by<K, F>(&self, reference: K, func: F) -> usize
+    where
+        K: Ord, 
+        F: Fn(&I) -> K
+    {
+        let range = self.stack.range_by(..=reference, |stack_item| func(&stack_item.item));
+        let (index, _) = range.last().unwrap();
+        index
+    }
 
     pub fn pop(self: Pin<&mut Self>) -> Option<I> {
         // SAFETY: we don't move the buffered items here; just drop them.
@@ -148,6 +168,10 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         } else {
             None
         }
+    }
+
+    pub fn peek(&self) -> &I {
+        &self.stack.peek().unwrap().item
     }
 
     fn drop_buffered(&mut self, buffer_index: usize, expected_stack_index: usize) {
@@ -176,8 +200,11 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
     }
 }
 
+#[pin_project]
 struct StackItem<I: Sized> {
     buffer_index: usize,
+
+    #[pin]
     item: I,
 }
 
@@ -222,6 +249,10 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack> BufferItem<'stack, I, B> {
     }
 
     pub fn get_buffer(&self, stack_index: usize) -> Option<&B> {
+        if stack_index == usize::MAX {
+            panic!("stack_index too large");
+        }
+
         if self.stack_index != stack_index {
             None
         } else {

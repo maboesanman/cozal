@@ -23,8 +23,16 @@ where
         }
     }
 
-    pub fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
+    pub fn get_engine_time(&self) -> &EngineTime<'a, T::Time> {
+        self.internal.current_time
+    }
+
+    pub fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<'a, T::Time>> {
         self.internal.get_next_schedule_time()
+    }
+
+    pub fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<'a, T::Time>, T::Scheduled)> {
+        self.internal.pop_schedule_event()
     }
 }
 
@@ -124,11 +132,11 @@ where T::Scheduled: Clone {
         }
     }
 
-    fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
+    fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<'a, T::Time>> {
         self.schedule.get_min().map(|(next, _)| next)
     }
 
-    fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
+    fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<'a, T::Time>, T::Scheduled)> {
         let (result, new_schedule) = self.schedule.without_min_with_key();
         self.schedule = new_schedule;
 
