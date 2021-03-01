@@ -16,6 +16,7 @@ where T::Scheduled: Clone {
 
 impl<'map, T: Transposer + Clone + 'map, const N: usize> StateMap<'map, T, N>
 where T::Scheduled: Clone {
+    #[allow(unused)]
     pub fn new(transposer: T) -> Self {
         let update_item = UpdateItem {
             time: EngineTime::Init,
@@ -184,16 +185,24 @@ where T::Scheduled: Clone {
                     }
                 },
                 |update_ref: &UpdateItem<'map, T>, buffer_ref: Pin<&mut BufferedItem<'map, T>>| {
-                    let this = buffer_ref.project();
-                    let update_future: Pin<&mut BufferedUpdate<'map, T>> = this.update_future;
+                    let buffer_ref = buffer_ref.project();
+                    let update_future: Pin<&mut BufferedUpdate<'map, T>> = buffer_ref.update_future;
                     let transposer_update: Pin<&mut TransposerUpdate<'map, T>>;
                     transposer_update = if let BufferedUpdateProject::Working(transposer_update) = update_future.project() {
                         transposer_update
                     } else {
                         unreachable!()
                     };
-                    let transposer_frame: &mut TransposerFrame<T> = this.transposer_frame;
-                    let input_state: &mut LazyState<T::InputState> = this.input_state;
+
+                    let transposer_frame: &mut TransposerFrame<T> = buffer_ref.transposer_frame;
+                    let input_state: &mut LazyState<T::InputState> = buffer_ref.input_state;
+
+                    let transposer_frame: *mut TransposerFrame<'map, T> = transposer_frame;
+                    let input_state: *mut LazyState<T::InputState> = input_state;
+
+                    // SAFETY: these references are self references, and won't outlive their targets.
+                    let transposer_frame: &'map mut TransposerFrame<'map, T> = unsafe { transposer_frame.as_mut() }.unwrap();
+                    let input_state: &'map mut LazyState<T::InputState> = unsafe { input_state.as_mut() }.unwrap();
 
                     match (&update_ref.time, &update_ref.data) {
                         (EngineTime::Input(time), UpdateItemData::Input(inputs)) => {
@@ -315,6 +324,9 @@ struct BufferedItem<'a, T: Transposer> {
 #[pin_project(project=BufferedUpdateProject)]
 enum BufferedUpdate<'a, T: Transposer> {
     Working(#[pin] TransposerUpdate<'a, T>),
+
+    // this is constructed through a pin, so don't worry about unused.
+    #[allow(unused)]
     Ready,
 }
 
