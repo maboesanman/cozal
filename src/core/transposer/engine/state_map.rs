@@ -71,7 +71,18 @@ where T::Scheduled: Clone {
         self: Pin<&mut Self>,
         rollback_time: T::Time,
     ) -> Option<T::Time> {
-        todo!()
+        let mut this = self.project();
+        let mut inner: Pin<&mut SparseBufferStack<'map, UpdateItem<'map, T>, BufferedItem<'map, T>, N>>;
+        inner = this.inner;
+
+        while inner.as_mut().peek().time.raw_time() <= rollback_time {
+            if inner.as_mut().pop().is_none() {
+                break
+            }
+        }
+
+        // todo: this could be later as calculated from 
+        Some(rollback_time)
     }
 
     #[allow(unused)]
