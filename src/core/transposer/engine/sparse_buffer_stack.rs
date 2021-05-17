@@ -67,10 +67,30 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         });
     }
 
+    // pub fn push_from_buffer<Con>(self: Pin<&mut Self>, constructor: Con) -> Result<(), ()>
+    //     where Con: FnOnce(&'stack I, Pin<&mut B>) -> I
+    // {
+    //     // SAFETY: we don't touch the buffered items here.
+    //     let this = unsafe { self.get_unchecked_mut() };
+
+    //     // this is fine cause we don't allow stack to hit 0 elements ever.
+    //     let top = &this.stack.peek().unwrap().item;
+    //     let top = top as *const I;
+
+    //     // SAFETY: because this is a stack, subsequent values will be dropped first.
+    //     let top: &'stack I = unsafe { top.as_ref().unwrap() };
+    //     let item = constructor(&top);
+    //     this.stack.push(StackItem {
+    //         buffer_index: 0,
+    //         item
+    //     });
+    // }
+
     // constructor takes a reference to the stack item, and a reference to the previous buffered item.
-    pub fn buffer<Dup, Init>(self: Pin<&mut Self>, stack_index: usize, duplicator: Dup, initializer: Init) -> Result<(), ()>
+    pub fn buffer<Dup, Refurb, Init>(self: Pin<&mut Self>, stack_index: usize, duplicator: Dup, refurbisher: Refurb, initializer: Init) -> Result<(), ()>
         where
-            Dup: FnOnce(&B) -> B, // reference to previous buffered item
+            Dup: FnOnce(&B) -> B, // reference to previous buffered item, use it to create a new one
+            Refurb: FnOnce(&mut B), // reference to previous buffered item, prepare for in place updates
             Init: FnOnce(Pin<&mut B>, &'stack I), // reference to stack item and pinned mut reference to current buffer
     {
         // SAFETY: we don't move the buffered items here; just drop them.
@@ -101,6 +121,7 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
             buffer_item.replace_with(stack_index, duplicator(item));
         } else {
             buffer_item.stack_index = stack_index;
+            refurbisher(buffer_item.get_buffer_mut(stack_index).unwrap());
         }
 
         initializer(
@@ -156,6 +177,14 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         let range = self.stack.range_by(..=reference, |stack_item| func(&stack_item.item));
         let (index, _) = range.last().unwrap();
         index
+    }
+
+    pub fn find<F>(&self, func: F) -> Option<&I>
+    where
+        F: Fn(&I) -> bool
+    {
+        let mut range = self.stack.range_by(.., |stack_item| 1);
+        range.find(|(_, item)| func(&item.item)).map(|(_, item)| &item.item)
     }
 
     pub fn pop(self: Pin<&mut Self>) -> Option<I> {

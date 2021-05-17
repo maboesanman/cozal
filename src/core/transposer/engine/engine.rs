@@ -1,20 +1,20 @@
 use core::pin::Pin;
-use std::{collections::BTreeMap, marker::PhantomPinned, process::Output, task::Poll};
+use std::{cmp::Ordering, collections::BTreeMap, task::Poll};
 use futures::{Future, future::FusedFuture, task::Context};
 use pin_project::pin_project;
 
 
 use crate::core::{Transposer, event_state_stream::{EventStatePoll, EventStateStream}};
 
-use super::{engine_time::EngineTime, input_buffer::InputBuffer, lazy_state::LazyState, sparse_buffer_stack::SparseBufferStack, state_map::{BufferedItem, UpdateItem, UpdateItemData}, transposer_frame::TransposerFrame, transposer_update::TransposerUpdate}; //, state_map::StateMap};
+use super::{engine_time::EngineTime, input_buffer::InputBuffer, lazy_state::LazyState, sparse_buffer_stack::SparseBufferStack, state_map::{BufferedItem, EventsEmitted, UpdateItem, UpdateItemData}, transposer_frame::TransposerFrame, transposer_update::TransposerUpdate}; //, state_map::StateMap};
 
 type StateMap<
     'map,
-    T: Transposer + Clone + 'map,
+    T,
     const N: usize
 > = SparseBufferStack<'map, UpdateItem<'map, T>, BufferedItem<'map, T>, N>;
 
-type OutputBuffer<'map, T: Transposer + Clone + 'map> = BTreeMap<EngineTime<'map, T::Time>, Vec<T::Output>>;
+type OutputBuffer<'map, T> = BTreeMap<EngineTime<'map, <T as Transposer>::Time>, Vec<<T as Transposer>::Output>>;
 
 /// A struct which implements the [`StatefulScheduleStream`] trait for a [`Transposer`].
 ///
@@ -55,26 +55,27 @@ impl<
     pub fn new(input_stream: S, initial_transposer: T) -> TransposerEngine<'map, T, S, N> {
         let first_state_map_item = UpdateItem {
             time: EngineTime::Init,
-            data: UpdateItemData::Init(Box::new(initial_transposer)),
-            events_emitted: false,
+            data: UpdateItemData::Init(Box::new(initial_transposer.clone())),
+            events_emitted: EventsEmitted::Pending,
         };
 
-        // let state_map = SparseBufferStack::new(
-        //     // pass in the first stack item
-        //     first_state_map_item,
-        //     // create the corresponding buffer using a reference to the stack item
-        //     BufferedItem::construct_init,
-        //     // perform any initialization requiring a pin to the buffer
-        //     |buffer_item_ref, _| buffer_item_ref.init_init()
-        // );
+        let state_map = SparseBufferStack::new(
+            // pass in the first stack item
+            first_state_map_item,
+            // create the corresponding buffer using a reference to the stack item
+            |_| {
+                BufferedItem::new(initial_transposer)
+            },
+            // perform any initialization requiring a pin to the buffer
+            |buffer_item, update_item| buffer_item.init(update_item)
+        );
 
-        // Self {
-        //     input_stream,
-        //     input_buffer: InputBuffer::new(),
-        //     output_buffer: BTreeMap::new(),
-        //     state_map,
-        // }
-        todo!()
+        Self {
+            input_stream,
+            input_buffer: InputBuffer::new(),
+            output_buffer: BTreeMap::new(),
+            state_map,
+        }
     }
 
     fn pop_output_buffer(
@@ -147,7 +148,7 @@ impl<
 
             match state_map.as_mut().pop() {
                 Some(update_item) => {
-                    if update_item.events_emitted {
+                    if update_item.events_emitted.any() {
                         rollback_needed = Some(last_state_map_time);
 
                         // throw away everything at or after the discarded frame.
@@ -184,7 +185,7 @@ impl<
 
             match state_map.as_mut().pop() {
                 Some(update_item) => {
-                    if update_item.events_emitted {
+                    if update_item.events_emitted.any() {
                         rollback_needed = Some(last_state_map_time);
 
                         // throw away everything at or after the discarded frame.
@@ -261,12 +262,21 @@ impl<
             }
 
             let last_buffered_index_before_poll = state_map.as_mut().last_buffered_index_by(poll_time, |x| x.time.raw_time());
+            let last_index = state_map.len() - 1;
+            let previously_processed_future_update = last_index != last_buffered_index_before_poll;
+            let mut has_next_update = if let Some((next_update, _)) = state_map.get(last_buffered_index_before_poll + 1) {
+                next_update.time.raw_time() <= poll_time
+            } else {
+                false
+            };
 
             let update_and_buffer = state_map.as_mut().get_pinned_mut(last_buffered_index_before_poll);
             let update_and_buffer = update_and_buffer.unwrap();
 
             let mut update: Pin<&mut UpdateItem<'map, T>> = update_and_buffer.0;
             let mut buffer: Pin<&mut BufferedItem<'map, T>> = update_and_buffer.1.unwrap();
+
+            let mut scheduled_input_time = None;
 
             // if we have a buffered output before our update, emit that.
             if let Some(output_time) = Self::output_buffer_first_time(output_buffer) {
@@ -297,9 +307,9 @@ impl<
 
                 // verify there are no new events or rollbacks before proceeding
                 // if we need a state, obtain it and set buffer.input_state
-                match buffer.input_state.requested() {
+                scheduled_input_time = match buffer.input_state.requested() {
                     true => {
-                        let state = match input_stream.as_mut().poll(update.time.raw_time(), cx) {
+                        let (state, scheduled_time) = match input_stream.as_mut().poll(update.as_ref().time.raw_time(), cx) {
                             EventStatePoll::Pending => break 'main EventStatePoll::Pending,
                             EventStatePoll::Rollback(time) => {
                                 input_state_event_update = InputStateEventUpdate::Rollback(time);
@@ -312,17 +322,15 @@ impl<
                                 };
                                 continue 'main;
                             }
-                            EventStatePoll::Scheduled(time, state) => {
-                                // TODO what do i do with the scheduled time here?
-
-                                state
-                            }
-                            EventStatePoll::Ready(state) => state,
-                            EventStatePoll::Done(state) => state,
+                            EventStatePoll::Scheduled(time, state) => (state, Some(time)),
+                            EventStatePoll::Ready(state) => (state, None),
+                            EventStatePoll::Done(state) => (state, None),
                         };
 
                         // pass in our new state.
                         buffer.as_mut().project().input_state.set(state);
+
+                        scheduled_time
                     }
                     false => {
                         match input_stream.as_mut().poll_events(update.time.raw_time(), cx) {
@@ -338,28 +346,30 @@ impl<
                                 };
                                 continue 'main;
                             }
-                            EventStatePoll::Scheduled(time, ()) => {
-                                // TODO what do i do with the scheduled time here?
-                            }
-                            EventStatePoll::Ready(()) => {},
-                            EventStatePoll::Done(()) => {},
+                            EventStatePoll::Scheduled(time, ()) => Some(time),
+                            EventStatePoll::Ready(()) => None,
+                            EventStatePoll::Done(()) => None,
                         }
                     }
-                }
+                };
 
                 // poll the actual update.
-                match buffer.poll(cx) {
+                match buffer.as_mut().poll(cx) {
                     Poll::Ready(outputs) => {
-                        if update.events_emitted || outputs.is_empty() {
-                            // we do not want to do anything with events if they have already been emitted.
-                            std::mem::drop(outputs);
+                        // we do not want to do anything with events if they have already been emitted.
+                        if update.events_emitted.done() {
                             continue 'main;
-                        } else {
-                            update.events_emitted = true;
-                            Self::push_output_buffer(output_buffer, update.time.clone(), outputs);
-                            let (time, input) = Self::pop_output_buffer(output_buffer, poll_time).unwrap();
-                            break 'main EventStatePoll::Event(time, input);
                         }
+
+                        if outputs.is_empty() {
+                            update.events_emitted = EventsEmitted::None;
+                            continue 'main;
+                        }
+
+                        update.events_emitted = EventsEmitted::Some;
+                        Self::push_output_buffer(output_buffer, update.time.clone(), outputs);
+                        let (time, input) = Self::pop_output_buffer(output_buffer, poll_time).unwrap();
+                        break 'main EventStatePoll::Event(time, input);
                     }
                     Poll::Pending => break 'main EventStatePoll::Pending
                 }
@@ -371,11 +381,71 @@ impl<
             //  - buffer an existing update
             //  - create a new update and buffer it
 
-            let last_index_before_poll = state_map.as_mut().last_index_by(poll_time, |x| x.time.raw_time());
-            let last_index = state_map.len() - 1;
 
-            let previously_processed_future_update = last_index != last_buffered_index_before_poll;
+            // we are at the end of the chain
+            if !previously_processed_future_update {
+                if let Some(update_item) = buffer.next_update_item(input_buffer) {
+                    if update_item.time.raw_time() <= poll_time {
+                        has_next_update = true;
+                    }
+                    state_map.as_mut().push(|_| update_item);
+                }
+            }
 
+            if has_next_update {
+                state_map.as_mut().buffer(
+                    last_buffered_index_before_poll + 1, 
+                    BufferedItem::dup,
+                    BufferedItem::refurb,
+                    BufferedItem::init
+                ).unwrap();
+                continue 'main;
+            } else {
+                // get our state to interpolate with
+                let (state, time) = match input_stream.as_mut().poll(poll_time, cx) {
+                    EventStatePoll::Pending => break 'main EventStatePoll::Pending,
+                    EventStatePoll::Rollback(time) => {
+                        input_state_event_update = InputStateEventUpdate::Rollback(time);
+                        continue 'main;
+                    }
+                    EventStatePoll::Event(time, input) => {
+                        input_state_event_update = match T::can_handle(time, &input) {
+                            true => InputStateEventUpdate::Event(time, input),
+                            false => InputStateEventUpdate::None,
+                        };
+                        continue 'main;
+                    }
+                    EventStatePoll::Scheduled(time, state) => (state, Some(time)),
+                    EventStatePoll::Ready(state) => (state, None),
+                    EventStatePoll::Done(state) => (state, None),
+                };
+
+                // get the buffer and update
+                scheduled_input_time = time;
+                let update_and_buffer = state_map.as_mut().get_pinned_mut(last_buffered_index_before_poll);
+                let update_and_buffer = update_and_buffer.unwrap();
+
+                let update: Pin<&mut UpdateItem<'map, T>> = update_and_buffer.0;
+                let buffer: Pin<&mut BufferedItem<'map, T>> = update_and_buffer.1.unwrap();
+
+                // construct the interpolated value
+                let base_time = update.time.raw_time();
+                let interpolated = buffer.transposer_frame.transposer.interpolate(base_time, poll_time, state);
+
+
+                let next_possible_scheduled_event_time = state_map.find(|update_item| !update_item.events_emitted.done()).map(|update_item| update_item.time.raw_time());
+
+                break 'main match (scheduled_input_time, next_possible_scheduled_event_time) {
+                    (None, None) => EventStatePoll::Ready(interpolated),
+                    (None, Some(t)) => EventStatePoll::Scheduled(t, interpolated),
+                    (Some(t), None) => EventStatePoll::Scheduled(t, interpolated),
+                    (Some(t1), Some(t2)) => match t1.cmp(&t2) {
+                        Ordering::Less => EventStatePoll::Scheduled(t1, interpolated),
+                        Ordering::Equal => EventStatePoll::Scheduled(t1, interpolated),
+                        Ordering::Greater => EventStatePoll::Scheduled(t2, interpolated),
+                    },
+                }
+            }
         }
     }
 }
