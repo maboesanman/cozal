@@ -1,4 +1,8 @@
-use super::{Transposer, engine::lazy_state::LazyStateFuture, expire_handle::ExpireHandle};
+use std::pin::Pin;
+
+use futures::Future;
+
+use super::{Transposer, expire_handle::ExpireHandle};
 
 pub trait InitContext<'a, T: Transposer>: InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> {}
 impl<'a, U, T: Transposer> InitContext<'a, T> for U
@@ -13,7 +17,7 @@ impl<'a, U, T: Transposer> ScheduleContext<'a, T> for U
 where U:  InputStateContext<'a, T> + ScheduleEventContext<T> + ExpireEventContext<T> + EmitEventContext<T> + ExitContext {}
 
 pub trait InputStateContext<'a, T: Transposer> {
-    fn get_input_state<'f>(&'f mut self) -> LazyStateFuture<'f, T::InputState>;
+    fn get_input_state(&mut self) -> Pin<&mut dyn Future<Output = T::InputState>>;
 }
 
 pub trait ScheduleEventContext<T: Transposer> {

@@ -314,7 +314,7 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
         BufferedItem {
             update_future: MaybeUninit::uninit(),
             transposer_frame: TransposerFrame::new(transposer),
-            input_state: LazyState::Pending,
+            input_state: LazyState::new(),
             _marker: PhantomPinned,
         }
     }
@@ -328,7 +328,7 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
         BufferedItem {
             update_future: MaybeUninit::uninit(),
             transposer_frame: self.transposer_frame.clone(),
-            input_state: LazyState::Pending,
+            input_state: LazyState::new(),
             _marker: PhantomPinned,
         }
     }
@@ -424,7 +424,7 @@ impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
             return Poll::Pending
         }
 
-        if let LazyState::Requested = input_state {
+        if input_state.requested() {
             return Poll::Pending
         }
 

@@ -260,11 +260,9 @@ impl<
                 }
             }
 
-            let last_buffered_update_index = state_map.as_mut().last_buffered_index_by(poll_time, |x| x.time.raw_time());
-            let last_update_index = state_map.as_mut().last_index_by(poll_time, |x| x.time.raw_time());
-            let next_input_time = input_buffer.first_time();
+            let last_buffered_index_before_poll = state_map.as_mut().last_buffered_index_by(poll_time, |x| x.time.raw_time());
 
-            let update_and_buffer = state_map.as_mut().get_pinned_mut(last_buffered_update_index);
+            let update_and_buffer = state_map.as_mut().get_pinned_mut(last_buffered_index_before_poll);
             let update_and_buffer = update_and_buffer.unwrap();
 
             let mut update: Pin<&mut UpdateItem<'map, T>> = update_and_buffer.0;
@@ -299,8 +297,8 @@ impl<
 
                 // verify there are no new events or rollbacks before proceeding
                 // if we need a state, obtain it and set buffer.input_state
-                match buffer.input_state {
-                    LazyState::Requested => {
+                match buffer.input_state.requested() {
+                    true => {
                         let state = match input_stream.as_mut().poll(update.time.raw_time(), cx) {
                             EventStatePoll::Pending => break 'main EventStatePoll::Pending,
                             EventStatePoll::Rollback(time) => {
@@ -324,9 +322,9 @@ impl<
                         };
 
                         // pass in our new state.
-                        *buffer.as_mut().project().input_state = LazyState::Ready(state);
+                        buffer.as_mut().project().input_state.set(state);
                     }
-                    _ => {
+                    false => {
                         match input_stream.as_mut().poll_events(update.time.raw_time(), cx) {
                             EventStatePoll::Pending => break 'main EventStatePoll::Pending,
                             EventStatePoll::Rollback(time) => {
@@ -372,6 +370,11 @@ impl<
             //  - poll input at poll_time, and perform interpolation
             //  - buffer an existing update
             //  - create a new update and buffer it
+
+            let last_index_before_poll = state_map.as_mut().last_index_by(poll_time, |x| x.time.raw_time());
+            let last_index = state_map.len() - 1;
+
+            let previously_processed_future_update = last_index != last_buffered_index_before_poll;
 
         }
     }

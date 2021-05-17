@@ -1,6 +1,10 @@
+use std::pin::Pin;
+
+use futures::Future;
+
 use crate::core::{Transposer, transposer::{context::{EmitEventContext, ExitContext, ExpireEventContext, ExpireEventError, InputStateContext, ScheduleEventContext, ScheduleEventError}, expire_handle::ExpireHandle}};
 
-use super::{lazy_state::{LazyState, LazyStateFuture}, transposer_frame::TransposerFrameInternal};
+use super::{lazy_state::{LazyState}, transposer_frame::TransposerFrameInternal};
 
 /// This is the interface through which you can do a variety of functions in your transposer.
 ///
@@ -30,10 +34,9 @@ impl<'a, T: Transposer> EngineContext<'a, T> {
     }
 }
 
-// this is gonna be tricky...
 impl<'a, T: Transposer> InputStateContext<'a, T> for EngineContext<'a, T> {
-    fn get_input_state<'f>(&'f mut self) -> LazyStateFuture<'f, T::InputState> {
-        self.input_state.get()
+    fn get_input_state(&mut self) -> Pin<&mut dyn Future<Output = T::InputState>> {
+        Pin::<&mut &mut LazyState<T::InputState>>::new(&mut self.input_state)
     }
 }
 
@@ -83,10 +86,9 @@ where T::Scheduled: Clone {
     input_state: &'a mut LazyState<T::InputState>,
 }
 
-// this is gonna be tricky...
 impl<'a, T: Transposer> InputStateContext<'a, T> for EngineRebuildContext<'a, T> {
-    fn get_input_state<'f>(&'f mut self) -> LazyStateFuture<'f, T::InputState> {
-        self.input_state.get()
+    fn get_input_state(&mut self) -> Pin<&mut dyn Future<Output = T::InputState>> {
+        Pin::<&mut &mut LazyState<T::InputState>>::new(&mut self.input_state)
     }
 }
 

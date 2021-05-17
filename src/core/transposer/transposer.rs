@@ -18,9 +18,9 @@ pub trait Transposer: Sized {
     /// by the init function.
     type Time: Copy + Ord + Default + Unpin;
 
-    type InputState: Sized;
+    type InputState: Sized + Unpin;
 
-    type OutputState: Sized;
+    type OutputState: Sized + Unpin;
 
     /// The type of the input payloads.
     ///
@@ -29,12 +29,12 @@ pub trait Transposer: Sized {
     /// This type is not intended to contain timing information. It may if you need it, but
     /// no timing information contained inside your `Input` type will be used to inform the order
     /// that events are handled.
-    type Input: Sized;
+    type Input: Sized + Unpin;
 
     /// The type of the payloads of scheduled events
     ///
     /// the events in the schedule are all of type `Event<Self::Time, Self::Scheduled>`
-    type Scheduled: Clone;
+    type Scheduled: Clone + Unpin;
 
     /// The type of the output payloads.
     ///
@@ -42,7 +42,7 @@ pub trait Transposer: Sized {
     ///
     /// If a rollback must occur which invalidates previously yielded events, an event of type
     /// `Event<Self::Time, RollbackPayload::Rollback>` will be emitted.
-    type Output: Sized;
+    type Output: Sized + Unpin;
 
     /// The function to initialize your transposer's events.
     ///
