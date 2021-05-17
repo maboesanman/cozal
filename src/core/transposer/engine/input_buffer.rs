@@ -32,4 +32,9 @@ impl<Time: Ord + Copy, Input> InputBuffer<Time, Input> {
     pub fn pop_first(&mut self) -> Option<(Time, Vec<Input>)> {
         self.0.pop_first()
     }
+
+    pub fn rollback(&mut self, time: Time) {
+        let InputBuffer(inner) = self;
+        inner.split_off(&time);
+    }
 }

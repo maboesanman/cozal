@@ -4,7 +4,7 @@ use super::engine_context::EngineContext;
 
 
 
-pub(super) struct UpdateResult<T: Transposer> {
+pub struct UpdateResult<T: Transposer> {
     pub outputs: Vec<T::Output>,
     pub exit: bool,
 }

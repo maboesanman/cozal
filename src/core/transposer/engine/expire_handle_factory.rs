@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 use crate::core::transposer::expire_handle::ExpireHandle;
 
 #[derive(Debug)]
-pub(super) struct ExpireHandleFactory(AtomicU64);
+pub struct ExpireHandleFactory(AtomicU64);
 
 impl ExpireHandleFactory {
     pub fn new() -> Self {

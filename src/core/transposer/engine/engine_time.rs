@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
 // this is the time that the internal engine can take on.
+#[derive(Clone)]
 pub enum EngineTime<'a, T: Ord + Copy + Default> {
     Init,
     Input(T),

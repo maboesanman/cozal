@@ -1,4 +1,4 @@
-use futures::Future;
+use futures::{Future, future::FusedFuture};
 use std::{
     marker::PhantomPinned,
     mem::MaybeUninit,
@@ -13,13 +13,16 @@ use super::{engine_context::{EngineContext}, lazy_state::LazyState, transposer_f
 /// future to initialize a TransposerFrame
 ///
 /// the initialization happens AS A SIDE EFFECT OF THIS.
-pub(super) struct TransposerUpdate<'f, T: Transposer>
+pub struct TransposerUpdate<'f, T: Transposer>
 where T::Scheduled: Clone {
     // the curried future; placed first so it is dropped first.
     future: MaybeUninit<Box<dyn Future<Output = ()> + 'f>>,
 
     // cx is placed second because it references frame and is referenced by fut.
     context: MaybeUninit<EngineContext<'f, T>>,
+
+    // keep track for fusedFuture
+    is_terminated: bool,
 
     // future contains a reference to context.
     _pin: PhantomPinned,
@@ -32,6 +35,7 @@ where T::Scheduled: Clone {
         Self {
             future: MaybeUninit::uninit(),
             context: MaybeUninit::uninit(),
+            is_terminated: false,
             _pin: PhantomPinned,
         }
     }
@@ -64,7 +68,7 @@ where T::Scheduled: Clone {
         (&mut this.future, transposer_ref, cx_ref)
     }
 
-    pub fn start_init(
+    pub fn init_init(
         mut self: Pin<&mut Self>, 
         frame: &'f mut TransposerFrame<'f, T>,
         state: &'f mut LazyState<T::InputState>,
@@ -77,14 +81,14 @@ where T::Scheduled: Clone {
         *future_ref = MaybeUninit::new(fut);
     }
 
-    pub fn start_input(
+    pub fn init_input(
         mut self: Pin<&mut Self>, 
         frame: &'f mut TransposerFrame<'f, T>,
         state: &'f mut LazyState<T::InputState>,
-        inputs: &'f [T::Input]
+        time: T::Time,
+        inputs: &'f [T::Input],
     )
     {
-        let time = frame.get_engine_time().raw_time();
         let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(frame, state);
         // initialize update_fut
         let fut = transposer_ref.handle_input(time, inputs, cx_ref);
@@ -92,29 +96,32 @@ where T::Scheduled: Clone {
         *future_ref = MaybeUninit::new(fut);
     }
 
-    pub fn start_schedule(
+    pub fn init_schedule(
         mut self: Pin<&mut Self>, 
         frame: &'f mut TransposerFrame<'f, T>,
-        state: &'f mut LazyState<T::InputState>
+        state: &'f mut LazyState<T::InputState>,
+        time: T::Time,
+        payload: T::Scheduled,
     )
     {
-        let (schedule_time, payload) = frame.pop_schedule_event().unwrap();
         let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(frame, state);
         // initialize update_fut
-        let fut = transposer_ref.handle_scheduled(schedule_time.time, payload, cx_ref);
+        let fut = transposer_ref.handle_scheduled(time, payload, cx_ref);
         let fut = Box::new(fut);
         *future_ref = MaybeUninit::new(fut);
     }
 }
 
-impl<'a, T: Transposer + Clone> Future for TransposerUpdate<'a, T> 
-where T::Scheduled: Clone {
+impl<'a, T: Transposer> Future for TransposerUpdate<'a, T> {
     type Output = UpdateResult<T>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
-        let fut: Pin<&mut _> =
-            unsafe { Pin::new_unchecked(this.future.as_mut_ptr().as_mut().unwrap().as_mut()) };
+        assert!(!this.is_terminated);
+
+        let fut: Pin<&mut _> = unsafe {
+            Pin::new_unchecked(this.future.as_mut_ptr().as_mut().unwrap().as_mut())
+        };
         match fut.poll(cx) {
             Poll::Ready(()) => {
                 // destroy our future, polling after ready is not allowed anyway.
@@ -123,9 +130,16 @@ where T::Scheduled: Clone {
                 let cx = std::mem::replace(&mut this.context, MaybeUninit::uninit());
                 let cx = unsafe { cx.assume_init() };
 
+                this.is_terminated = true;
                 Poll::Ready(cx.into())
             }
             Poll::Pending => Poll::Pending,
         }
+    }
+}
+
+impl<'a, T: Transposer> FusedFuture for TransposerUpdate<'a, T> {
+    fn is_terminated(&self) -> bool {
+        self.is_terminated
     }
 }

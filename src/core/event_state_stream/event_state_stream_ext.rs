@@ -31,7 +31,8 @@ pub trait EventStateStreamExt: EventStateStream {
         Time=Self::Time,
         Input=Self::Event,
         InputState=Self::State,
-    > + 'tr>(self, initial: T) -> TransposerEngine<'tr, T, Self>
+    > + 'tr,
+    const N: usize>(self, initial: T) -> TransposerEngine<'tr, T, Self, N>
         where
             T: Clone,
             T::Scheduled: Clone,

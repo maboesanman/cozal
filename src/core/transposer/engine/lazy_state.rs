@@ -3,7 +3,7 @@ use std::{pin::Pin, task::{Context, Poll}};
 use futures::Future;
 use take_mut::{self, take_or_recover};
 
-pub(super) enum LazyState<S: Sized> {
+pub enum LazyState<S: Sized> {
     Ready(S),
     Requested,
     Pending,

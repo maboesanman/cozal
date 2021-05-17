@@ -14,7 +14,7 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
     pub fn new<Con, Init>(stack_item: I, constructor: Con, initializer: Init) -> Self
         where
             Con: FnOnce(&'stack I) -> B,
-            Init: FnOnce(&'stack I, Pin<&mut B>),
+            Init: FnOnce(Pin<&mut B>, &'stack I),
     {
         let mut stack = PinStack::new();
         stack.push(StackItem {
@@ -38,7 +38,7 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         // SAFETY: this buffer will never move so we can pin it.
         let buffer_item_ref = unsafe { Pin::new_unchecked(buffer_item_ref) };
 
-        initializer(stack_item_ref, buffer_item_ref);
+        initializer(buffer_item_ref, stack_item_ref);
 
         Self {
             stack,
@@ -48,8 +48,8 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         }
     }
 
-    pub fn push<F>(self: Pin<&mut Self>, constructor: F)
-        where F: FnOnce(&'stack I) -> I
+    pub fn push<Con>(self: Pin<&mut Self>, constructor: Con)
+        where Con: FnOnce(&'stack I) -> I
     {
         // SAFETY: we don't touch the buffered items here.
         let this = unsafe { self.get_unchecked_mut() };
@@ -70,8 +70,8 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
     // constructor takes a reference to the stack item, and a reference to the previous buffered item.
     pub fn buffer<Dup, Init>(self: Pin<&mut Self>, stack_index: usize, duplicator: Dup, initializer: Init) -> Result<(), ()>
         where
-            Dup: FnOnce(&'_ B) -> B, // reference to previous buffered item
-            Init: FnOnce(&'stack I, Pin<&mut B>), // reference to stack item and pinned mut reference to current buffer
+            Dup: FnOnce(&B) -> B, // reference to previous buffered item
+            Init: FnOnce(Pin<&mut B>, &'stack I), // reference to stack item and pinned mut reference to current buffer
     {
         // SAFETY: we don't move the buffered items here; just drop them.
         let this = unsafe { self.get_unchecked_mut() };
@@ -103,7 +103,10 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
             buffer_item.stack_index = stack_index;
         }
 
-        initializer(&&stack_item.item, unsafe { Pin::new_unchecked(buffer_item.item.assume_init_mut())});
+        initializer(
+            unsafe { Pin::new_unchecked(buffer_item.item.assume_init_mut())},
+            &&stack_item.item, 
+        );
 
         Ok(())
     }
