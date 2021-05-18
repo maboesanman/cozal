@@ -18,7 +18,6 @@ pub trait InputContext<'a, T: Transposer>:
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
-    + ExitContext
 {
 }
 impl<'a, U, T: Transposer> InputContext<'a, T> for U where
@@ -26,7 +25,6 @@ impl<'a, U, T: Transposer> InputContext<'a, T> for U where
         + ScheduleEventContext<T>
         + ExpireEventContext<T>
         + EmitEventContext<T>
-        + ExitContext
 {
 }
 
@@ -35,7 +33,6 @@ pub trait ScheduleContext<'a, T: Transposer>:
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
-    + ExitContext
 {
 }
 impl<'a, U, T: Transposer> ScheduleContext<'a, T> for U where
@@ -43,7 +40,6 @@ impl<'a, U, T: Transposer> ScheduleContext<'a, T> for U where
         + ScheduleEventContext<T>
         + ExpireEventContext<T>
         + EmitEventContext<T>
-        + ExitContext
 {
 }
 
@@ -82,8 +78,4 @@ pub enum ExpireEventError {
 
 pub trait EmitEventContext<T: Transposer> {
     fn emit_event(&mut self, payload: T::Output);
-}
-
-pub trait ExitContext {
-    fn exit(&mut self);
 }

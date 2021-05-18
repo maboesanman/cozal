@@ -5,7 +5,7 @@ use futures::Future;
 use crate::core::{
     transposer::{
         context::{
-            EmitEventContext, ExitContext, ExpireEventContext, ExpireEventError, InputStateContext,
+            EmitEventContext, ExpireEventContext, ExpireEventError, InputStateContext,
             ScheduleEventContext, ScheduleEventError,
         },
         expire_handle::ExpireHandle,
@@ -31,7 +31,6 @@ where
 
     // values to output
     pub(super) outputs: Vec<T::Output>,
-    pub(super) exit: bool,
 }
 
 impl<'a, T: Transposer> EngineContext<'a, T> {
@@ -43,7 +42,6 @@ impl<'a, T: Transposer> EngineContext<'a, T> {
             frame_internal,
             input_state,
             outputs: Vec::new(),
-            exit: false,
         }
     }
 }
@@ -84,12 +82,6 @@ impl<'a, T: Transposer> ExpireEventContext<T> for EngineContext<'a, T> {
 impl<'a, T: Transposer> EmitEventContext<T> for EngineContext<'a, T> {
     fn emit_event(&mut self, payload: T::Output) {
         self.outputs.push(payload);
-    }
-}
-
-impl<'a, T: Transposer> ExitContext for EngineContext<'a, T> {
-    fn exit(&mut self) {
-        self.exit = true;
     }
 }
 
@@ -139,8 +131,4 @@ impl<'a, T: Transposer> ExpireEventContext<T> for EngineRebuildContext<'a, T> {
 
 impl<'a, T: Transposer> EmitEventContext<T> for EngineRebuildContext<'a, T> {
     fn emit_event(&mut self, _payload: T::Output) {}
-}
-
-impl<'a, T: Transposer> ExitContext for EngineRebuildContext<'a, T> {
-    fn exit(&mut self) {}
 }
