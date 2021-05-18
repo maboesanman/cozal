@@ -47,7 +47,6 @@ impl<St: EventStateStream, E, S> EventStateStream for EventStateMapStream<St, E,
             EventStatePoll::Event(t, e) => EventStatePoll::Event(t, e_fn(e)),
             EventStatePoll::Scheduled(t, s) => EventStatePoll::Scheduled(t, s_fn(s)),
             EventStatePoll::Ready(s) => EventStatePoll::Ready(s_fn(s)),
-            EventStatePoll::Done(s) => EventStatePoll::Done(s_fn(s)),
         }
     }
 }

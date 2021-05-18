@@ -69,7 +69,6 @@ pub trait EventStateStream {
             EventStatePoll::Event(t, e) => EventStatePoll::Event(t, e),
             EventStatePoll::Scheduled(t, _) => EventStatePoll::Scheduled(t, ()),
             EventStatePoll::Ready(_) => EventStatePoll::Ready(()),
-            EventStatePoll::Done(_) => EventStatePoll::Done(()),
         }
     }
 }

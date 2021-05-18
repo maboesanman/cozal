@@ -34,9 +34,4 @@ where
     /// This is distinct from `Pending` because the the responsibility of being awoken is
     /// pushed to the input stream.
     Ready(S),
-
-    /// Represents the end of the stream.
-    ///
-    /// the final state is returned.
-    Done(S),
 }

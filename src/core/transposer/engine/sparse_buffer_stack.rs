@@ -292,15 +292,6 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack> BufferItem<'stack, I, B> {
         }
     }
 
-    fn new(index: usize, item: B) -> Self {
-        BufferItem {
-            stack_index: index,
-            item: MaybeUninit::new(item),
-
-            _marker: PhantomData,
-        }
-    }
-
     pub fn get_buffer_mut(&mut self, stack_index: usize) -> Option<&mut B> {
         if self.stack_index != stack_index {
             None
@@ -326,12 +317,6 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack> BufferItem<'stack, I, B> {
     unsafe fn assume_init_drop(&mut self) {
         self.stack_index = usize::MAX;
         self.item.assume_init_drop()
-    }
-
-    pub fn drop_if_init(&mut self) {
-        if self.stack_index != usize::MAX {
-            unsafe { self.assume_init_drop() };
-        }
     }
 
     pub fn replace_with(&mut self, stack_index: usize, item: B) {

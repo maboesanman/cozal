@@ -16,22 +16,6 @@ impl<'a, T: Ord + Copy + Default> EngineTime<'a, T> {
             Self::Schedule(inner) => inner.time,
         }
     }
-
-    pub fn new_init() -> Self {
-        EngineTime::Init
-    }
-
-    pub fn new_input(time: T) -> Self {
-        EngineTime::Input(time)
-    }
-
-    pub fn new_schedule(time: T, parent: &'a Self, parent_index: usize) -> Self {
-        EngineTime::Schedule(EngineTimeSchedule {
-            time,
-            parent,
-            parent_index,
-        })
-    }
 }
 
 impl<T: Ord + Copy + Default> Ord for EngineTime<'_, T> {

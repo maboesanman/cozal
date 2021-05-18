@@ -208,12 +208,6 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                         None => EventStatePoll::Ready(s),
                     };
                 }
-                EventStatePoll::Done(s) => {
-                    break match this.left.next_time() {
-                        Some(t) => EventStatePoll::Scheduled(t, s),
-                        None => EventStatePoll::Done(s),
-                    };
-                }
             };
         }
     }
@@ -275,12 +269,6 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                     break match this.right.next_time() {
                         Some(t) => EventStatePoll::Scheduled(t, s),
                         None => EventStatePoll::Ready(s),
-                    };
-                }
-                EventStatePoll::Done(s) => {
-                    break match this.right.next_time() {
-                        Some(t) => EventStatePoll::Scheduled(t, s),
-                        None => EventStatePoll::Done(s),
                     };
                 }
             };

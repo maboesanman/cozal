@@ -81,10 +81,7 @@ impl<Time: Ord + Copy, Event: Clone, State: Clone> EventStateStream
                     EventStatePoll::Scheduled(event_time, proj.current_state.clone())
                 }
             }
-            None => match *proj.done {
-                true => EventStatePoll::Done(proj.current_state.clone()),
-                false => EventStatePoll::Ready(proj.current_state.clone()),
-            },
+            None => EventStatePoll::Ready(proj.current_state.clone()),
         }
     }
 }

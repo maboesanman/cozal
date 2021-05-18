@@ -337,7 +337,6 @@ where
                             }
                             EventStatePoll::Scheduled(_, state) => state,
                             EventStatePoll::Ready(state) => state,
-                            EventStatePoll::Done(state) => state,
                         };
 
                         // pass in our new state.
@@ -365,7 +364,6 @@ where
                             }
                             EventStatePoll::Scheduled(_, ()) => {}
                             EventStatePoll::Ready(()) => {}
-                            EventStatePoll::Done(()) => {}
                         }
                     }
                 };
@@ -438,7 +436,6 @@ where
                     }
                     EventStatePoll::Scheduled(time, state) => (state, Some(time)),
                     EventStatePoll::Ready(state) => (state, None),
-                    EventStatePoll::Done(state) => (state, None),
                 };
 
                 // get the buffer and update
