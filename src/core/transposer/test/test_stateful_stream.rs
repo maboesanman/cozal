@@ -6,7 +6,6 @@ use std::{pin::Pin, task::Poll};
 
 use crate::core::event_state_stream::{EventStatePoll, EventStateStream};
 
-
 #[pin_project]
 pub struct TestStatefulStream<Time: Ord + Copy, Event: Clone, State: Clone> {
     #[pin]
@@ -55,8 +54,7 @@ impl<Time: Ord + Copy, Event: Clone, State: Clone> EventStateStream
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         cx: &mut std::task::Context<'_>,
-    ) -> EventStatePoll<Self::Time, Self::Event, Self::State>
-    {
+    ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
         let mut proj = self.project();
         if *proj.working {
             return EventStatePoll::Pending;

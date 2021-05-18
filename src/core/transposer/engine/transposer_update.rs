@@ -1,4 +1,4 @@
-use futures::{Future, future::FusedFuture};
+use futures::{future::FusedFuture, Future};
 use std::{
     marker::PhantomPinned,
     mem::MaybeUninit,
@@ -8,13 +8,18 @@ use std::{
 
 use crate::core::Transposer;
 
-use super::{engine_context::{EngineContext}, lazy_state::LazyState, transposer_frame::TransposerFrame, update_result::UpdateResult};
+use super::{
+    engine_context::EngineContext, lazy_state::LazyState, transposer_frame::TransposerFrame,
+    update_result::UpdateResult,
+};
 
 /// future to initialize a TransposerFrame
 ///
 /// the initialization happens AS A SIDE EFFECT OF THIS.
 pub struct TransposerUpdate<'f, T: Transposer>
-where T::Scheduled: Clone {
+where
+    T::Scheduled: Clone,
+{
     // the curried future; placed first so it is dropped first.
     future: MaybeUninit<Box<dyn Future<Output = ()> + 'f>>,
 
@@ -29,8 +34,10 @@ where T::Scheduled: Clone {
 }
 
 // lots of unsafe shenanegans goin on up in here
-impl<'f, T: Transposer + Clone> TransposerUpdate<'f, T> 
-where T::Scheduled: Clone {
+impl<'f, T: Transposer + Clone> TransposerUpdate<'f, T>
+where
+    T::Scheduled: Clone,
+{
     pub fn new() -> Self {
         Self {
             future: MaybeUninit::uninit(),
@@ -47,7 +54,7 @@ where T::Scheduled: Clone {
     ) -> (
         &'s mut MaybeUninit<Box<dyn Future<Output = ()> + 'f>>,
         &'a mut T,
-        &'a mut EngineContext<'f, T>
+        &'a mut EngineContext<'f, T>,
     ) {
         // this is safe because we are adjusting the lifetime
         // to be the lifetime of the pinned struct
@@ -69,11 +76,10 @@ where T::Scheduled: Clone {
     }
 
     pub fn init_init(
-        mut self: Pin<&mut Self>, 
+        mut self: Pin<&mut Self>,
         frame: &'f mut TransposerFrame<'f, T>,
         state: &'f mut LazyState<T::InputState>,
-    )
-    {
+    ) {
         let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(frame, state);
         // initialize update_fut
         let fut = transposer_ref.init(cx_ref);
@@ -82,13 +88,12 @@ where T::Scheduled: Clone {
     }
 
     pub fn init_input(
-        mut self: Pin<&mut Self>, 
+        mut self: Pin<&mut Self>,
         frame: &'f mut TransposerFrame<'f, T>,
         state: &'f mut LazyState<T::InputState>,
         time: T::Time,
         inputs: &'f [T::Input],
-    )
-    {
+    ) {
         let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(frame, state);
         // initialize update_fut
         let fut = transposer_ref.handle_input(time, inputs, cx_ref);
@@ -97,13 +102,12 @@ where T::Scheduled: Clone {
     }
 
     pub fn init_schedule(
-        mut self: Pin<&mut Self>, 
+        mut self: Pin<&mut Self>,
         frame: &'f mut TransposerFrame<'f, T>,
         state: &'f mut LazyState<T::InputState>,
         time: T::Time,
         payload: T::Scheduled,
-    )
-    {
+    ) {
         let (future_ref, transposer_ref, cx_ref) = self.as_mut().setup_helper(frame, state);
         // initialize update_fut
         let fut = transposer_ref.handle_scheduled(time, payload, cx_ref);
@@ -119,9 +123,8 @@ impl<'a, T: Transposer> Future for TransposerUpdate<'a, T> {
         let this = unsafe { self.get_unchecked_mut() };
         assert!(!this.is_terminated);
 
-        let fut: Pin<&mut _> = unsafe {
-            Pin::new_unchecked(this.future.as_mut_ptr().as_mut().unwrap().as_mut())
-        };
+        let fut: Pin<&mut _> =
+            unsafe { Pin::new_unchecked(this.future.as_mut_ptr().as_mut().unwrap().as_mut()) };
         match fut.poll(cx) {
             Poll::Ready(()) => {
                 // destroy our future, polling after ready is not allowed anyway.

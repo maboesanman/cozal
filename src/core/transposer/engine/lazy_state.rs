@@ -1,4 +1,7 @@
-use std::{pin::Pin, task::{Context, Poll}};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use futures::Future;
 
@@ -18,15 +21,15 @@ impl<'a, S: Sized + Unpin> Future for &'a mut LazyState<S> {
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<S> {
         let mut result = Poll::Pending;
         take_mut::take_or_recover(
-    &mut self.get_mut().0,
-    || LazyStateInner::Pending, 
-    |inner| match inner {
+            &mut self.get_mut().0,
+            || LazyStateInner::Pending,
+            |inner| match inner {
                 LazyStateInner::Ready(state) => {
                     result = Poll::Ready(state);
                     LazyStateInner::Pending
-                },
+                }
                 _ => LazyStateInner::Requested,
-            }
+            },
         );
 
         result

@@ -1,6 +1,5 @@
 use crate::core::transposer::engine::pin_stack::PinStack;
 
-
 #[test]
 fn basic_test() {
     let mut pin_stack = PinStack::new();
@@ -26,7 +25,7 @@ fn no_move() {
     // vec changes the address
     let mut vec = Vec::new();
     let mut pin_stack = PinStack::new();
-    
+
     for i in 0..69 {
         vec.push(i);
         pin_stack.push(i);

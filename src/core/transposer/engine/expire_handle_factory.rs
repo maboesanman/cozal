@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 use crate::core::transposer::expire_handle::ExpireHandle;
+use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 
 #[derive(Debug)]
 pub struct ExpireHandleFactory(AtomicU64);

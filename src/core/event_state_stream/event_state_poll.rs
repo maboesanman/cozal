@@ -13,9 +13,9 @@ where
     /// The promise that progress can be made only applies if polled at the same time.
     Pending,
 
-    /// An event was previously emitted which is now invalid 
-    /// 
-    /// 
+    /// An event was previously emitted which is now invalid
+    ///
+    ///
     Rollback(T),
 
     /// Represents that a value is ready and does not occur after the time polled
@@ -26,17 +26,17 @@ where
     /// When a function returns `Scheduled`, the function *may never wake the task*.
     /// the contract is that repeated polling will continue to return scheduled(t) for the same t
     /// until new information becomes available or until poll is called
-    /// with a new, greater value of t. 
+    /// with a new, greater value of t.
     Scheduled(T, S),
 
     /// Represents that no events will be emitted unless there are new inputs.
-    /// 
+    ///
     /// This is distinct from `Pending` because the the responsibility of being awoken is
     /// pushed to the input stream.
     Ready(S),
 
     /// Represents the end of the stream.
-    /// 
+    ///
     /// the final state is returned.
     Done(S),
 }

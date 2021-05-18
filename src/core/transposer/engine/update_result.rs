@@ -2,8 +2,6 @@ use crate::core::Transposer;
 
 use super::engine_context::EngineContext;
 
-
-
 pub struct UpdateResult<T: Transposer> {
     pub outputs: Vec<T::Output>,
     pub exit: bool,

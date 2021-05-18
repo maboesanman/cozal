@@ -52,10 +52,7 @@ pub trait Transposer: Sized {
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`InitContext`] documentation.
-    async fn init(
-        &mut self,
-        cx: &mut dyn InitContext<'_, Self>
-    );
+    async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>);
 
     /// The function to respond to input.
     ///

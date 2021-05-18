@@ -1,10 +1,19 @@
-use std::{cmp::{self, Ordering}, marker::PhantomPinned, mem::MaybeUninit, pin::Pin, task::{Context, Poll}};
+use futures::{future::FusedFuture, Future};
 use pin_project::pin_project;
-use futures::{Future, future::{FusedFuture}};
+use std::{
+    cmp::{self, Ordering},
+    marker::PhantomPinned,
+    mem::MaybeUninit,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use crate::core::Transposer;
 
-use super::{engine_time::EngineTime, input_buffer::InputBuffer, lazy_state::LazyState, transposer_frame::TransposerFrame, transposer_update::TransposerUpdate};
+use super::{
+    engine_time::EngineTime, input_buffer::InputBuffer, lazy_state::LazyState,
+    transposer_frame::TransposerFrame, transposer_update::TransposerUpdate,
+};
 
 // pointer needs to be the top argument as its target may have pointers into inputs or transposer.
 #[pin_project]
@@ -19,7 +28,7 @@ pub struct UpdateItem<'a, T: Transposer> {
 pub enum UpdateItemData<T: Transposer> {
     Init(Box<T>),
     Input(Box<[T::Input]>),
-    Schedule
+    Schedule,
 }
 
 pub enum EventsEmitted {
@@ -63,7 +72,8 @@ pub struct BufferedItem<'a, T: Transposer> {
 
 impl<'a, T: Transposer> BufferedItem<'a, T> {
     pub fn new(transposer: T) -> BufferedItem<'a, T>
-        where T: Clone
+    where
+        T: Clone,
     {
         BufferedItem {
             update_future: MaybeUninit::uninit(),
@@ -75,7 +85,8 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
 
     /// set up a new buffered item from the previous one.
     pub fn dup(&self) -> Self
-        where T: Clone
+    where
+        T: Clone,
     {
         debug_assert!(self.is_terminated());
 
@@ -95,11 +106,9 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
     }
 
     /// initialize the pointers and futures in a newly pinned buffered item.
-    pub fn init(
-        self: Pin<&mut Self>,
-        update_item: &'a UpdateItem<'a, T>,
-    )
-        where T: Clone
+    pub fn init(self: Pin<&mut Self>, update_item: &'a UpdateItem<'a, T>)
+    where
+        T: Clone,
     {
         let this = self.project();
 
@@ -134,7 +143,12 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
                 match transposer_frame.init_next(update_item) {
                     Some((time_again, event_payload)) => {
                         debug_assert!(*time == time_again);
-                        update_future.init_schedule(transposer_frame, input_state, time.time, event_payload);
+                        update_future.init_schedule(
+                            transposer_frame,
+                            input_state,
+                            time.time,
+                            event_payload,
+                        );
                     }
                     None => unreachable!(),
                 }
@@ -143,8 +157,12 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
         }
     }
 
-    pub fn next_update_item(&self, input_buffer: &mut InputBuffer<T::Time, T::Input>) -> Option<UpdateItem<'a, T>>
-        where T: Clone
+    pub fn next_update_item(
+        &self,
+        input_buffer: &mut InputBuffer<T::Time, T::Input>,
+    ) -> Option<UpdateItem<'a, T>>
+    where
+        T: Clone,
     {
         debug_assert!(self.is_terminated());
 
@@ -157,12 +175,10 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
                 debug_assert!(time.raw_time() == new_time);
                 UpdateItemData::Input(inputs.into_boxed_slice())
             }
-            EngineTime::Schedule(_) => {
-                UpdateItemData::Schedule
-            }
+            EngineTime::Schedule(_) => UpdateItemData::Schedule,
         };
 
-        Some(UpdateItem{
+        Some(UpdateItem {
             time,
             data,
             events_emitted: EventsEmitted::Pending,
@@ -187,13 +203,13 @@ impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
         let update_future: Pin<&mut TransposerUpdate<'a, T>> = update_future;
 
         let input_state: &mut LazyState<T::InputState> = input_state;
-        
+
         if update_future.is_terminated() {
-            return Poll::Pending
+            return Poll::Pending;
         }
 
         if input_state.requested() {
-            return Poll::Pending
+            return Poll::Pending;
         }
 
         match update_future.poll(cx) {
@@ -201,7 +217,7 @@ impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
                 // TODO handle exit result
                 Poll::Ready(result.outputs)
             }
-            Poll::Pending => Poll::Pending
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -209,8 +225,6 @@ impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
 impl<'a, T: Transposer> FusedFuture for BufferedItem<'a, T> {
     fn is_terminated(&self) -> bool {
         // SAFETY: init must be run before this, but it should have been.
-        unsafe {
-            self.update_future.assume_init_ref()
-        }.is_terminated()
+        unsafe { self.update_future.assume_init_ref() }.is_terminated()
     }
 }

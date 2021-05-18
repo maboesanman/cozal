@@ -1,17 +1,12 @@
+use crate::core::{transposer::TransposerEngine, Transposer};
 
-
-use crate::core::{Transposer, transposer::TransposerEngine};
-
+use super::EventStateStream;
 #[cfg(realtime)]
 use super::{timestamp::Timestamp, RealtimeStream};
-use super::{EventStateStream};
-
-
 
 impl<S> EventStateStreamExt for S where S: EventStateStream {}
 
 pub trait EventStateStreamExt: EventStateStream {
-
     /// Adapter for converting a schedule_stream into one that yields the items in realtime.
     ///
     /// a reference must be given for the conversion from [`S::Time`](super::schedule_stream::ScheduleStream::Time) to [`Instant`](std::time::Instant).
@@ -22,21 +17,24 @@ pub trait EventStateStreamExt: EventStateStream {
     /// are already realtime and need no reference.
     #[cfg(realtime)]
     fn into_realtime(self, reference: <Self::Time as Timestamp>::Reference) -> RealtimeStream<Self>
-        where <Self as EventStateStream>::Time: Timestamp
+    where
+        <Self as EventStateStream>::Time: Timestamp,
     {
         RealtimeStream::new(self, reference)
     }
 
-    fn into_engine<'tr, T: Transposer<
-        Time=Self::Time,
-        Input=Self::Event,
-        InputState=Self::State,
-    > + 'tr,
-    const N: usize>(self, initial: T) -> TransposerEngine<'tr, T, Self, N>
-        where
-            T: Clone,
-            T::Scheduled: Clone,
-            Self: Sized,
+    fn into_engine<
+        'tr,
+        T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State> + 'tr,
+        const N: usize,
+    >(
+        self,
+        initial: T,
+    ) -> TransposerEngine<'tr, T, Self, N>
+    where
+        T: Clone,
+        T::Scheduled: Clone,
+        Self: Sized,
     {
         TransposerEngine::new(self, initial)
     }

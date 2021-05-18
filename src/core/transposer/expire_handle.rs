@@ -1,5 +1,4 @@
-
-use std::{num::NonZeroU64};
+use std::num::NonZeroU64;
 
 /// this is the handle that you use to expire scheduled events.
 #[derive(Hash, Eq, PartialEq, Debug, Copy)]

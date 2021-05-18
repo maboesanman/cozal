@@ -2,16 +2,27 @@ use std::pin::Pin;
 
 use futures::Future;
 
-use crate::core::{Transposer, transposer::{context::{EmitEventContext, ExitContext, ExpireEventContext, ExpireEventError, InputStateContext, ScheduleEventContext, ScheduleEventError}, expire_handle::ExpireHandle}};
+use crate::core::{
+    transposer::{
+        context::{
+            EmitEventContext, ExitContext, ExpireEventContext, ExpireEventError, InputStateContext,
+            ScheduleEventContext, ScheduleEventError,
+        },
+        expire_handle::ExpireHandle,
+    },
+    Transposer,
+};
 
-use super::{lazy_state::{LazyState}, transposer_frame::TransposerFrameInternal};
+use super::{lazy_state::LazyState, transposer_frame::TransposerFrameInternal};
 
 /// This is the interface through which you can do a variety of functions in your transposer.
 ///
 /// the primary features are scheduling and expiring events,
 /// though there are more methods to interact with the engine.
-pub struct EngineContext<'a, T: Transposer> 
-where T::Scheduled: Clone {
+pub struct EngineContext<'a, T: Transposer>
+where
+    T::Scheduled: Clone,
+{
     // mutable references into the current transposer frame
     frame_internal: &'a mut TransposerFrameInternal<'a, T>,
 
@@ -24,7 +35,10 @@ where T::Scheduled: Clone {
 }
 
 impl<'a, T: Transposer> EngineContext<'a, T> {
-    pub(super) fn new(frame_internal: &'a mut TransposerFrameInternal<'a, T>, input_state: &'a mut LazyState<T::InputState>) -> Self {
+    pub(super) fn new(
+        frame_internal: &'a mut TransposerFrameInternal<'a, T>,
+        input_state: &'a mut LazyState<T::InputState>,
+    ) -> Self {
         Self {
             frame_internal,
             input_state,
@@ -58,9 +72,11 @@ impl<'a, T: Transposer> ScheduleEventContext<T> for EngineContext<'a, T> {
     }
 }
 
-
 impl<'a, T: Transposer> ExpireEventContext<T> for EngineContext<'a, T> {
-    fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), ExpireEventError> {
+    fn expire_event(
+        &mut self,
+        handle: ExpireHandle,
+    ) -> Result<(T::Time, T::Scheduled), ExpireEventError> {
         self.frame_internal.expire_event(handle)
     }
 }
@@ -77,8 +93,10 @@ impl<'a, T: Transposer> ExitContext for EngineContext<'a, T> {
     }
 }
 
-pub struct EngineRebuildContext<'a, T: Transposer> 
-where T::Scheduled: Clone {
+pub struct EngineRebuildContext<'a, T: Transposer>
+where
+    T::Scheduled: Clone,
+{
     // mutable references into the current transposer frame
     frame_internal: &'a mut TransposerFrameInternal<'a, T>,
 
@@ -111,15 +129,18 @@ impl<'a, T: Transposer> ScheduleEventContext<T> for EngineRebuildContext<'a, T> 
 }
 
 impl<'a, T: Transposer> ExpireEventContext<T> for EngineRebuildContext<'a, T> {
-    fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), ExpireEventError> {
+    fn expire_event(
+        &mut self,
+        handle: ExpireHandle,
+    ) -> Result<(T::Time, T::Scheduled), ExpireEventError> {
         self.frame_internal.expire_event(handle)
     }
 }
 
 impl<'a, T: Transposer> EmitEventContext<T> for EngineRebuildContext<'a, T> {
-    fn emit_event(&mut self, _payload: T::Output) { }
+    fn emit_event(&mut self, _payload: T::Output) {}
 }
 
 impl<'a, T: Transposer> ExitContext for EngineRebuildContext<'a, T> {
-    fn exit(&mut self) { }
+    fn exit(&mut self) {}
 }

@@ -10,11 +10,13 @@ pub struct SparseBufferStack<'stack, I: Sized + 'stack, B: Sized + 'stack, const
     _marker: PhantomData<&'stack I>,
 }
 
-impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferStack<'stack, I, B, N> {
+impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
+    SparseBufferStack<'stack, I, B, N>
+{
     pub fn new<Con, Init>(stack_item: I, constructor: Con, initializer: Init) -> Self
-        where
-            Con: FnOnce(&'stack I) -> B,
-            Init: FnOnce(Pin<&mut B>, &'stack I),
+    where
+        Con: FnOnce(&'stack I) -> B,
+        Init: FnOnce(Pin<&mut B>, &'stack I),
     {
         let mut stack = PinStack::new();
         stack.push(StackItem {
@@ -28,7 +30,8 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         let stack_item_ref: &'stack StackItem<I> = unsafe { stack_item_ref.as_ref().unwrap() };
         let stack_item_ref = &stack_item_ref.item;
 
-        let mut buffer: [BufferItem<'stack, I, B>; N] = array_init::array_init(|_| BufferItem::new_zeroed());
+        let mut buffer: [BufferItem<'stack, I, B>; N] =
+            array_init::array_init(|_| BufferItem::new_zeroed());
         buffer[0].replace_with(0, constructor(stack_item_ref));
         let buffer_item_ref = buffer.get_mut(0).unwrap();
 
@@ -49,7 +52,8 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
     }
 
     pub fn push<Con>(self: Pin<&mut Self>, constructor: Con)
-        where Con: FnOnce(&'stack I) -> I
+    where
+        Con: FnOnce(&'stack I) -> I,
     {
         // SAFETY: we don't touch the buffered items here.
         let this = unsafe { self.get_unchecked_mut() };
@@ -63,7 +67,7 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         let item = constructor(&top);
         this.stack.push(StackItem {
             buffer_index: 0,
-            item
+            item,
         });
     }
 
@@ -87,17 +91,23 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
     // }
 
     // constructor takes a reference to the stack item, and a reference to the previous buffered item.
-    pub fn buffer<Dup, Refurb, Init>(self: Pin<&mut Self>, stack_index: usize, duplicator: Dup, refurbisher: Refurb, initializer: Init) -> Result<(), ()>
-        where
-            Dup: FnOnce(&B) -> B, // reference to previous buffered item, use it to create a new one
-            Refurb: FnOnce(&mut B), // reference to previous buffered item, prepare for in place updates
-            Init: FnOnce(Pin<&mut B>, &'stack I), // reference to stack item and pinned mut reference to current buffer
+    pub fn buffer<Dup, Refurb, Init>(
+        self: Pin<&mut Self>,
+        stack_index: usize,
+        duplicator: Dup,
+        refurbisher: Refurb,
+        initializer: Init,
+    ) -> Result<(), ()>
+    where
+        Dup: FnOnce(&B) -> B, // reference to previous buffered item, use it to create a new one
+        Refurb: FnOnce(&mut B), // reference to previous buffered item, prepare for in place updates
+        Init: FnOnce(Pin<&mut B>, &'stack I), // reference to stack item and pinned mut reference to current buffer
     {
         // SAFETY: we don't move the buffered items here; just drop them.
         let this = unsafe { self.get_unchecked_mut() };
 
         let buffer_index_to_replace = this.get_least_useful_buffer_index();
-        
+
         let stack_item = this.stack.get_mut(stack_index).ok_or(())?;
         let stack_item = unsafe { stack_item.get_unchecked_mut() };
         stack_item.buffer_index = buffer_index_to_replace;
@@ -114,7 +124,9 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
             let prev_buffer_item = if prev_stack_item.buffer_index < buffer_index_to_replace {
                 before.get(prev_stack_item.buffer_index).unwrap()
             } else {
-                after.get(prev_stack_item.buffer_index - buffer_index_to_replace - 1).unwrap()
+                after
+                    .get(prev_stack_item.buffer_index - buffer_index_to_replace - 1)
+                    .unwrap()
             };
             let item = prev_buffer_item.get_buffer(stack_index - 1).ok_or(())?;
 
@@ -125,14 +137,14 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         }
 
         initializer(
-            unsafe { Pin::new_unchecked(buffer_item.item.assume_init_mut())},
-            &&stack_item.item, 
+            unsafe { Pin::new_unchecked(buffer_item.item.assume_init_mut()) },
+            &&stack_item.item,
         );
 
         Ok(())
     }
 
-    pub fn get(&self, stack_index: usize) -> Option<(&I, Option<&B>)>  {
+    pub fn get(&self, stack_index: usize) -> Option<(&I, Option<&B>)> {
         let stack_item = self.stack.get(stack_index)?;
         let buffer_item = self.buffer.get(stack_item.buffer_index);
         let stack_item = &stack_item.item;
@@ -140,7 +152,10 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         Some((stack_item, buffer_item))
     }
 
-    pub fn get_pinned_mut(self: Pin<&mut Self>, stack_index: usize) -> Option<(Pin<&mut I>, Option<Pin<&mut B>>)> {
+    pub fn get_pinned_mut(
+        self: Pin<&mut Self>,
+        stack_index: usize,
+    ) -> Option<(Pin<&mut I>, Option<Pin<&mut B>>)> {
         // SAFETY: we never move the buffered item after making it, so we can safely return a pinned pointer to it.
         let this = unsafe { self.get_unchecked_mut() };
 
@@ -150,41 +165,53 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         let buffer_item = buffer_item.map(|x| x.get_buffer_mut(stack_index)).flatten();
         // SAFETY: we never move the buffered item after making it, so we can safely return a pinned pointer to it.
         let buffer_item = buffer_item.map(|x| unsafe { Pin::new_unchecked(x) });
-        
+
         Some((stack_item, buffer_item))
     }
 
     pub fn last_buffered_index_by<K, F>(&self, reference: K, func: F) -> usize
     where
-        K: Ord, 
-        F: Fn(&I) -> K
+        K: Ord,
+        F: Fn(&I) -> K,
     {
-        let range = self.stack.range_by(..=reference, |stack_item| func(&stack_item.item));
-        let (last_buffered_stack_index, _) = range.rev().find(|(stack_index, stack_item)| {
-
-            // this stack item has a buffered state
-            self.buffer.get(stack_item.buffer_index).unwrap().stack_index == *stack_index
-        }).unwrap();
+        let range = self
+            .stack
+            .range_by(..=reference, |stack_item| func(&stack_item.item));
+        let (last_buffered_stack_index, _) = range
+            .rev()
+            .find(|(stack_index, stack_item)| {
+                // this stack item has a buffered state
+                self.buffer
+                    .get(stack_item.buffer_index)
+                    .unwrap()
+                    .stack_index
+                    == *stack_index
+            })
+            .unwrap();
 
         last_buffered_stack_index
     }
 
     pub fn last_index_by<K, F>(&self, reference: K, func: F) -> usize
     where
-        K: Ord, 
-        F: Fn(&I) -> K
+        K: Ord,
+        F: Fn(&I) -> K,
     {
-        let range = self.stack.range_by(..=reference, |stack_item| func(&stack_item.item));
+        let range = self
+            .stack
+            .range_by(..=reference, |stack_item| func(&stack_item.item));
         let (index, _) = range.last().unwrap();
         index
     }
 
     pub fn find<F>(&self, func: F) -> Option<&I>
     where
-        F: Fn(&I) -> bool
+        F: Fn(&I) -> bool,
     {
         let mut range = self.stack.range_by(.., |stack_item| 1);
-        range.find(|(_, item)| func(&item.item)).map(|(_, item)| &item.item)
+        range
+            .find(|(_, item)| func(&item.item))
+            .map(|(_, item)| &item.item)
     }
 
     pub fn pop(self: Pin<&mut Self>) -> Option<I> {
@@ -210,7 +237,7 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
         if expected_stack_index == usize::MAX {
             panic!("tried to drop an empty StateBufferItem")
         }
-        
+
         if let Some(item) = self.buffer.get_mut(buffer_index) {
             if expected_stack_index == item.stack_index {
                 unsafe { item.assume_init_drop() }
@@ -222,7 +249,11 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> SparseBufferS
     fn get_least_useful_buffer_index(&self) -> usize {
         let iter = self.buffer.iter().enumerate();
         let index = (self.stack.len() - 1) as isize;
-        let (buffer_index, _) = iter.min_by_key(|&(_, x)| (index - x.stack_index as isize).leading_zeros() + x.stack_index.trailing_zeros()).unwrap();
+        let (buffer_index, _) = iter
+            .min_by_key(|&(_, x)| {
+                (index - x.stack_index as isize).leading_zeros() + x.stack_index.trailing_zeros()
+            })
+            .unwrap();
 
         buffer_index
     }
@@ -240,9 +271,7 @@ struct StackItem<I: Sized> {
     item: I,
 }
 
-impl<I: Sized> StackItem<I> {
-    
-}
+impl<I: Sized> StackItem<I> {}
 
 struct BufferItem<'stack, I: Sized + 'stack, B: Sized + 'stack> {
     // usize::MAX marks this as an empty buffer.

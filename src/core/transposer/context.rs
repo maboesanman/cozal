@@ -2,19 +2,50 @@ use std::pin::Pin;
 
 use futures::Future;
 
-use super::{Transposer, expire_handle::ExpireHandle};
+use super::{expire_handle::ExpireHandle, Transposer};
 
-pub trait InitContext<'a, T: Transposer>: InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> {}
-impl<'a, U, T: Transposer> InitContext<'a, T> for U
-where U: InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> {}
+pub trait InitContext<'a, T: Transposer>:
+    InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T>
+{
+}
+impl<'a, U, T: Transposer> InitContext<'a, T> for U where
+    U: InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T>
+{
+}
 
-pub trait InputContext<'a, T: Transposer>: InputStateContext<'a, T> + ScheduleEventContext<T> + ExpireEventContext<T> + EmitEventContext<T> + ExitContext {}
-impl<'a, U, T: Transposer> InputContext<'a, T> for U
-where U:  InputStateContext<'a, T> + ScheduleEventContext<T> + ExpireEventContext<T> + EmitEventContext<T> + ExitContext {}
+pub trait InputContext<'a, T: Transposer>:
+    InputStateContext<'a, T>
+    + ScheduleEventContext<T>
+    + ExpireEventContext<T>
+    + EmitEventContext<T>
+    + ExitContext
+{
+}
+impl<'a, U, T: Transposer> InputContext<'a, T> for U where
+    U: InputStateContext<'a, T>
+        + ScheduleEventContext<T>
+        + ExpireEventContext<T>
+        + EmitEventContext<T>
+        + ExitContext
+{
+}
 
-pub trait ScheduleContext<'a, T: Transposer>: InputStateContext<'a, T> + ScheduleEventContext<T> + ExpireEventContext<T> + EmitEventContext<T> + ExitContext {}
-impl<'a, U, T: Transposer> ScheduleContext<'a, T> for U
-where U:  InputStateContext<'a, T> + ScheduleEventContext<T> + ExpireEventContext<T> + EmitEventContext<T> + ExitContext {}
+pub trait ScheduleContext<'a, T: Transposer>:
+    InputStateContext<'a, T>
+    + ScheduleEventContext<T>
+    + ExpireEventContext<T>
+    + EmitEventContext<T>
+    + ExitContext
+{
+}
+impl<'a, U, T: Transposer> ScheduleContext<'a, T> for U where
+    U: InputStateContext<'a, T>
+        + ScheduleEventContext<T>
+        + ExpireEventContext<T>
+        + EmitEventContext<T>
+        + ExitContext
+{
+}
 
 pub trait InputStateContext<'a, T: Transposer> {
     fn get_input_state(&mut self) -> Pin<&mut dyn Future<Output = T::InputState>>;
@@ -39,7 +70,10 @@ pub enum ScheduleEventError {
 }
 
 pub trait ExpireEventContext<T: Transposer> {
-    fn expire_event(&mut self, handle: ExpireHandle) -> Result<(T::Time, T::Scheduled), ExpireEventError>;
+    fn expire_event(
+        &mut self,
+        handle: ExpireHandle,
+    ) -> Result<(T::Time, T::Scheduled), ExpireEventError>;
 }
 pub enum ExpireEventError {
     ExpiredEvent,

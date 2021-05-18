@@ -1,6 +1,5 @@
 use std::{marker::PhantomData, mem::MaybeUninit, ops::RangeBounds, pin::Pin, usize};
 
-
 pub struct PinStack<T: Sized> {
     length: usize,
     chunks: Vec<Box<[MaybeUninit<T>]>>,
@@ -8,10 +7,7 @@ pub struct PinStack<T: Sized> {
 
 fn get_pos(index: usize) -> (usize, usize) {
     let y = usize::BITS - index.leading_zeros();
-    (
-        y as usize,
-        index - (1 << y >> 1)
-    )
+    (y as usize, index - (1 << y >> 1))
 }
 
 fn chunk_size(chunk_index: usize) -> usize {
@@ -167,10 +163,11 @@ where
 impl<'a, T: Sized, K, F> RangeMutBy<'a, T, K, F>
 where
     K: Ord,
-    F: Fn(&T) -> K
+    F: Fn(&T) -> K,
 {
     fn new<R>(pin_stack: &'a PinStack<T>, range: R, func: F) -> Self
-        where R: RangeBounds<K>
+    where
+        R: RangeBounds<K>,
     {
         if pin_stack.length == 0 {
             return Self {
@@ -180,7 +177,7 @@ where
                 done: true,
 
                 _marker: PhantomData,
-            }
+            };
         }
         let mut low = 0;
         let mut high = pin_stack.length - 1;
@@ -189,7 +186,7 @@ where
                 while low < high {
                     let m = (low + high) / 2;
                     let k = func(pin_stack.get(m).unwrap());
-                    
+
                     match k.cmp(x) {
                         std::cmp::Ordering::Less => {
                             low = m + 1;
@@ -209,7 +206,7 @@ where
                 while low < high {
                     let m = (low + high) / 2;
                     let k = func(pin_stack.get(m).unwrap());
-                    
+
                     match k.cmp(x) {
                         std::cmp::Ordering::Less => {
                             low = m + 1;
@@ -225,7 +222,7 @@ where
 
                 low
             }
-            std::ops::Bound::Unbounded => low
+            std::ops::Bound::Unbounded => low,
         };
 
         let mut low = 0;
@@ -235,7 +232,7 @@ where
                 while low < high {
                     let m = (low + high + 1) / 2;
                     let k = func(pin_stack.get(m).unwrap());
-                    
+
                     match k.cmp(x) {
                         std::cmp::Ordering::Less => {
                             low = m;
@@ -255,7 +252,7 @@ where
                 while low < high {
                     let m = (low + high + 1) / 2;
                     let k = func(pin_stack.get(m).unwrap());
-                    
+
                     match k.cmp(x) {
                         std::cmp::Ordering::Less => {
                             low = m;
@@ -271,7 +268,7 @@ where
 
                 low
             }
-            std::ops::Bound::Unbounded => high
+            std::ops::Bound::Unbounded => high,
         };
 
         if front > back {
@@ -282,24 +279,24 @@ where
                 done: true,
 
                 _marker: PhantomData,
-            }
+            };
         }
-        
+
         return Self {
             pin_stack,
             front,
-            back, 
+            back,
             done: false,
 
             _marker: PhantomData,
-        }
+        };
     }
 }
 
 impl<'a, T: Sized, K, F> Iterator for RangeMutBy<'a, T, K, F>
 where
     K: Ord,
-    F: Fn(&T) -> K
+    F: Fn(&T) -> K,
 {
     type Item = (usize, &'a T);
 
@@ -322,7 +319,7 @@ where
 impl<'a, T: Sized, K, F> DoubleEndedIterator for RangeMutBy<'a, T, K, F>
 where
     K: Ord,
-    F: Fn(&T) -> K
+    F: Fn(&T) -> K,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -332,7 +329,7 @@ where
         let item = self.pin_stack.get(index).unwrap();
         let item = item as *const T;
         let item = unsafe { item.as_ref().unwrap() };
-        
+
         if self.back == 0 {
             self.done = true;
         } else {

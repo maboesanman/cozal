@@ -1,13 +1,11 @@
-use core::task::Context;
 use core::pin::Pin;
+use core::task::Context;
 use pin_project::pin_project;
 
 use super::{EventStatePoll, EventStateStream};
 
-
 #[pin_project]
-pub struct EventStateMapStream<St: EventStateStream, E, S> 
-{
+pub struct EventStateMapStream<St: EventStateStream, E, S> {
     #[pin]
     stream: St,
 

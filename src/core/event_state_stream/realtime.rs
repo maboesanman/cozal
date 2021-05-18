@@ -1,4 +1,4 @@
-use super::{EventStatePoll, EventStateStream, timestamp::Timestamp};
+use super::{timestamp::Timestamp, EventStatePoll, EventStateStream};
 use futures::{Future, Stream};
 use pin_project::pin_project;
 use std::{
@@ -72,7 +72,7 @@ where
                 *this.state = Some(s);
                 Poll::Ready(None)
             }
-            EventStatePoll::Rollback(_t) => todo!()
+            EventStatePoll::Rollback(_t) => todo!(),
         }
     }
 
