@@ -14,10 +14,7 @@ impl<'a, U, T: Transposer> InitContext<'a, T> for U where
 }
 
 pub trait InputContext<'a, T: Transposer>:
-    InputStateContext<'a, T>
-    + ScheduleEventContext<T>
-    + ExpireEventContext<T>
-    + EmitEventContext<T>
+    InputStateContext<'a, T> + ScheduleEventContext<T> + ExpireEventContext<T> + EmitEventContext<T>
 {
 }
 impl<'a, U, T: Transposer> InputContext<'a, T> for U where
@@ -29,10 +26,7 @@ impl<'a, U, T: Transposer> InputContext<'a, T> for U where
 }
 
 pub trait ScheduleContext<'a, T: Transposer>:
-    InputStateContext<'a, T>
-    + ScheduleEventContext<T>
-    + ExpireEventContext<T>
-    + EmitEventContext<T>
+    InputStateContext<'a, T> + ScheduleEventContext<T> + ExpireEventContext<T> + EmitEventContext<T>
 {
 }
 impl<'a, U, T: Transposer> ScheduleContext<'a, T> for U where

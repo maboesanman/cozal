@@ -51,10 +51,7 @@ impl<S: Sized + Unpin> LazyState<S> {
     }
 
     pub fn requested(&self) -> bool {
-        match self.0 {
-            LazyStateInner::Requested => true,
-            _ => false,
-        }
+        matches!(self.0, LazyStateInner::Requested)
     }
 
     pub fn destroy(self) -> Option<S> {
@@ -63,5 +60,11 @@ impl<S: Sized + Unpin> LazyState<S> {
             LazyStateInner::Pending => None,
             LazyStateInner::Requested => None,
         }
+    }
+}
+
+impl<S: Sized + Unpin> Default for LazyState<S> {
+    fn default() -> Self {
+        Self::new()
     }
 }

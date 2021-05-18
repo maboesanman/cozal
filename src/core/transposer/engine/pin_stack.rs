@@ -11,7 +11,7 @@ fn get_pos(index: usize) -> (usize, usize) {
 }
 
 fn chunk_size(chunk_index: usize) -> usize {
-    (1 << chunk_index) + 1 >> 1
+    ((1 << chunk_index) + 1) >> 1
 }
 
 #[allow(unused)]
@@ -127,7 +127,7 @@ impl<T: Sized> PinStack<T> {
         }
     }
 
-    pub fn range_by<'a, K, F, R>(&'a self, range: R, func: F) -> RangeMutBy<'a, T, K, F>
+    pub fn range_by<K, F, R>(&self, range: R, func: F) -> RangeMutBy<'_, T, K, F>
     where
         K: Ord,
         F: Fn(&T) -> K,
@@ -273,24 +273,24 @@ where
         };
 
         if front > back {
-            return Self {
+            Self {
                 pin_stack,
                 front: 0,
                 back: 0,
                 done: true,
 
                 _marker: PhantomData,
-            };
+            }
+        } else {
+            Self {
+                pin_stack,
+                front,
+                back,
+                done: false,
+
+                _marker: PhantomData,
+            }
         }
-
-        return Self {
-            pin_stack,
-            front,
-            back,
-            done: false,
-
-            _marker: PhantomData,
-        };
     }
 }
 

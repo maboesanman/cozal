@@ -144,9 +144,9 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
         Self {
             stream,
 
-            rough_buffer_size,
             left,
             right,
+            rough_buffer_size,
         }
     }
 

@@ -9,10 +9,11 @@ use crate::core::{
 };
 
 use super::{
+    buffered_item::BufferedItem,
     engine_time::EngineTime,
     input_buffer::InputBuffer,
     sparse_buffer_stack::SparseBufferStack,
-    state_map::{BufferedItem, EventsEmitted, UpdateItem, UpdateItemData},
+    update_item::{EventsEmitted, UpdateItem, UpdateItemData},
 };
 
 type StateMap<'map, T, const N: usize> =
@@ -104,7 +105,7 @@ where
         time: EngineTime<'map, T::Time>,
         outputs: Vec<T::Output>,
     ) {
-        if let Some(_) = output_buffer.insert(time, outputs) {
+        if output_buffer.insert(time, outputs).is_some() {
             // enginetimes are supposed to be unique, so if these are the same something bad has happened.
             unreachable!()
         }

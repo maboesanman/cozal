@@ -47,6 +47,7 @@ where
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn setup_helper<'s, 'a>(
         self: Pin<&'s mut Self>,
         frame: &'f mut TransposerFrame<'f, T>,

@@ -8,10 +8,10 @@ use crate::core::{
     Transposer,
 };
 
-use super::engine_time::EngineTime;
+use super::{engine_time::EngineTime, update_item::UpdateItem};
 use super::{
     engine_time::EngineTimeSchedule, expire_handle_factory::ExpireHandleFactory,
-    input_buffer::InputBuffer, state_map::UpdateItem,
+    input_buffer::InputBuffer,
 };
 
 use im::{HashMap, OrdMap};
@@ -55,7 +55,7 @@ where
         input_buffer: &InputBuffer<T::Time, T::Input>,
     ) -> Option<EngineTime<'a, T::Time>> {
         let next_input_time = input_buffer.first_time();
-        let next_input_time = next_input_time.map(|time| EngineTime::Input(time.clone()));
+        let next_input_time = next_input_time.map(EngineTime::Input);
 
         let next_schedule_time = self.internal.schedule.get_min().map(|(k, _)| k);
         let next_schedule_time = next_schedule_time.map(|time| EngineTime::Schedule(time.clone()));
