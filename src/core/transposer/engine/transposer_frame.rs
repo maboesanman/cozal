@@ -11,7 +11,7 @@ use crate::core::{
 use super::engine_time::EngineTime;
 use super::{
     engine_time::EngineTimeSchedule, expire_handle_factory::ExpireHandleFactory,
-    input_buffer::InputBuffer, state_map::UpdateItem, transposer_update::TransposerUpdate,
+    input_buffer::InputBuffer, state_map::UpdateItem,
 };
 
 use im::{HashMap, OrdMap};
@@ -57,7 +57,7 @@ where
         let next_input_time = input_buffer.first_time();
         let next_input_time = next_input_time.map(|time| EngineTime::Input(time.clone()));
 
-        let next_schedule_time = self.internal.schedule.get_min().map(|(k, v)| k);
+        let next_schedule_time = self.internal.schedule.get_min().map(|(k, _)| k);
         let next_schedule_time = next_schedule_time.map(|time| EngineTime::Schedule(time.clone()));
 
         match (next_input_time, next_schedule_time) {
@@ -71,18 +71,6 @@ where
             },
         }
     }
-}
-
-pub enum PrepareUpdateResult<'a, T: Transposer> {
-    Input {
-        update: TransposerUpdate<'a, T>,
-    },
-    Schedule {
-        update: TransposerUpdate<'a, T>,
-        time: T::Time,
-        payload: T::Scheduled,
-    },
-    None,
 }
 
 #[derive(Clone)]

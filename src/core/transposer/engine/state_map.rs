@@ -1,7 +1,6 @@
 use futures::{future::FusedFuture, Future};
 use pin_project::pin_project;
 use std::{
-    cmp::{self, Ordering},
     marker::PhantomPinned,
     mem::MaybeUninit,
     pin::Pin,

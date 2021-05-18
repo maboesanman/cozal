@@ -11,12 +11,9 @@ use crate::core::{
 use super::{
     engine_time::EngineTime,
     input_buffer::InputBuffer,
-    lazy_state::LazyState,
     sparse_buffer_stack::SparseBufferStack,
     state_map::{BufferedItem, EventsEmitted, UpdateItem, UpdateItemData},
-    transposer_frame::TransposerFrame,
-    transposer_update::TransposerUpdate,
-}; //, state_map::StateMap};
+};
 
 type StateMap<'map, T, const N: usize> =
     SparseBufferStack<'map, UpdateItem<'map, T>, BufferedItem<'map, T>, N>;
@@ -118,29 +115,6 @@ where
     ) -> Option<&'a EngineTime<'map, T::Time>> {
         let (key, _) = output_buffer.first_key_value()?;
         Some(key)
-    }
-
-    fn interpolate(
-        &self,
-        poll_time: T::Time,
-        input_state: T::InputState,
-    ) -> Option<T::OutputState> {
-        let i = self
-            .state_map
-            .last_index_by(poll_time, |x| x.time.raw_time());
-
-        let (item, buffer) = self.state_map.get(i)?;
-        let buffer = buffer?;
-
-        if !buffer.is_terminated() {
-            return None;
-        }
-
-        Some(buffer.transposer_frame.transposer.interpolate(
-            item.time.raw_time(),
-            poll_time,
-            input_state,
-        ))
     }
 
     /// this function responds to a rollback event
@@ -312,8 +286,6 @@ where
             let mut update: Pin<&mut UpdateItem<'map, T>> = update_and_buffer.0;
             let mut buffer: Pin<&mut BufferedItem<'map, T>> = update_and_buffer.1.unwrap();
 
-            let mut scheduled_input_time = None;
-
             // if we have a buffered output before our update, emit that.
             if let Some(output_time) = Self::output_buffer_first_time(output_buffer) {
                 if output_time < &update.time {
@@ -345,9 +317,9 @@ where
             if !buffer.is_terminated() {
                 // verify there are no new events or rollbacks before proceeding
                 // if we need a state, obtain it and set buffer.input_state
-                scheduled_input_time = match buffer.input_state.requested() {
+                match buffer.input_state.requested() {
                     true => {
-                        let (state, scheduled_time) = match input_stream
+                        let state = match input_stream
                             .as_mut()
                             .poll(update.as_ref().time.raw_time(), cx)
                         {
@@ -363,15 +335,16 @@ where
                                 };
                                 continue 'main;
                             }
-                            EventStatePoll::Scheduled(time, state) => (state, Some(time)),
-                            EventStatePoll::Ready(state) => (state, None),
-                            EventStatePoll::Done(state) => (state, None),
+                            EventStatePoll::Scheduled(_, state) => state,
+                            EventStatePoll::Ready(state) => state,
+                            EventStatePoll::Done(state) => state,
                         };
 
                         // pass in our new state.
-                        buffer.as_mut().project().input_state.set(state);
-
-                        scheduled_time
+                        match buffer.as_mut().project().input_state.set(state) {
+                            Err(_) => unreachable!(),
+                            Ok(()) => {}
+                        }
                     }
                     false => {
                         match input_stream
@@ -390,9 +363,9 @@ where
                                 };
                                 continue 'main;
                             }
-                            EventStatePoll::Scheduled(time, ()) => Some(time),
-                            EventStatePoll::Ready(()) => None,
-                            EventStatePoll::Done(()) => None,
+                            EventStatePoll::Scheduled(_, ()) => {}
+                            EventStatePoll::Ready(()) => {}
+                            EventStatePoll::Done(()) => {}
                         }
                     }
                 };
@@ -449,7 +422,8 @@ where
                 continue 'main;
             } else {
                 // get our state to interpolate with
-                let (state, time) = match input_stream.as_mut().poll(poll_time, cx) {
+                let (state, scheduled_input_time) = match input_stream.as_mut().poll(poll_time, cx)
+                {
                     EventStatePoll::Pending => break 'main EventStatePoll::Pending,
                     EventStatePoll::Rollback(time) => {
                         input_state_event_update = InputStateEventUpdate::Rollback(time);
@@ -468,7 +442,6 @@ where
                 };
 
                 // get the buffer and update
-                scheduled_input_time = time;
                 let update_and_buffer = state_map
                     .as_mut()
                     .get_pinned_mut(last_buffered_index_before_poll);

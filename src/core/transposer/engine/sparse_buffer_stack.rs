@@ -10,6 +10,7 @@ pub struct SparseBufferStack<'stack, I: Sized + 'stack, B: Sized + 'stack, const
     _marker: PhantomData<&'stack I>,
 }
 
+#[allow(unused)]
 impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
     SparseBufferStack<'stack, I, B, N>
 {

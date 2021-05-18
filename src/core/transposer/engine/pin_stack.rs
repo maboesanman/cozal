@@ -14,6 +14,7 @@ fn chunk_size(chunk_index: usize) -> usize {
     (1 << chunk_index) + 1 >> 1
 }
 
+#[allow(unused)]
 impl<T: Sized> PinStack<T> {
     pub fn new() -> Self {
         Self {
