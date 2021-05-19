@@ -7,6 +7,7 @@ fn basic_test() {
     for i in 0..100 {
         pin_stack.push(i);
         assert_eq!(*pin_stack.peek().unwrap(), i);
+        assert_eq!(*pin_stack.get(i).unwrap(), i);
     }
 
     for i in 0..100 {
@@ -18,6 +19,26 @@ fn basic_test() {
     }
 
     assert_eq!(pin_stack.pop(), None);
+    assert_eq!(pin_stack.capacity(), 128);
+}
+
+#[test]
+fn range_by() {
+    let mut pin_stack = PinStack::new();
+
+    for i in 0..100 {
+        pin_stack.push(i);
+    }
+
+    let mut range = pin_stack.range_by(15..45, |x| *x);
+    for i in 15..30 {
+        assert_eq!(i, *range.next().unwrap().1);
+    }
+
+    for i in (30..45).rev() {
+        assert_eq!(i, *range.next_back().unwrap().1);
+    }
+    assert_eq!(range.next(), None);
 }
 
 #[test]
@@ -50,4 +71,21 @@ fn no_move() {
     assert_ne!(vec_address_before, vec_address_after);
     // pin_stack does
     assert_eq!(pin_stack_address_before, pin_stack_address_after);
+}
+
+#[test]
+fn get() {
+    let mut pin_stack = PinStack::new();
+
+    for i in 0..100 {
+        pin_stack.push(i);
+    }
+
+    assert_eq!(*pin_stack.get(99).unwrap(), 99);
+    assert_eq!(pin_stack.get(100), None);
+    assert_eq!(pin_stack.get(100000), None);
+
+    assert_eq!(*pin_stack.get_mut(99).unwrap(), 99);
+    assert_eq!(pin_stack.get_mut(100), None);
+    assert_eq!(pin_stack.get_mut(100000), None);
 }

@@ -101,7 +101,7 @@ impl<T: Sized> PinStack<T> {
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
-        if self.length < index {
+        if self.length <= index {
             None
         } else {
             let item = unsafe {
@@ -114,7 +114,7 @@ impl<T: Sized> PinStack<T> {
     }
 
     pub fn get_mut(&mut self, index: usize) -> Option<Pin<&mut T>> {
-        if self.length < index {
+        if self.length <= index {
             None
         } else {
             let item_mut = unsafe {
