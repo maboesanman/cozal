@@ -5,6 +5,7 @@ mod event_state_stream;
 mod event_state_stream_ext;
 mod event_stream;
 mod timestamp;
+pub mod iter_event_state_stream;
 
 pub use event_state_poll::*;
 pub use event_state_stream::*;
