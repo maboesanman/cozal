@@ -387,7 +387,13 @@ where
                             Self::pop_output_buffer(output_buffer, poll_time).unwrap();
                         break 'main EventStatePoll::Event(time, input);
                     }
-                    Poll::Pending => break 'main EventStatePoll::Pending,
+                    Poll::Pending => {
+                        if buffer.input_state.requested() {
+                            continue 'main
+                        } else {
+                            break 'main EventStatePoll::Pending
+                        }
+                    },
                 }
             }
 

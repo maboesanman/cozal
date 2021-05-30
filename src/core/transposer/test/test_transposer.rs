@@ -31,13 +31,13 @@ impl Transposer for TestTransposer {
 
     type InputState = usize;
 
-    type OutputState = Self;
+    type OutputState = Vec<HandleRecord>;
 
     type Input = usize;
 
     type Scheduled = usize;
 
-    type Output = (usize, HandleRecord);
+    type Output = usize;
 
     async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>) {
         for (time, payload) in self.init_events.drain(..) {
@@ -59,7 +59,7 @@ impl Transposer for TestTransposer {
         self.handle_record.push_back(record.clone());
 
         let state = cx.get_input_state().await;
-        cx.emit_event((state, record));
+        cx.emit_event(state);
     }
 
     async fn handle_scheduled(
@@ -72,7 +72,7 @@ impl Transposer for TestTransposer {
         self.handle_record.push_back(record.clone());
 
         let state = cx.get_input_state().await;
-        cx.emit_event((state, record));
+        cx.emit_event(state);
     }
 
     fn interpolate(
@@ -81,6 +81,6 @@ impl Transposer for TestTransposer {
         _interpolated_time: Self::Time,
         _state: Self::InputState,
     ) -> Self::OutputState {
-        self.clone()
+        self.handle_record.clone().into_iter().collect()
     }
 }
