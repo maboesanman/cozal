@@ -1,7 +1,6 @@
 use std::{marker::PhantomData, mem::MaybeUninit, pin::Pin};
 
 use super::pin_stack::PinStack;
-use pin_project::pin_project;
 
 pub struct SparseBufferStack<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> {
     stack: PinStack<StackItem<I>>,
