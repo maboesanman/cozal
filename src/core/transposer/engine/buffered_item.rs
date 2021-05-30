@@ -1,11 +1,6 @@
 use futures::{future::FusedFuture, Future};
 use pin_project::pin_project;
-use std::{
-    marker::PhantomPinned,
-    mem::MaybeUninit,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::{marker::PhantomPinned, pin::Pin, sync::RwLock, task::{Context, Poll}};
 
 use crate::core::{
     transposer::engine::update_item::{EventsEmitted, UpdateItemData},
@@ -23,7 +18,7 @@ pub struct BufferedItem<'a, T: Transposer> {
     // this is first because it has references to other fields.
     // don't want this to dangle anything
     #[pin]
-    pub update_future: MaybeUninit<TransposerUpdate<'a, T>>,
+    state: BufferedItemState<'a, T>,
 
     // this has a mutable reference to it as long as update_future is not is_terminated
     pub transposer_frame: TransposerFrame<'a, T>,
@@ -31,16 +26,29 @@ pub struct BufferedItem<'a, T: Transposer> {
     pub input_state: LazyState<T::InputState>,
 
     // update_future has references into both transposer_frame and input_state
+    // transposer_frame is already !Unpin, but just in case that changes, this is !Unpin for other reasons.
     _marker: PhantomPinned,
 }
 
+#[pin_project(project=BufferedItemStateProject)]
+enum BufferedItemState<'a, T: Transposer> {
+    Unpollable {
+        update_item: &'a UpdateItem<'a, T>,
+    },
+    Pollable {
+        #[pin]
+        update_future: TransposerUpdate<'a, T>,
+    }
+}
+
 impl<'a, T: Transposer> BufferedItem<'a, T> {
-    pub fn new(transposer: T) -> BufferedItem<'a, T>
+    #[allow(unused)]
+    pub fn new(transposer: T, update_item: &'a UpdateItem<'a, T>) -> BufferedItem<'a, T>
     where
         T: Clone,
     {
         BufferedItem {
-            update_future: MaybeUninit::uninit(),
+            state: BufferedItemState::Unpollable { update_item },
             transposer_frame: TransposerFrame::new(transposer),
             input_state: LazyState::new(),
             _marker: PhantomPinned,
@@ -48,14 +56,15 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
     }
 
     /// set up a new buffered item from the previous one.
-    pub fn dup(&self) -> Self
+    #[allow(unused)]
+    pub fn dup(&self, update_item: &'a UpdateItem<'a, T>) -> Self
     where
         T: Clone,
     {
         debug_assert!(self.is_terminated());
 
         BufferedItem {
-            update_future: MaybeUninit::uninit(),
+            state: BufferedItemState::Unpollable { update_item },
             transposer_frame: self.transposer_frame.clone(),
             input_state: LazyState::new(),
             _marker: PhantomPinned,
@@ -63,61 +72,12 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
     }
 
     /// modify an existing buffered item for reuse
-    pub fn refurb(&mut self) {
-        unsafe { self.update_future.assume_init_drop() };
-        self.update_future = MaybeUninit::uninit();
+    #[allow(unused)]
+    pub fn refurb(&mut self, update_item: &'a UpdateItem<'a, T>) {
+        debug_assert!(self.is_terminated());
+
+        self.state = BufferedItemState::Unpollable { update_item };
         self.input_state = LazyState::new();
-    }
-
-    /// initialize the pointers and futures in a newly pinned buffered item.
-    pub fn init(self: Pin<&mut Self>, update_item: &'a UpdateItem<'a, T>)
-    where
-        T: Clone,
-    {
-        let this = self.project();
-
-        // SAFETY: we're going out and back into a pin to get instantiate maybeUninit, and then casting update_future to a regular mutable reference.
-        let update_future = unsafe {
-            let update_future: Pin<&mut MaybeUninit<TransposerUpdate<'a, T>>> = this.update_future;
-            let update_future = Pin::into_inner_unchecked(update_future);
-            *update_future = MaybeUninit::new(TransposerUpdate::new());
-            let update_future = update_future.assume_init_mut();
-            Pin::new_unchecked(update_future)
-        };
-
-        let transposer_frame: *mut _ = this.transposer_frame;
-        // SAFETY: this is a self reference so it won't outlive its content.
-        let transposer_frame: &mut _ = unsafe { transposer_frame.as_mut().unwrap() };
-
-        let input_state: *mut _ = this.input_state;
-        // SAFETY: this is a self reference so it won't outlive its content.
-        let input_state: &mut _ = unsafe { input_state.as_mut().unwrap() };
-
-        match (&update_item.time, &update_item.data) {
-            (EngineTime::Init, UpdateItemData::Init(_)) => {
-                debug_assert!(transposer_frame.init_next(update_item).is_none());
-                update_future.init_init(transposer_frame, input_state);
-            }
-            (EngineTime::Input(time), UpdateItemData::Input(data)) => {
-                debug_assert!(transposer_frame.init_next(update_item).is_none());
-                update_future.init_input(transposer_frame, input_state, *time, data.as_ref());
-            }
-            (EngineTime::Schedule(time), UpdateItemData::Schedule) => {
-                match transposer_frame.init_next(update_item) {
-                    Some((time_again, event_payload)) => {
-                        debug_assert!(*time == time_again);
-                        update_future.init_schedule(
-                            transposer_frame,
-                            input_state,
-                            time.time,
-                            event_payload,
-                        );
-                    }
-                    None => unreachable!(),
-                }
-            }
-            _ => unreachable!(),
-        }
     }
 
     pub fn next_update_item(
@@ -144,7 +104,7 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
         Some(UpdateItem {
             time,
             data,
-            events_emitted: EventsEmitted::Pending,
+            events_emitted: RwLock::new(EventsEmitted::Pending),
         })
     }
 }
@@ -152,42 +112,78 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
 impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
     type Output = Vec<T::Output>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let BufferedItemProject {
-            update_future,
-            input_state,
-            ..
-        } = self.project();
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        loop {
+            let BufferedItemProject {
+                mut state,
+                input_state,
+                transposer_frame,
+                ..
+            } = self.as_mut().project();
+            match state.as_mut().project() {
+                BufferedItemStateProject::Unpollable { update_item } => {
+                    let update_item: &'a UpdateItem<'a, T> = update_item;
 
-        // SAFETY: we go right back into the pin. and we are assuming that init has been run.
-        let update_future = unsafe { Pin::into_inner_unchecked(update_future) };
-        let update_future = unsafe { update_future.assume_init_mut() };
-        let update_future = unsafe { Pin::new_unchecked(update_future) };
-        let update_future: Pin<&mut TransposerUpdate<'a, T>> = update_future;
+                    let transposer_frame: *mut _ = transposer_frame;
+                    // SAFETY: this is a self reference so it won't outlive its content.
+                    let transposer_frame: &mut _ = unsafe { transposer_frame.as_mut().unwrap() };
 
-        let input_state: &mut LazyState<T::InputState> = input_state;
+                    let input_state: *mut _ = input_state;
+                    // SAFETY: this is a self reference so it won't outlive its content.
+                    let input_state: &mut _ = unsafe { input_state.as_mut().unwrap() };
 
-        if update_future.is_terminated() {
-            return Poll::Pending;
-        }
-
-        if input_state.requested() {
-            return Poll::Pending;
-        }
-
-        match update_future.poll(cx) {
-            Poll::Ready(result) => {
-                // TODO handle exit result
-                Poll::Ready(result.outputs)
-            }
-            Poll::Pending => Poll::Pending,
+                    let update_future = match (&update_item.time, &update_item.data) {
+                        (EngineTime::Init, UpdateItemData::Init(_)) => {
+                            debug_assert!(transposer_frame.init_next(update_item).is_none());
+                            TransposerUpdate::new_init(transposer_frame, input_state)
+                        }
+                        (EngineTime::Input(time), UpdateItemData::Input(data)) => {
+                            debug_assert!(transposer_frame.init_next(update_item).is_none());
+                            TransposerUpdate::new_input(
+                                transposer_frame,
+                                input_state,
+                                *time,
+                                data.as_ref(),
+                            )
+                        }
+                        (EngineTime::Schedule(time), UpdateItemData::Schedule) => {
+                            match transposer_frame.init_next(update_item) {
+                                Some((time_again, event_payload)) => {
+                                    debug_assert!(*time == time_again);
+                                    TransposerUpdate::new_scheduled(
+                                        transposer_frame,
+                                        input_state,
+                                        time.time,
+                                        event_payload,
+                                    )
+                                }
+                                None => unreachable!(),
+                            }
+                        }
+                        _ => unreachable!(),
+                    };
+                    // SAFETY: we're changing between enum variants, and no !Unpin fields are moved.
+                    let state = unsafe { state.get_unchecked_mut() };
+                    *state = BufferedItemState::Pollable { update_future };
+                }
+                BufferedItemStateProject::Pollable { update_future } => {
+                    let update_future: Pin<&mut TransposerUpdate<'a, T>> = update_future;
+                    break match update_future.poll(cx) {
+                        Poll::Ready(result) => Poll::Ready(result.outputs),
+                        Poll::Pending => Poll::Pending,
+                    };
+                }
+            };
         }
     }
 }
 
 impl<'a, T: Transposer> FusedFuture for BufferedItem<'a, T> {
     fn is_terminated(&self) -> bool {
-        // SAFETY: init must be run before this, but it should have been.
-        unsafe { self.update_future.assume_init_ref() }.is_terminated()
+        if let BufferedItemState::Pollable { update_future } = &self.state {
+            update_future.is_terminated()
+        } else {
+            false
+        }
     }
 }

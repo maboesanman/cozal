@@ -27,7 +27,6 @@ where
 
 impl<'a, T: Transposer> TransposerFrame<'a, T>
 where
-    T: Clone,
     T::Scheduled: Clone,
 {
     pub fn new(transposer: T) -> Self {

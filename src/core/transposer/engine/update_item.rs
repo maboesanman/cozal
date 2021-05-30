@@ -1,3 +1,5 @@
+use std::sync::RwLock;
+
 use pin_project::pin_project;
 
 use crate::core::Transposer;
@@ -11,7 +13,7 @@ pub struct UpdateItem<'a, T: Transposer> {
     pub time: EngineTime<'a, T::Time>,
     // TODO: EngineTime and UpdateItemData both track the same thing. they probably should be merged.
     pub data: UpdateItemData<T>,
-    pub events_emitted: EventsEmitted,
+    pub events_emitted: RwLock<EventsEmitted>,
 }
 
 pub enum UpdateItemData<T: Transposer> {

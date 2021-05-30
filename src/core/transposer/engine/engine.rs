@@ -1,7 +1,7 @@
 use core::pin::Pin;
 use futures::{future::FusedFuture, task::Context, Future};
 use pin_project::pin_project;
-use std::{cmp::Ordering, collections::BTreeMap, task::Poll};
+use std::{cmp::Ordering, collections::BTreeMap, sync::RwLock, task::Poll};
 
 use crate::core::{
     event_state_stream::{EventStatePoll, EventStateStream},
@@ -62,16 +62,14 @@ where
         let first_state_map_item = UpdateItem {
             time: EngineTime::Init,
             data: UpdateItemData::Init(Box::new(initial_transposer.clone())),
-            events_emitted: EventsEmitted::Pending,
+            events_emitted: RwLock::new(EventsEmitted::Pending),
         };
 
         let state_map = SparseBufferStack::new(
             // pass in the first stack item
             first_state_map_item,
             // create the corresponding buffer using a reference to the stack item
-            |_| BufferedItem::new(initial_transposer),
-            // perform any initialization requiring a pin to the buffer
-            |buffer_item, update_item| buffer_item.init(update_item),
+            |update_item| BufferedItem::new(initial_transposer, update_item),
         );
 
         Self {
@@ -139,7 +137,7 @@ where
 
             match state_map.as_mut().pop() {
                 Some(update_item) => {
-                    if update_item.events_emitted.any() {
+                    if update_item.events_emitted.read().unwrap().any() {
                         rollback_needed = Some(last_state_map_time);
 
                         // throw away everything at or after the discarded frame.
@@ -176,7 +174,7 @@ where
 
             match state_map.as_mut().pop() {
                 Some(update_item) => {
-                    if update_item.events_emitted.any() {
+                    if update_item.events_emitted.read().unwrap().any() {
                         rollback_needed = Some(last_state_map_time);
 
                         // throw away everything at or after the discarded frame.
@@ -284,7 +282,7 @@ where
                 .get_pinned_mut(last_buffered_index_before_poll);
             let update_and_buffer = update_and_buffer.unwrap();
 
-            let mut update: Pin<&mut UpdateItem<'map, T>> = update_and_buffer.0;
+            let mut update: &UpdateItem<'map, T> = update_and_buffer.0;
             let mut buffer: Pin<&mut BufferedItem<'map, T>> = update_and_buffer.1.unwrap();
 
             // if we have a buffered output before our update, emit that.
@@ -322,7 +320,7 @@ where
                     true => {
                         let state = match input_stream
                             .as_mut()
-                            .poll(update.as_ref().time.raw_time(), cx)
+                            .poll(update.time.raw_time(), cx)
                         {
                             EventStatePoll::Pending => break 'main EventStatePoll::Pending,
                             EventStatePoll::Rollback(time) => {
@@ -373,16 +371,17 @@ where
                 match buffer.as_mut().poll(cx) {
                     Poll::Ready(outputs) => {
                         // we do not want to do anything with events if they have already been emitted.
-                        if update.events_emitted.done() {
+                        if update.events_emitted.read().unwrap().done() {
                             continue 'main;
                         }
 
+                        let mut events_emitted = update.events_emitted.write().unwrap();
                         if outputs.is_empty() {
-                            update.events_emitted = EventsEmitted::None;
+                            *events_emitted = EventsEmitted::None;
                             continue 'main;
                         }
 
-                        update.events_emitted = EventsEmitted::Some;
+                        *events_emitted = EventsEmitted::Some;
                         Self::push_output_buffer(output_buffer, update.time.clone(), outputs);
                         let (time, input) =
                             Self::pop_output_buffer(output_buffer, poll_time).unwrap();
@@ -415,7 +414,6 @@ where
                         last_buffered_index_before_poll + 1,
                         BufferedItem::dup,
                         BufferedItem::refurb,
-                        BufferedItem::init,
                     )
                     .unwrap();
                 continue 'main;
@@ -445,7 +443,7 @@ where
                     .get_pinned_mut(last_buffered_index_before_poll);
                 let update_and_buffer = update_and_buffer.unwrap();
 
-                let update: Pin<&mut UpdateItem<'map, T>> = update_and_buffer.0;
+                let update: &UpdateItem<'map, T> = update_and_buffer.0;
                 let buffer: Pin<&mut BufferedItem<'map, T>> = update_and_buffer.1.unwrap();
 
                 // construct the interpolated value
@@ -456,7 +454,7 @@ where
                     .interpolate(base_time, poll_time, state);
 
                 let next_possible_scheduled_event_time = state_map
-                    .find(|update_item| !update_item.events_emitted.done())
+                    .find(|update_item| !update_item.events_emitted.read().unwrap().done())
                     .map(|update_item| update_item.time.raw_time());
 
                 break 'main match (scheduled_input_time, next_possible_scheduled_event_time) {

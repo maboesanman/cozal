@@ -3,11 +3,15 @@ use crate::core::transposer::engine::pin_stack::PinStack;
 #[test]
 fn basic_test() {
     let mut pin_stack = PinStack::new();
+
+    pin_stack.reserve(0);
+
     assert_eq!(pin_stack.peek(), None);
     for i in 0..100 {
         pin_stack.push(i);
         assert_eq!(*pin_stack.peek().unwrap(), i);
         assert_eq!(*pin_stack.get(i).unwrap(), i);
+        assert_eq!(pin_stack.len(), i + 1);
     }
 
     for i in 0..100 {

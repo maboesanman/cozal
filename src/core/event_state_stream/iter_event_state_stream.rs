@@ -1,26 +1,30 @@
-use std::{iter::Peekable, pin::Pin, task::Context};
 use super::{EventStatePoll, EventStateStream};
+use std::{iter::Peekable, pin::Pin, task::Context};
 
 pub struct IterEventStateStream<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin>
-    where I: Iterator<Item=(T, E, S)> + Unpin
+where
+    I: Iterator<Item = (T, E, S)> + Unpin,
 {
     iter: Peekable<I>,
     previous_state: S,
 }
 
 impl<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin> IterEventStateStream<I, T, E, S>
-    where I: Iterator<Item=(T, E, S)> + Unpin
+where
+    I: Iterator<Item = (T, E, S)> + Unpin,
 {
     pub fn new(iter: I, initial_state: S) -> Self {
         Self {
             iter: iter.peekable(),
-            previous_state: initial_state
+            previous_state: initial_state,
         }
     }
 }
 
-impl <I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin> EventStateStream for IterEventStateStream<I, T, E, S>
-    where I: Iterator<Item=(T, E, S)> + Unpin
+impl<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin> EventStateStream
+    for IterEventStateStream<I, T, E, S>
+where
+    I: Iterator<Item = (T, E, S)> + Unpin,
 {
     type Time = T;
 
