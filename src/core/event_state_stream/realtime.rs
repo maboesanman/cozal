@@ -1,4 +1,4 @@
-use super::{timestamp::Timestamp, StatefulSchedulePoll, StatefulScheduleStream};
+use super::{timestamp::Timestamp, EventStatePoll, EventStateStream};
 use futures::{Future, Stream};
 use pin_project::pin_project;
 use std::{
@@ -10,7 +10,7 @@ use tokio::time::{delay_for, Delay};
 
 /// Stream for the [`to_realtime`](super::schedule_stream_ext::ScheduleStreamExt::to_realtime) method.
 #[pin_project]
-pub struct RealtimeStream<St: StatefulScheduleStream>
+pub struct Realtime<St: EventStateStream>
 where
     St::Time: Timestamp,
 {
@@ -23,7 +23,7 @@ where
     state: Option<St::State>,
 }
 
-impl<St: StatefulScheduleStream> RealtimeStream<St>
+impl<St: EventStateStream> Realtime<St>
 where
     St::Time: Timestamp,
 {
@@ -37,7 +37,7 @@ where
     }
 }
 
-impl<St: StatefulScheduleStream> Stream for RealtimeStream<St>
+impl<St: EventStateStream> Stream for Realtime<St>
 where
     St::Time: Timestamp,
 {
@@ -49,11 +49,11 @@ where
         let time = St::Time::get_timestamp(&Instant::now(), this.reference);
 
         match this.stream.poll(time, cx) {
-            StatefulSchedulePoll::Ready(t, p, s) => {
+            EventStatePoll::Event(t, p, s) => {
                 *this.state = None;
                 Poll::Ready(Some((t, p, s)))
             }
-            StatefulSchedulePoll::Scheduled(new_time, s) => {
+            EventStatePoll::Scheduled(new_time, s) => {
                 *this.state = Some(s);
                 let instant = new_time.get_instant(&this.reference);
                 let instant = tokio::time::Instant::from_std(instant);
@@ -63,15 +63,16 @@ where
 
                 Poll::Pending
             }
-            StatefulSchedulePoll::Waiting(s) => {
+            EventStatePoll::Ready(s) => {
                 *this.state = Some(s);
                 Poll::Pending
             }
-            StatefulSchedulePoll::Pending => Poll::Pending,
-            StatefulSchedulePoll::Done(s) => {
+            EventStatePoll::Pending => Poll::Pending,
+            EventStatePoll::Done(s) => {
                 *this.state = Some(s);
                 Poll::Ready(None)
             }
+            EventStatePoll::Rollback(_t) => todo!(),
         }
     }
 

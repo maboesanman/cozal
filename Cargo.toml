@@ -8,7 +8,6 @@ description = "deterministic game event pipeline with isolated configurable comp
 license = "MIT"
 
 [features]
-# default = []
 window = ["winit"]
 realtime = ["tokio"]
 
@@ -16,9 +15,11 @@ realtime = ["tokio"]
 async-trait = "0.1.40"
 pin-project = "0.4.23"
 take_mut = "0.2.2"
-futures = "0.3.5"
+futures = { version = "0.3.5", features = ["unstable", "bilock"] }
 im = "15.0.0"
 flume = "0.7.2"
+either = "1.6.1"
+array-init = { version = "1.0.0", features = ["const-generics"]}
 
 tokio = { version = "0.2.21", features = ["time"], optional = true }
 winit = { version = "0.22.2", optional = true }

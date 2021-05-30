@@ -1,11 +1,6 @@
-use crate::{
-    core::transposer::{test::test_stateful_stream::TestStatefulStream, TransposerEngine},
-    test::test_waker::DummyWaker,
-};
+use crate::{core::{event_state_stream::{EventStatePoll, EventStateStream}, transposer::{test::test_stateful_stream::TestStatefulStream, TransposerEngine}}, test::test_waker::DummyWaker};
 use std::{pin::Pin, task::Context};
 
-use crate::core::schedule_stream::StatefulSchedulePoll;
-use crate::core::schedule_stream::StatefulScheduleStream;
 use crate::core::transposer::test::test_transposer::TestTransposer;
 
 #[test]
@@ -21,5 +16,5 @@ fn test_waiting() {
 
     let poll = engine_ref.poll(2, &mut cx);
 
-    matches!(poll, StatefulSchedulePoll::Waiting(_));
+    matches!(poll, EventStatePoll::Ready(_));
 }

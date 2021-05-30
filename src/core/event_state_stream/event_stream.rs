@@ -1,9 +1,9 @@
-use super::{StatefulSchedulePoll, StatefulScheduleStream};
+use super::{EventStatePoll, EventStateStream};
 use std::pin::Pin;
 use std::task::Context;
 
 /// A modified stream that allows for 'scheduling' events.
-pub trait ScheduleStream {
+pub trait EventStream {
     /// The time used to compare.
     type Time: Ord + Copy;
     /// Values yielded by the stream.
@@ -39,22 +39,14 @@ pub trait ScheduleStream {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> StatefulSchedulePoll<Self::Time, Self::Item, ()>;
-
-    /// Returns the bounds on the remaining length of the stream.
-    ///
-    /// This is behaves exactly the same as regular streams, and is passed through transparently
-    /// in the [`RealtimeStream`](super::realtime_stream::RealtimeStream).
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, None)
-    }
+    ) -> EventStatePoll<Self::Time, Self::Item, ()>;
 }
 
-impl<S> StatefulScheduleStream for S
+impl<S> EventStateStream for S
 where
-    S: ScheduleStream,
+    S: EventStream,
 {
-    type Item = S::Item;
+    type Event = S::Item;
     type Time = S::Time;
     type State = ();
 
@@ -62,11 +54,7 @@ where
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> StatefulSchedulePoll<Self::Time, Self::Item, Self::State> {
+    ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
         self.poll_next(time, cx)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self as &S).size_hint()
     }
 }

@@ -1,13 +1,13 @@
-use super::StatefulSchedulePoll;
+use super::EventStatePoll;
 use std::pin::Pin;
 use std::task::Context;
 
 /// A modified stream that allows for 'scheduling' events.
-pub trait StatefulScheduleStream {
+pub trait EventStateStream {
     /// The time used to compare.
     type Time: Ord + Copy;
     /// Values yielded by the stream.
-    type Item;
+    type Event: Sized;
     /// The state for the given time.
     ///
     /// This will usually be a smart pointer to something but this is left to the implementer.
@@ -16,7 +16,7 @@ pub trait StatefulScheduleStream {
     /// (every point queried at runtime must be recorded for deterministic playback).
     /// Because of this, a smart pointer may be used which can note whether or not the state is actually dereferenced,
     /// and therefore how far back rollback events must be issued downstream and how much data to save.
-    type State;
+    type State: Sized;
 
     /// Attempt to pull out the next value of this stream, registering the
     /// current task for wakeup if the value is not yet available, and returning
@@ -48,13 +48,27 @@ pub trait StatefulScheduleStream {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> StatefulSchedulePoll<Self::Time, Self::Item, Self::State>;
+    ) -> EventStatePoll<Self::Time, Self::Event, Self::State>;
 
-    /// Returns the bounds on the remaining length of the stream.
+    /// This is an optional optimization. If you don't plan on using the state,
+    /// you can call this and the implementer may skip the work to do so if they want.
     ///
-    /// This is behaves exactly the same as regular streams, and is passed through transparently
-    /// in the [`RealtimeStream`](super::realtime_stream::RealtimeStream).
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, None)
+    /// By default this simply calls poll and drops the state, returning `()` instead.
+    ///
+    /// if you do not need to use the state, this should be preferred over poll.
+    /// for example, if you are simply verifying the stream does not have new events before a time t,
+    /// poll_ignore_state could be faster than poll (with a custom implementation).
+    fn poll_events(
+        self: Pin<&mut Self>,
+        time: Self::Time,
+        cx: &mut Context<'_>,
+    ) -> EventStatePoll<Self::Time, Self::Event, ()> {
+        match self.poll(time, cx) {
+            EventStatePoll::Pending => EventStatePoll::Pending,
+            EventStatePoll::Rollback(t) => EventStatePoll::Rollback(t),
+            EventStatePoll::Event(t, e) => EventStatePoll::Event(t, e),
+            EventStatePoll::Scheduled(t, _) => EventStatePoll::Scheduled(t, ()),
+            EventStatePoll::Ready(_) => EventStatePoll::Ready(()),
+        }
     }
 }

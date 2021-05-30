@@ -1,11 +1,5 @@
-use super::context::{InitContext, UpdateContext};
-use crate::core::{event::RollbackPayload, Event};
+use super::context::{InitContext, InputContext, ScheduleContext};
 use async_trait::async_trait;
-
-pub type InputEvent<T> = Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Input>>;
-pub type ScheduledEvent<T> = Event<<T as Transposer>::Time, <T as Transposer>::Scheduled>;
-pub type OutputEvent<T> =
-    Event<<T as Transposer>::Time, RollbackPayload<<T as Transposer>::Output>>;
 
 /// A `Transposer` is a type that can update itself in response to events.
 ///
@@ -17,14 +11,16 @@ pub type OutputEvent<T> =
 ///
 /// The name comes from the idea that we are converting a stream of events into another stream of events,
 /// perhaps in the way a stream of music notes can be *transposed* into another stream of music notes.
-#[async_trait]
-pub trait Transposer: Sized + Unpin + Send + Sync {
+#[async_trait(?Send)]
+pub trait Transposer: Sized {
     /// The type used as the 'time' for events. This must be Ord and Copy because it is frequently used for comparisons,
     /// and it must be [`Default`] because the default value is used for the timestamp of events emitted.
     /// by the init function.
-    type Time: Copy + Ord + Default + Send + Sync;
+    type Time: Copy + Ord + Default + Unpin;
 
-    type InputState;
+    type InputState: Sized + Unpin;
+
+    type OutputState: Sized + Unpin;
 
     /// The type of the input payloads.
     ///
@@ -33,12 +29,12 @@ pub trait Transposer: Sized + Unpin + Send + Sync {
     /// This type is not intended to contain timing information. It may if you need it, but
     /// no timing information contained inside your `Input` type will be used to inform the order
     /// that events are handled.
-    type Input: Unpin + Send + Sync;
+    type Input: Sized + Unpin;
 
     /// The type of the payloads of scheduled events
     ///
     /// the events in the schedule are all of type `Event<Self::Time, Self::Scheduled>`
-    type Scheduled: Unpin + Send + Sync;
+    type Scheduled: Clone + Unpin;
 
     /// The type of the output payloads.
     ///
@@ -46,7 +42,7 @@ pub trait Transposer: Sized + Unpin + Send + Sync {
     ///
     /// If a rollback must occur which invalidates previously yielded events, an event of type
     /// `Event<Self::Time, RollbackPayload::Rollback>` will be emitted.
-    type Output: Unpin + Send + Sync;
+    type Output: Sized + Unpin;
 
     /// The function to initialize your transposer's events.
     ///
@@ -56,7 +52,7 @@ pub trait Transposer: Sized + Unpin + Send + Sync {
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`InitContext`] documentation.
-    async fn init(&mut self, cx: &mut InitContext<Self>);
+    async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>);
 
     /// The function to respond to input.
     ///
@@ -67,11 +63,11 @@ pub trait Transposer: Sized + Unpin + Send + Sync {
     ///
     /// `cx` is a context object for performing additional operations like scheduling events.
     /// For more information on `cx` see the [`UpdateContext`] documentation.
-    async fn handle_input<'a>(
-        &'a mut self,
+    async fn handle_input(
+        &mut self,
         time: Self::Time,
-        inputs: &'a [Self::Input],
-        cx: &'a mut UpdateContext<'a, Self>,
+        inputs: &[Self::Input],
+        cx: &mut dyn InputContext<'_, Self>,
     );
 
     /// The function to respond to internally scheduled events.
@@ -80,12 +76,27 @@ pub trait Transposer: Sized + Unpin + Send + Sync {
     ///
     /// `cx` is a context object for performing additional operations like scheduling events.
     /// For more information on `cx` see the [`UpdateContext`] documentation.
-    async fn handle_scheduled<'a>(
-        &'a mut self,
+    async fn handle_scheduled(
+        &mut self,
         time: Self::Time,
-        payload: &Self::Scheduled,
-        cx: &'a mut UpdateContext<'a, Self>,
+        payload: Self::Scheduled,
+        cx: &mut dyn ScheduleContext<'_, Self>,
     );
+
+    /// The function to interpolate between states
+    ///
+    /// handle_input and handle_scheduled only operate on discrete times.
+    /// If you want the state between two of these times, you have to calculate it.
+    ///
+    /// `base_time` is the time of the `self` parameter
+    /// `interpolated_time` is the time being requested `self`
+    /// `cx is a context object for performing additional operations like requesting state.
+    fn interpolate(
+        &self,
+        base_time: Self::Time,
+        interpolated_time: Self::Time,
+        input_state: Self::InputState,
+    ) -> Self::OutputState;
 
     /// Filter out events you know you can't do anything with.
     /// This reduces the amount of events you have to remember for rollback to work
