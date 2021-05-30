@@ -282,7 +282,7 @@ where
                 .get_pinned_mut(last_buffered_index_before_poll);
             let update_and_buffer = update_and_buffer.unwrap();
 
-            let mut update: &UpdateItem<'map, T> = update_and_buffer.0;
+            let update: &UpdateItem<'map, T> = update_and_buffer.0;
             let mut buffer: Pin<&mut BufferedItem<'map, T>> = update_and_buffer.1.unwrap();
 
             // if we have a buffered output before our update, emit that.
@@ -318,10 +318,7 @@ where
                 // if we need a state, obtain it and set buffer.input_state
                 match buffer.input_state.requested() {
                     true => {
-                        let state = match input_stream
-                            .as_mut()
-                            .poll(update.time.raw_time(), cx)
-                        {
+                        let state = match input_stream.as_mut().poll(update.time.raw_time(), cx) {
                             EventStatePoll::Pending => break 'main EventStatePoll::Pending,
                             EventStatePoll::Rollback(time) => {
                                 input_state_event_update = InputStateEventUpdate::Rollback(time);
@@ -389,11 +386,11 @@ where
                     }
                     Poll::Pending => {
                         if buffer.input_state.requested() {
-                            continue 'main
+                            continue 'main;
                         } else {
-                            break 'main EventStatePoll::Pending
+                            break 'main EventStatePoll::Pending;
                         }
-                    },
+                    }
                 }
             }
 

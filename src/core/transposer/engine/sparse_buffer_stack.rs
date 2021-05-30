@@ -82,9 +82,9 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
         Refurb: FnOnce(&mut B, &'stack I), // reference to previous buffered item, prepare for in place updates
     {
         let buffer_index_to_replace = self.get_least_useful_buffer_index();
-        
+
         let this = unsafe { self.get_unchecked_mut() };
-        
+
         let prev_stack_item_buffer_index = this.stack.get(stack_index - 1).ok_or(())?.buffer_index;
         let mut stack_item = this.stack.get_mut(stack_index).ok_or(())?;
         let stack_item = unsafe { stack_item.get_unchecked_mut() };
@@ -109,10 +109,13 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
             buffer_item.replace_with(stack_index, duplicator(item, stack_item_ref));
         } else {
             buffer_item.stack_index = stack_index;
-            refurbisher(buffer_item.get_buffer_mut(stack_index).unwrap(), stack_item_ref);
+            refurbisher(
+                buffer_item.get_buffer_mut(stack_index).unwrap(),
+                stack_item_ref,
+            );
         }
 
-        let stack_item: &I = & this.stack.get(stack_index).ok_or(())?.item;
+        let stack_item: &I = &this.stack.get(stack_index).ok_or(())?.item;
 
         let buffer_item = &mut buffer_item.item;
         let buffer_item = unsafe { buffer_item.assume_init_mut() };

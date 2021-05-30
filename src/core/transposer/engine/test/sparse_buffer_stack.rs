@@ -9,9 +9,7 @@ fn basic_test() {
     let stack_ref = &mut sparse_buffer_stack;
     let mut stack_pin = unsafe { Pin::new_unchecked(stack_ref) };
 
-    let dup = |prev_b: &(&usize, usize), i| {
-        (i, prev_b.1 + 2)
-    };
+    let dup = |prev_b: &(&usize, usize), i| (i, prev_b.1 + 2);
 
     let refurb = |b: &mut (&usize, usize), i| {
         b.0 = i;
@@ -23,11 +21,7 @@ fn basic_test() {
     for _ in 0..100 {
         stack_pin.as_mut().push(|x| x + 1);
         let index = stack_pin.borrow().len() - 1;
-        assert!(stack_pin.as_mut().buffer(
-            index,
-            dup,
-            refurb
-        ).is_ok());
+        assert!(stack_pin.as_mut().buffer(index, dup, refurb).is_ok());
     }
 
     // buffer an item based on an old checkpoint
@@ -43,5 +37,8 @@ fn basic_test() {
     assert!(stack_pin.as_mut().buffer(1000, dup, refurb).is_err());
 
     // find the last buffered index
-    assert_eq!(stack_pin.as_mut().last_buffered_index_by(69, |x| *x - 17), 66);
+    assert_eq!(
+        stack_pin.as_mut().last_buffered_index_by(69, |x| *x - 17),
+        66
+    );
 }

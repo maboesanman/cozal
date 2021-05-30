@@ -1,6 +1,15 @@
 use std::{pin::Pin, task::Context};
 
-use crate::{core::{event_state_stream::{EventStatePoll, EventStateStream, EventStateStreamExt, iter_event_state_stream::IterEventStateStream}, transposer::test::test_transposer::TestTransposer}, test::test_waker::DummyWaker};
+use crate::{
+    core::{
+        event_state_stream::{
+            iter_event_state_stream::IterEventStateStream, EventStatePoll, EventStateStream,
+            EventStateStreamExt,
+        },
+        transposer::test::test_transposer::TestTransposer,
+    },
+    test::test_waker::DummyWaker,
+};
 
 #[test]
 fn basic_test() {
@@ -17,7 +26,16 @@ fn basic_test() {
 
     let mut cx = Context::from_waker(&waker);
 
-    assert!(matches!(engine_pin.as_mut().poll(15, &mut cx), EventStatePoll::Event(0, 0)));
-    assert!(matches!(engine_pin.as_mut().poll(15, &mut cx), EventStatePoll::Event(10, 1)));
-    assert!(matches!(engine_pin.as_mut().poll(15, &mut cx), EventStatePoll::Scheduled(20, _)));
+    assert!(matches!(
+        engine_pin.as_mut().poll(15, &mut cx),
+        EventStatePoll::Event(0, 0)
+    ));
+    assert!(matches!(
+        engine_pin.as_mut().poll(15, &mut cx),
+        EventStatePoll::Event(10, 1)
+    ));
+    assert!(matches!(
+        engine_pin.as_mut().poll(15, &mut cx),
+        EventStatePoll::Scheduled(20, _)
+    ));
 }

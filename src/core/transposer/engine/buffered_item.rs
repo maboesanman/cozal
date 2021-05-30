@@ -1,6 +1,11 @@
 use futures::{future::FusedFuture, Future};
 use pin_project::pin_project;
-use std::{marker::PhantomPinned, pin::Pin, sync::RwLock, task::{Context, Poll}};
+use std::{
+    marker::PhantomPinned,
+    pin::Pin,
+    sync::RwLock,
+    task::{Context, Poll},
+};
 
 use crate::core::{
     transposer::engine::update_item::{EventsEmitted, UpdateItemData},
@@ -38,7 +43,7 @@ enum BufferedItemState<'a, T: Transposer> {
     Pollable {
         #[pin]
         update_future: TransposerUpdate<'a, T>,
-    }
+    },
 }
 
 impl<'a, T: Transposer> BufferedItem<'a, T> {

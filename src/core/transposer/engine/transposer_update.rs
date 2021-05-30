@@ -66,7 +66,7 @@ impl<'f, T: Transposer> Drop for TransposerUpdatePollableState<'f, T> {
 
 impl<'f, T: Transposer> TransposerUpdatePollableState<'f, T> {
     pub fn recover_cx(mut self) -> EngineContext<'f, T> {
-        let ret = unsafe { std::ptr::read(&mut self.context) };
+        let ret = unsafe { std::ptr::read(&self.context) };
         unsafe {
             self.future.assume_init_drop();
         }
@@ -334,10 +334,6 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
 
 impl<'a, T: Transposer> FusedFuture for TransposerUpdate<'a, T> {
     fn is_terminated(&self) -> bool {
-        if let Self(TransposerUpdateState::Terminated) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self(TransposerUpdateState::Terminated))
     }
 }
