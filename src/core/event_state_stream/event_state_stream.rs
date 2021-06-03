@@ -12,7 +12,6 @@ use std::task::Context;
 ///
 /// - A function (in the mathematical sense) mapping [`Time`](`EventStateStream::Time`) to [`State`](`EventStateStream::State`)
 pub trait EventStateStream {
-
     /// The type used for timestamping events and states.
     type Time: Ord + Copy;
 

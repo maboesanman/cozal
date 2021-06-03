@@ -141,7 +141,7 @@ where
                         rollback_needed = match *events_emitted {
                             DataEmitted::Event => Some(last_state_map_time),
                             DataEmitted::State(t) => Some(t),
-                            _ => unreachable!()
+                            _ => unreachable!(),
                         };
 
                         // throw away everything at or after the discarded frame.
@@ -477,5 +477,4 @@ where
             }
         }
     }
-
 }
