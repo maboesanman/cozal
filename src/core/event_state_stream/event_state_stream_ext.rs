@@ -25,7 +25,11 @@ pub trait EventStateStreamExt: EventStateStream {
 
     fn into_engine<
         'tr,
-        T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State> + 'tr,
+        T: Transposer<
+            Time = Self::Time,
+            Input = Self::Event,
+            InputState = Self::State
+        > + 'tr,
         const N: usize,
     >(
         self,

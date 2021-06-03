@@ -32,10 +32,10 @@ fn basic_test() {
     ));
     assert!(matches!(
         engine_pin.as_mut().poll(15, &mut cx),
-        EventStatePoll::Event(10, 1)
+        EventStatePoll::Event(1, 10)
     ));
     assert!(matches!(
         engine_pin.as_mut().poll(15, &mut cx),
-        EventStatePoll::Scheduled(20, _)
+        EventStatePoll::Scheduled(_, 20)
     ));
 }

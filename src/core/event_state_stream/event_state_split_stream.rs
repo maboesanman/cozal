@@ -172,7 +172,7 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                     waker.wake();
                 }
 
-                break EventStatePoll::Event(time, event);
+                break EventStatePoll::Event(event, time);
             }
 
             if this.right.full(*this.rough_buffer_size) {
@@ -186,25 +186,25 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                     this.right.rollback(t);
                     this.left.rollback(t);
                 }
-                EventStatePoll::Event(t, Either::Left(e)) => {
+                EventStatePoll::Event(Either::Left(e), t) => {
                     match this.left.latest_emission_time {
                         Some(old) => this.left.latest_emission_time = Some(cmp::max(old, t)),
                         None => this.left.latest_emission_time = Some(t),
                     }
-                    break EventStatePoll::Event(t, e);
+                    break EventStatePoll::Event(e, t);
                 }
-                EventStatePoll::Event(t, Either::Right(e)) => {
+                EventStatePoll::Event(Either::Right(e), t) => {
                     this.right.buffer_event(t, e);
                 }
-                EventStatePoll::Scheduled(mut t, s) => {
+                EventStatePoll::Scheduled(s, mut t) => {
                     if let Some(t_buf) = this.left.next_time() {
                         t = cmp::min(t, t_buf);
                     }
-                    break EventStatePoll::Scheduled(t, s);
+                    break EventStatePoll::Scheduled(s, t);
                 }
                 EventStatePoll::Ready(s) => {
                     break match this.left.next_time() {
-                        Some(t) => EventStatePoll::Scheduled(t, s),
+                        Some(t) => EventStatePoll::Scheduled(s, t),
                         None => EventStatePoll::Ready(s),
                     };
                 }
@@ -235,7 +235,7 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                     waker.wake();
                 }
 
-                break EventStatePoll::Event(time, event);
+                break EventStatePoll::Event(event, time);
             }
 
             if this.left.full(*this.rough_buffer_size) {
@@ -249,25 +249,25 @@ impl<S: EventStateStream<Event = Either<L, R>>, L, R> EventStateSplitInner<S, L,
                     this.left.rollback(t);
                     this.right.rollback(t);
                 }
-                EventStatePoll::Event(t, Either::Right(e)) => {
+                EventStatePoll::Event(Either::Right(e), t) => {
                     match this.right.latest_emission_time {
                         Some(old) => this.right.latest_emission_time = Some(cmp::max(old, t)),
                         None => this.right.latest_emission_time = Some(t),
                     }
-                    break EventStatePoll::Event(t, e);
+                    break EventStatePoll::Event(e, t);
                 }
-                EventStatePoll::Event(t, Either::Left(e)) => {
+                EventStatePoll::Event(Either::Left(e), t) => {
                     this.left.buffer_event(t, e);
                 }
-                EventStatePoll::Scheduled(mut t, s) => {
+                EventStatePoll::Scheduled(s, mut t) => {
                     if let Some(t_buf) = this.right.next_time() {
                         t = cmp::min(t, t_buf);
                     }
-                    break EventStatePoll::Scheduled(t, s);
+                    break EventStatePoll::Scheduled(s, t);
                 }
                 EventStatePoll::Ready(s) => {
                     break match this.right.next_time() {
-                        Some(t) => EventStatePoll::Scheduled(t, s),
+                        Some(t) => EventStatePoll::Scheduled(s, t),
                         None => EventStatePoll::Ready(s),
                     };
                 }

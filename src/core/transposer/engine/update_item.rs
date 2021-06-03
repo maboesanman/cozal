@@ -13,7 +13,7 @@ pub struct UpdateItem<'a, T: Transposer> {
     pub time: EngineTime<'a, T::Time>,
     // TODO: EngineTime and UpdateItemData both track the same thing. they probably should be merged.
     pub data: UpdateItemData<T>,
-    pub events_emitted: RwLock<EventsEmitted>,
+    pub events_emitted: RwLock<DataEmitted<T::Time>>,
 }
 
 pub enum UpdateItemData<T: Transposer> {
@@ -22,25 +22,23 @@ pub enum UpdateItemData<T: Transposer> {
     Schedule,
 }
 
-pub enum EventsEmitted {
-    Some,
+pub enum DataEmitted<T: Ord + Copy> {
+    Event,
+    State(T),
     None,
     Pending,
 }
 
-impl EventsEmitted {
+impl<T: Ord + Copy> DataEmitted<T> {
     pub fn any(&self) -> bool {
         match self {
-            Self::Some => true,
+            Self::Event => true,
+            Self::State(_) => true,
             Self::None => false,
             Self::Pending => false,
         }
     }
     pub fn done(&self) -> bool {
-        match self {
-            Self::Some => true,
-            Self::None => true,
-            Self::Pending => false,
-        }
+        !matches!(self, Self::Pending)
     }
 }

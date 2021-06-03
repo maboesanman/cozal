@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::core::{
-    transposer::engine::update_item::{EventsEmitted, UpdateItemData},
+    transposer::engine::update_item::{DataEmitted, UpdateItemData},
     Transposer,
 };
 
@@ -109,7 +109,7 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
         Some(UpdateItem {
             time,
             data,
-            events_emitted: RwLock::new(EventsEmitted::Pending),
+            events_emitted: RwLock::new(DataEmitted::Pending),
         })
     }
 }

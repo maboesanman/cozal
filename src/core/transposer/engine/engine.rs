@@ -13,7 +13,7 @@ use super::{
     engine_time::EngineTime,
     input_buffer::InputBuffer,
     sparse_buffer_stack::SparseBufferStack,
-    update_item::{EventsEmitted, UpdateItem, UpdateItemData},
+    update_item::{DataEmitted, UpdateItem, UpdateItemData},
 };
 
 type StateMap<'map, T, const N: usize> =
@@ -28,7 +28,6 @@ type OutputBuffer<'map, T> =
 /// - rollback state and replay to resolve instability in the order of the input stream.
 /// -- this is useful for online multiplayer games, where the network latency can jumble inputs.
 /// - respond to rollback events from the input stream.
-/// - record the input events for the purpose of storing replay data.
 #[pin_project(project=EngineProjection)]
 pub struct TransposerEngine<
     'map,
@@ -62,7 +61,7 @@ where
         let first_state_map_item = UpdateItem {
             time: EngineTime::Init,
             data: UpdateItemData::Init(Box::new(initial_transposer.clone())),
-            events_emitted: RwLock::new(EventsEmitted::Pending),
+            events_emitted: RwLock::new(DataEmitted::Pending),
         };
 
         let state_map = SparseBufferStack::new(
@@ -137,8 +136,13 @@ where
 
             match state_map.as_mut().pop() {
                 Some(update_item) => {
-                    if update_item.events_emitted.read().unwrap().any() {
-                        rollback_needed = Some(last_state_map_time);
+                    let events_emitted = update_item.events_emitted.read().unwrap();
+                    if events_emitted.any() {
+                        rollback_needed = match *events_emitted {
+                            DataEmitted::Event => Some(last_state_map_time),
+                            DataEmitted::State(t) => Some(t),
+                            _ => unreachable!()
+                        };
 
                         // throw away everything at or after the discarded frame.
                         output_buffer.split_off(&update_item.time);
@@ -297,7 +301,7 @@ where
                             input_state_event_update = InputStateEventUpdate::Rollback(time);
                             continue 'main;
                         }
-                        EventStatePoll::Event(time, input) => {
+                        EventStatePoll::Event(input, time) => {
                             input_state_event_update = match T::can_handle(time, &input) {
                                 true => InputStateEventUpdate::Event(time, input),
                                 false => InputStateEventUpdate::None,
@@ -308,7 +312,7 @@ where
                     }
 
                     let (time, input) = Self::pop_output_buffer(output_buffer, poll_time).unwrap();
-                    break 'main EventStatePoll::Event(time, input);
+                    break 'main EventStatePoll::Event(input, time);
                 }
             }
 
@@ -324,14 +328,14 @@ where
                                 input_state_event_update = InputStateEventUpdate::Rollback(time);
                                 continue 'main;
                             }
-                            EventStatePoll::Event(time, input) => {
+                            EventStatePoll::Event(input, time) => {
                                 input_state_event_update = match T::can_handle(time, &input) {
                                     true => InputStateEventUpdate::Event(time, input),
                                     false => InputStateEventUpdate::None,
                                 };
                                 continue 'main;
                             }
-                            EventStatePoll::Scheduled(_, state) => state,
+                            EventStatePoll::Scheduled(state, ..) => state,
                             EventStatePoll::Ready(state) => state,
                         };
 
@@ -351,14 +355,14 @@ where
                                 input_state_event_update = InputStateEventUpdate::Rollback(time);
                                 continue 'main;
                             }
-                            EventStatePoll::Event(time, input) => {
+                            EventStatePoll::Event(input, time) => {
                                 input_state_event_update = match T::can_handle(time, &input) {
                                     true => InputStateEventUpdate::Event(time, input),
                                     false => InputStateEventUpdate::None,
                                 };
                                 continue 'main;
                             }
-                            EventStatePoll::Scheduled(_, ()) => {}
+                            EventStatePoll::Scheduled((), ..) => {}
                             EventStatePoll::Ready(()) => {}
                         }
                     }
@@ -374,15 +378,15 @@ where
 
                         let mut events_emitted = update.events_emitted.write().unwrap();
                         if outputs.is_empty() {
-                            *events_emitted = EventsEmitted::None;
+                            *events_emitted = DataEmitted::None;
                             continue 'main;
                         }
 
-                        *events_emitted = EventsEmitted::Some;
+                        *events_emitted = DataEmitted::Event;
                         Self::push_output_buffer(output_buffer, update.time.clone(), outputs);
                         let (time, input) =
                             Self::pop_output_buffer(output_buffer, poll_time).unwrap();
-                        break 'main EventStatePoll::Event(time, input);
+                        break 'main EventStatePoll::Event(input, time);
                     }
                     Poll::Pending => {
                         if buffer.input_state.requested() {
@@ -429,14 +433,14 @@ where
                         input_state_event_update = InputStateEventUpdate::Rollback(time);
                         continue 'main;
                     }
-                    EventStatePoll::Event(time, input) => {
+                    EventStatePoll::Event(input, time) => {
                         input_state_event_update = match T::can_handle(time, &input) {
                             true => InputStateEventUpdate::Event(time, input),
                             false => InputStateEventUpdate::None,
                         };
                         continue 'main;
                     }
-                    EventStatePoll::Scheduled(time, state) => (state, Some(time)),
+                    EventStatePoll::Scheduled(state, time) => (state, Some(time)),
                     EventStatePoll::Ready(state) => (state, None),
                 };
 
@@ -462,15 +466,16 @@ where
 
                 break 'main match (scheduled_input_time, next_possible_scheduled_event_time) {
                     (None, None) => EventStatePoll::Ready(interpolated),
-                    (None, Some(t)) => EventStatePoll::Scheduled(t, interpolated),
-                    (Some(t), None) => EventStatePoll::Scheduled(t, interpolated),
+                    (None, Some(t)) => EventStatePoll::Scheduled(interpolated, t),
+                    (Some(t), None) => EventStatePoll::Scheduled(interpolated, t),
                     (Some(t1), Some(t2)) => match t1.cmp(&t2) {
-                        Ordering::Less => EventStatePoll::Scheduled(t1, interpolated),
-                        Ordering::Equal => EventStatePoll::Scheduled(t1, interpolated),
-                        Ordering::Greater => EventStatePoll::Scheduled(t2, interpolated),
+                        Ordering::Less => EventStatePoll::Scheduled(interpolated, t1),
+                        Ordering::Equal => EventStatePoll::Scheduled(interpolated, t1),
+                        Ordering::Greater => EventStatePoll::Scheduled(interpolated, t2),
                     },
                 };
             }
         }
     }
+
 }
