@@ -56,7 +56,7 @@ impl<'a, T: Transposer> UpdateItem<'a, T> {
             _ => {
                 std::mem::drop(data_emitted);
                 *self.data_emitted.write().unwrap() = DataEmitted::State(time)
-            },
+            }
         }
     }
 

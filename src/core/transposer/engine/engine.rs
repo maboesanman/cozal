@@ -717,8 +717,7 @@ where
                 continue 'main;
             } else {
                 // get our state to interpolate with
-                let scheduled_input_time = match input_stream.as_mut().poll_events(poll_time, cx)
-                {
+                let scheduled_input_time = match input_stream.as_mut().poll_events(poll_time, cx) {
                     EventStatePoll::Pending => break 'main EventStatePoll::Pending,
                     EventStatePoll::Rollback(time) => {
                         input_state_event_update = InputStateEventUpdate::Rollback(time);
