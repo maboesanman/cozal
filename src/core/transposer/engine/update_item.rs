@@ -46,7 +46,7 @@ impl<'a, T: Transposer> UpdateItem<'a, T> {
         let data_emitted = self.data_emitted.read().unwrap();
 
         match *data_emitted {
-            DataEmitted::Event => return,
+            DataEmitted::Event => {},
             DataEmitted::State(t) => {
                 std::mem::drop(data_emitted);
                 if time < t {
