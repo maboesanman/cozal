@@ -3,14 +3,10 @@ use pin_project::pin_project;
 use std::{
     marker::PhantomPinned,
     pin::Pin,
-    sync::RwLock,
     task::{Context, Poll},
 };
 
-use crate::core::{
-    transposer::engine::update_item::{DataEmitted, UpdateItemData},
-    Transposer,
-};
+use crate::core::{transposer::engine::update_item::UpdateItemData, Transposer};
 
 use super::{
     engine_time::EngineTime, input_buffer::InputBuffer, lazy_state::LazyState,
@@ -106,11 +102,7 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
             EngineTime::Schedule(_) => UpdateItemData::Schedule,
         };
 
-        Some(UpdateItem {
-            time,
-            data,
-            events_emitted: RwLock::new(DataEmitted::Pending),
-        })
+        Some(UpdateItem::new(time, data))
     }
 }
 

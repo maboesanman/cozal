@@ -4,9 +4,7 @@ use crate::core::{transposer::TransposerEngine, Transposer};
 
 use super::{
     event_state_map_stream::EventStateMapStream,
-    event_state_split_stream::{
-        bounded, unbounded, EventStateSplitLeft, EventStateSplitRight,
-    },
+    event_state_split_stream::{bounded, unbounded, EventStateSplitLeft, EventStateSplitRight},
     EventStateStream,
 };
 #[cfg(realtime)]

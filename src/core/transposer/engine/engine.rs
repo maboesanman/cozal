@@ -1,7 +1,7 @@
 use core::pin::Pin;
 use futures::{future::FusedFuture, task::Context, Future};
 use pin_project::pin_project;
-use std::{cmp::Ordering, collections::BTreeMap, sync::RwLock, task::Poll};
+use std::{cmp::Ordering, collections::BTreeMap, task::Poll};
 
 use crate::core::{
     event_state_stream::{EventStatePoll, EventStateStream},
@@ -58,11 +58,10 @@ where
 {
     /// create a new TransposerEngine, consuming the input stream.
     pub fn new(input_stream: S, initial_transposer: T) -> TransposerEngine<'map, T, S, N> {
-        let first_state_map_item = UpdateItem {
-            time: EngineTime::Init,
-            data: UpdateItemData::Init(Box::new(initial_transposer.clone())),
-            events_emitted: RwLock::new(DataEmitted::Pending),
-        };
+        let first_state_map_item = UpdateItem::new(
+            EngineTime::Init,
+            UpdateItemData::Init(Box::new(initial_transposer.clone())),
+        );
 
         let state_map = SparseBufferStack::new(
             // pass in the first stack item
@@ -136,9 +135,9 @@ where
 
             match state_map.as_mut().pop() {
                 Some(update_item) => {
-                    let events_emitted = update_item.events_emitted.read().unwrap();
+                    let events_emitted = update_item.data_emitted();
                     if events_emitted.any() {
-                        rollback_needed = match *events_emitted {
+                        rollback_needed = match events_emitted {
                             DataEmitted::Event => Some(last_state_map_time),
                             DataEmitted::State(t) => Some(t),
                             _ => unreachable!(),
@@ -150,6 +149,17 @@ where
                 }
                 None => break,
             }
+        }
+
+        // now check to see if the last frame (which was handled before the rollback)
+        // was used to generate a state. To be perfect here we would need to store every state call,
+        // so we just assume if any state was emitted in this range that a rollback is needed at
+        // exactly the input rollback time.
+        if matches!(
+            state_map.as_mut().peek().data_emitted(),
+            DataEmitted::State(_)
+        ) {
+            rollback_needed = Some(time)
         }
 
         rollback_needed
@@ -178,7 +188,7 @@ where
 
             match state_map.as_mut().pop() {
                 Some(update_item) => {
-                    if update_item.events_emitted.read().unwrap().any() {
+                    if update_item.data_emitted().any() {
                         rollback_needed = Some(last_state_map_time);
 
                         // throw away everything at or after the discarded frame.
@@ -372,17 +382,16 @@ where
                 match buffer.as_mut().poll(cx) {
                     Poll::Ready(outputs) => {
                         // we do not want to do anything with events if they have already been emitted.
-                        if update.events_emitted.read().unwrap().done() {
+                        if update.events_emitted() {
                             continue 'main;
                         }
 
-                        let mut events_emitted = update.events_emitted.write().unwrap();
                         if outputs.is_empty() {
-                            *events_emitted = DataEmitted::None;
+                            update.mark_none_emitted();
                             continue 'main;
                         }
 
-                        *events_emitted = DataEmitted::Event;
+                        update.mark_event_emitted();
                         Self::push_output_buffer(output_buffer, update.time.clone(), outputs);
                         let (time, input) =
                             Self::pop_output_buffer(output_buffer, poll_time).unwrap();
@@ -460,8 +469,11 @@ where
                     .transposer
                     .interpolate(base_time, poll_time, state);
 
+                // indicate we have emitted a state.
+                update.mark_state_emitted(poll_time);
+
                 let next_possible_scheduled_event_time = state_map
-                    .find(|update_item| !update_item.events_emitted.read().unwrap().done())
+                    .find(|update_item| !update_item.data_emitted().done())
                     .map(|update_item| update_item.time.raw_time());
 
                 break 'main match (scheduled_input_time, next_possible_scheduled_event_time) {
