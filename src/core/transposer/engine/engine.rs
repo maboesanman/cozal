@@ -515,10 +515,10 @@ where
                     update.mark_state_emitted(poll_time);
                 }
 
-                return PollInternal::Ready {
+                PollInternal::Ready {
                     interpolated,
                     scheduled_input_time,
-                };
+                }
             },
         )
     }
@@ -599,10 +599,10 @@ where
                     EventStatePoll::Ready(()) => None,
                 };
 
-                return PollInternal::Ready {
+                PollInternal::Ready {
                     interpolated: (),
                     scheduled_input_time,
-                };
+                }
             },
         )
     }
