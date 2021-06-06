@@ -135,7 +135,7 @@ where
 
             match state_map.as_mut().pop() {
                 Some(update_item) => {
-                    let events_emitted = update_item.data_emitted();
+                    let events_emitted: DataEmitted<T::Time> = update_item.data_emitted();
                     if events_emitted.any() {
                         rollback_needed = match events_emitted {
                             DataEmitted::Event => Some(last_state_map_time),
