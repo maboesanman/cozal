@@ -72,3 +72,18 @@ pub trait EventStateStream {
         }
     }
 }
+
+pub trait EventStateStreamPredictor<S: EventStateStream + ?Sized> {
+    fn predict(
+        &self,
+        base_time: S::Time,
+        base_state: S::State,
+        target_time: S::Time
+    ) -> Option<(S::State, Box<[(S::Time, S::Event)]>)>;
+}
+
+impl<S: EventStateStream + ?Sized> EventStateStreamPredictor<S> for () {
+    fn predict(&self, _: S::Time, _: S::State, _: S::Time) -> Option<(S::State, Box<[(S::Time, S::Event)]>)> {
+        None
+    }
+}
