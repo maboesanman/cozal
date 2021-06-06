@@ -16,7 +16,7 @@ $executables
 if [[ "${CI}" ]]
 then
 echo "building coverage for ci"
-grcov . \
+./grcov . \
     -s . \
     --binary-path ./target/debug/ \
     -t coveralls+ \
