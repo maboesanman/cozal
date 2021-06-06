@@ -24,14 +24,28 @@ jobs:
         toolchain: nightly
         override: true
 
-    - name: Run tests and collect coverage
-      uses: maboesanman/rust-codecov@v0
+    - name: Install llvm tools
+      run: rustup component add llvm-tools-preview
+      shell: bash
+
+    - name: Install grcov
+      run: curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-linux-x86_64.tar.bz2 | tar jxf -
+      shell: bash
+
+    - name: Build, Instrument, Test
+      env:
+        LLVM_PROFILE_FILE: target/debug/coverage/%p-%m.profraw
+        CARGO_INCREMENTAL: 0
+        RUSTFLAGS: -Zinstrument-coverage -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort
+        RUSTDOCFLAGS: -Cpanic=abort
+        COVERALLS_TOKEN: ${{ secrets.coveralls_token }}
+      run: ./calculate-coverage.sh
 
     - name: Upload coverage
       uses: codecov/codecov-action@v1
       with:
         token: ${{ secrets.codecov_token }}
-        file: codecov.json
+        file: ./target/debug/coverage/codecov.json
         flags: Test
         name: Cargo Tests
         fail_ci_if_error: true
