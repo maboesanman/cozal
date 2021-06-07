@@ -96,6 +96,12 @@ fn ordering_invariability() {
 
     let mut cx = Context::from_waker(&waker);
 
+    let poll = engine_pin.as_mut().poll_events(15, &mut cx);
+    assert!(matches!(poll, EventStatePoll::Event(1, 10)));
+
+    let poll = engine_pin.as_mut().poll_events(15, &mut cx);
+    assert!(matches!(poll, EventStatePoll::Scheduled((), 30)));
+
     loop {
         match engine_pin.as_mut().poll_events(35, &mut cx) {
             EventStatePoll::Ready(()) => break,
