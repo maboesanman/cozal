@@ -1,7 +1,7 @@
 use core::pin::Pin;
 use futures::{future::FusedFuture, task::Context, Future};
 use pin_project::pin_project;
-use std::{cmp::Ordering, collections::BTreeMap, sync::RwLock, task::Poll};
+use std::{cmp::Ordering, collections::BTreeMap, task::Poll};
 
 use crate::core::{
     event_state_stream::{EventStatePoll, EventStateStream},
@@ -13,7 +13,7 @@ use super::{
     engine_time::EngineTime,
     input_buffer::InputBuffer,
     sparse_buffer_stack::SparseBufferStack,
-    update_item::{EventsEmitted, UpdateItem, UpdateItemData},
+    update_item::{DataEmitted, UpdateItem, UpdateItemData},
 };
 
 type StateMap<'map, T, const N: usize> =
@@ -28,7 +28,6 @@ type OutputBuffer<'map, T> =
 /// - rollback state and replay to resolve instability in the order of the input stream.
 /// -- this is useful for online multiplayer games, where the network latency can jumble inputs.
 /// - respond to rollback events from the input stream.
-/// - record the input events for the purpose of storing replay data.
 #[pin_project(project=EngineProjection)]
 pub struct TransposerEngine<
     'map,
@@ -59,11 +58,10 @@ where
 {
     /// create a new TransposerEngine, consuming the input stream.
     pub fn new(input_stream: S, initial_transposer: T) -> TransposerEngine<'map, T, S, N> {
-        let first_state_map_item = UpdateItem {
-            time: EngineTime::Init,
-            data: UpdateItemData::Init(Box::new(initial_transposer.clone())),
-            events_emitted: RwLock::new(EventsEmitted::Pending),
-        };
+        let first_state_map_item = UpdateItem::new(
+            EngineTime::Init,
+            UpdateItemData::Init(Box::new(initial_transposer.clone())),
+        );
 
         let state_map = SparseBufferStack::new(
             // pass in the first stack item
@@ -137,8 +135,13 @@ where
 
             match state_map.as_mut().pop() {
                 Some(update_item) => {
-                    if update_item.events_emitted.read().unwrap().any() {
-                        rollback_needed = Some(last_state_map_time);
+                    let events_emitted: DataEmitted<T::Time> = update_item.data_emitted();
+                    if events_emitted.any() {
+                        rollback_needed = match events_emitted {
+                            DataEmitted::Event => Some(last_state_map_time),
+                            DataEmitted::State(t) => Some(t),
+                            _ => unreachable!(),
+                        };
 
                         // throw away everything at or after the discarded frame.
                         output_buffer.split_off(&update_item.time);
@@ -146,6 +149,17 @@ where
                 }
                 None => break,
             }
+        }
+
+        // now check to see if the last frame (which was handled before the rollback)
+        // was used to generate a state. To be perfect here we would need to store every state call,
+        // so we just assume if any state was emitted in this range that a rollback is needed at
+        // exactly the input rollback time.
+        if matches!(
+            state_map.as_mut().peek().data_emitted(),
+            DataEmitted::State(_)
+        ) {
+            rollback_needed = Some(time)
         }
 
         rollback_needed
@@ -174,7 +188,7 @@ where
 
             match state_map.as_mut().pop() {
                 Some(update_item) => {
-                    if update_item.events_emitted.read().unwrap().any() {
+                    if update_item.data_emitted().any() {
                         rollback_needed = Some(last_state_map_time);
 
                         // throw away everything at or after the discarded frame.
@@ -198,37 +212,26 @@ where
 
         rollback_needed
     }
-}
 
-impl<
-        'map,
-        T: Transposer + Clone + 'map,
-        S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
-        const N: usize,
-    > EventStateStream for TransposerEngine<'map, T, S, N>
-where
-    T::Scheduled: Clone,
-{
-    type Time = T::Time;
-    type Event = T::Output;
-    type State = T::OutputState;
-
-    fn poll(
+    fn poll_internal<F, Out>(
         mut self: Pin<&mut Self>,
-        poll_time: Self::Time,
+        poll_time: T::Time,
         cx: &mut Context<'_>,
-    ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
+        state_builder: F,
+    ) -> EventStatePoll<T::Time, T::Output, Out>
+    where
+        F: Fn(
+            Pin<&mut S>,
+            Pin<&mut StateMap<'map, T, N>>,
+            usize,
+            &mut Context,
+        ) -> PollInternal<T, Out>,
+    {
         let this = self.as_mut().project();
         let mut input_stream: Pin<&mut S> = this.input_stream;
         let input_buffer: &mut InputBuffer<T::Time, T::Input> = this.input_buffer;
         let output_buffer: &mut OutputBuffer<'map, T> = this.output_buffer;
         let mut state_map: Pin<&mut StateMap<'map, T, N>> = this.state_map;
-
-        enum InputStateEventUpdate<T: Transposer> {
-            None,
-            Event(T::Time, T::Input),
-            Rollback(T::Time),
-        }
 
         let mut input_state_event_update = InputStateEventUpdate::<T>::None;
 
@@ -297,7 +300,7 @@ where
                             input_state_event_update = InputStateEventUpdate::Rollback(time);
                             continue 'main;
                         }
-                        EventStatePoll::Event(time, input) => {
+                        EventStatePoll::Event(input, time) => {
                             input_state_event_update = match T::can_handle(time, &input) {
                                 true => InputStateEventUpdate::Event(time, input),
                                 false => InputStateEventUpdate::None,
@@ -308,7 +311,7 @@ where
                     }
 
                     let (time, input) = Self::pop_output_buffer(output_buffer, poll_time).unwrap();
-                    break 'main EventStatePoll::Event(time, input);
+                    break 'main EventStatePoll::Event(input, time);
                 }
             }
 
@@ -324,14 +327,14 @@ where
                                 input_state_event_update = InputStateEventUpdate::Rollback(time);
                                 continue 'main;
                             }
-                            EventStatePoll::Event(time, input) => {
+                            EventStatePoll::Event(input, time) => {
                                 input_state_event_update = match T::can_handle(time, &input) {
                                     true => InputStateEventUpdate::Event(time, input),
                                     false => InputStateEventUpdate::None,
                                 };
                                 continue 'main;
                             }
-                            EventStatePoll::Scheduled(_, state) => state,
+                            EventStatePoll::Scheduled(state, ..) => state,
                             EventStatePoll::Ready(state) => state,
                         };
 
@@ -351,14 +354,14 @@ where
                                 input_state_event_update = InputStateEventUpdate::Rollback(time);
                                 continue 'main;
                             }
-                            EventStatePoll::Event(time, input) => {
+                            EventStatePoll::Event(input, time) => {
                                 input_state_event_update = match T::can_handle(time, &input) {
                                     true => InputStateEventUpdate::Event(time, input),
                                     false => InputStateEventUpdate::None,
                                 };
                                 continue 'main;
                             }
-                            EventStatePoll::Scheduled(_, ()) => {}
+                            EventStatePoll::Scheduled((), ..) => {}
                             EventStatePoll::Ready(()) => {}
                         }
                     }
@@ -368,21 +371,20 @@ where
                 match buffer.as_mut().poll(cx) {
                     Poll::Ready(outputs) => {
                         // we do not want to do anything with events if they have already been emitted.
-                        if update.events_emitted.read().unwrap().done() {
+                        if update.events_emitted() {
                             continue 'main;
                         }
 
-                        let mut events_emitted = update.events_emitted.write().unwrap();
                         if outputs.is_empty() {
-                            *events_emitted = EventsEmitted::None;
+                            update.mark_none_emitted();
                             continue 'main;
                         }
 
-                        *events_emitted = EventsEmitted::Some;
+                        update.mark_event_emitted();
                         Self::push_output_buffer(output_buffer, update.time.clone(), outputs);
                         let (time, input) =
                             Self::pop_output_buffer(output_buffer, poll_time).unwrap();
-                        break 'main EventStatePoll::Event(time, input);
+                        break 'main EventStatePoll::Event(input, time);
                     }
                     Poll::Pending => {
                         if buffer.input_state.requested() {
@@ -421,22 +423,75 @@ where
                     .unwrap();
                 continue 'main;
             } else {
+                let next_possible_scheduled_event_time = state_map
+                    .find(|update_item| !update_item.data_emitted().done())
+                    .map(|update_item| update_item.time.raw_time());
+
+                match state_builder(
+                    input_stream.as_mut(),
+                    state_map.as_mut(),
+                    last_buffered_index_before_poll,
+                    cx,
+                ) {
+                    PollInternal::BreakPending => break 'main EventStatePoll::Pending,
+                    PollInternal::Continue {
+                        input_state_event_update: new_update,
+                    } => {
+                        input_state_event_update = new_update;
+                        continue 'main;
+                    }
+                    PollInternal::Ready {
+                        interpolated,
+                        scheduled_input_time,
+                    } => {
+                        break 'main match (scheduled_input_time, next_possible_scheduled_event_time)
+                        {
+                            (None, None) => EventStatePoll::Ready(interpolated),
+                            (None, Some(t)) => EventStatePoll::Scheduled(interpolated, t),
+                            (Some(t), None) => EventStatePoll::Scheduled(interpolated, t),
+                            (Some(t1), Some(t2)) => match t1.cmp(&t2) {
+                                Ordering::Less => EventStatePoll::Scheduled(interpolated, t1),
+                                Ordering::Equal => EventStatePoll::Scheduled(interpolated, t1),
+                                Ordering::Greater => EventStatePoll::Scheduled(interpolated, t2),
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn poll_forget_internal<const FORGET: bool>(
+        self: Pin<&mut Self>,
+        poll_time: T::Time,
+        cx: &mut Context<'_>,
+    ) -> EventStatePoll<T::Time, T::Output, T::OutputState> {
+        self.poll_internal(
+            poll_time,
+            cx,
+            |mut input_stream, mut state_map, last_buffered_index_before_poll, cx| {
                 // get our state to interpolate with
-                let (state, scheduled_input_time) = match input_stream.as_mut().poll(poll_time, cx)
-                {
-                    EventStatePoll::Pending => break 'main EventStatePoll::Pending,
+                let poll = match FORGET {
+                    true => input_stream.as_mut().poll_forget(poll_time, cx),
+                    false => input_stream.as_mut().poll(poll_time, cx),
+                };
+
+                let (state, scheduled_input_time) = match poll {
+                    EventStatePoll::Pending => return PollInternal::BreakPending,
                     EventStatePoll::Rollback(time) => {
-                        input_state_event_update = InputStateEventUpdate::Rollback(time);
-                        continue 'main;
+                        return PollInternal::Continue {
+                            input_state_event_update: InputStateEventUpdate::Rollback(time),
+                        }
                     }
-                    EventStatePoll::Event(time, input) => {
-                        input_state_event_update = match T::can_handle(time, &input) {
-                            true => InputStateEventUpdate::Event(time, input),
-                            false => InputStateEventUpdate::None,
-                        };
-                        continue 'main;
+                    EventStatePoll::Event(input, time) => {
+                        return PollInternal::Continue {
+                            input_state_event_update: match T::can_handle(time, &input) {
+                                true => InputStateEventUpdate::Event(time, input),
+                                false => InputStateEventUpdate::None,
+                            },
+                        }
                     }
-                    EventStatePoll::Scheduled(time, state) => (state, Some(time)),
+                    EventStatePoll::Scheduled(state, time) => (state, Some(time)),
                     EventStatePoll::Ready(state) => (state, None),
                 };
 
@@ -456,21 +511,99 @@ where
                     .transposer
                     .interpolate(base_time, poll_time, state);
 
-                let next_possible_scheduled_event_time = state_map
-                    .find(|update_item| !update_item.events_emitted.read().unwrap().done())
-                    .map(|update_item| update_item.time.raw_time());
+                if !FORGET {
+                    update.mark_state_emitted(poll_time);
+                }
 
-                break 'main match (scheduled_input_time, next_possible_scheduled_event_time) {
-                    (None, None) => EventStatePoll::Ready(interpolated),
-                    (None, Some(t)) => EventStatePoll::Scheduled(t, interpolated),
-                    (Some(t), None) => EventStatePoll::Scheduled(t, interpolated),
-                    (Some(t1), Some(t2)) => match t1.cmp(&t2) {
-                        Ordering::Less => EventStatePoll::Scheduled(t1, interpolated),
-                        Ordering::Equal => EventStatePoll::Scheduled(t1, interpolated),
-                        Ordering::Greater => EventStatePoll::Scheduled(t2, interpolated),
-                    },
+                PollInternal::Ready {
+                    interpolated,
+                    scheduled_input_time,
+                }
+            },
+        )
+    }
+}
+
+enum PollInternal<T: Transposer, Out> {
+    BreakPending,
+    Continue {
+        input_state_event_update: InputStateEventUpdate<T>,
+    },
+    Ready {
+        interpolated: Out,
+        scheduled_input_time: Option<T::Time>,
+    },
+}
+
+enum InputStateEventUpdate<T: Transposer> {
+    None,
+    Event(T::Time, T::Input),
+    Rollback(T::Time),
+}
+
+impl<
+        'map,
+        T: Transposer + Clone + 'map,
+        S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
+        const N: usize,
+    > EventStateStream for TransposerEngine<'map, T, S, N>
+where
+    T::Scheduled: Clone,
+{
+    type Time = T::Time;
+    type Event = T::Output;
+    type State = T::OutputState;
+
+    fn poll(
+        self: Pin<&mut Self>,
+        poll_time: Self::Time,
+        cx: &mut Context<'_>,
+    ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
+        self.poll_forget_internal::<false>(poll_time, cx)
+    }
+
+    fn poll_forget(
+        self: Pin<&mut Self>,
+        poll_time: Self::Time,
+        cx: &mut Context<'_>,
+    ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
+        self.poll_forget_internal::<true>(poll_time, cx)
+    }
+
+    fn poll_events(
+        self: Pin<&mut Self>,
+        poll_time: Self::Time,
+        cx: &mut Context<'_>,
+    ) -> EventStatePoll<Self::Time, Self::Event, ()> {
+        self.poll_internal(
+            poll_time,
+            cx,
+            |mut input_stream, _state_map, _last_buffered_index_before_poll, cx| {
+                // get our state to interpolate with
+                let scheduled_input_time = match input_stream.as_mut().poll_events(poll_time, cx) {
+                    EventStatePoll::Pending => return PollInternal::BreakPending,
+                    EventStatePoll::Rollback(time) => {
+                        return PollInternal::Continue {
+                            input_state_event_update: InputStateEventUpdate::Rollback(time),
+                        }
+                    }
+                    EventStatePoll::Event(input, time) => {
+                        return PollInternal::Continue {
+                            input_state_event_update: match T::can_handle(time, &input) {
+                                true => InputStateEventUpdate::Event(time, input),
+                                false => InputStateEventUpdate::None,
+                            },
+                        }
+                    }
+                    EventStatePoll::Scheduled((), time) => Some(time),
+                    EventStatePoll::Ready(()) => None,
                 };
-            }
-        }
+
+                PollInternal::Ready {
+                    interpolated: (),
+                    scheduled_input_time,
+                }
+            },
+        )
     }
 }

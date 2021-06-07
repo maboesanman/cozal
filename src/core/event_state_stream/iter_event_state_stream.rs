@@ -43,9 +43,9 @@ where
             if next_time <= poll_time {
                 let (t, e, s) = this.iter.next().unwrap();
                 this.previous_state = s;
-                EventStatePoll::Event(t, e)
+                EventStatePoll::Event(e, t)
             } else {
-                EventStatePoll::Scheduled(next_time, this.previous_state.clone())
+                EventStatePoll::Scheduled(this.previous_state.clone(), next_time)
             }
         } else {
             EventStatePoll::Ready(this.previous_state.clone())

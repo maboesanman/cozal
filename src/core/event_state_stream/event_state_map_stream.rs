@@ -44,8 +44,8 @@ impl<St: EventStateStream, E, S> EventStateStream for EventStateMapStream<St, E,
         match this.stream.poll(time, cx) {
             EventStatePoll::Pending => EventStatePoll::Pending,
             EventStatePoll::Rollback(t) => EventStatePoll::Rollback(t),
-            EventStatePoll::Event(t, e) => EventStatePoll::Event(t, e_fn(e)),
-            EventStatePoll::Scheduled(t, s) => EventStatePoll::Scheduled(t, s_fn(s)),
+            EventStatePoll::Event(e, t) => EventStatePoll::Event(e_fn(e), t),
+            EventStatePoll::Scheduled(s, t) => EventStatePoll::Scheduled(s_fn(s), t),
             EventStatePoll::Ready(s) => EventStatePoll::Ready(s_fn(s)),
         }
     }
