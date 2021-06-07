@@ -2,16 +2,7 @@ use std::pin::Pin;
 
 use futures::Future;
 
-use crate::core::{
-    transposer::{
-        context::{
-            EmitEventContext, ExpireEventContext, ExpireEventError, InputStateContext, RngContext,
-            ScheduleEventContext, ScheduleEventError,
-        },
-        expire_handle::ExpireHandle,
-    },
-    Transposer,
-};
+use crate::core::{Transposer, transposer::{context::{EmitEventContext, ExpireEventContext, ExpireEventError, InitContext, InputContext, InputStateContext, RngContext, ScheduleContext, ScheduleEventContext, ScheduleEventError}, expire_handle::ExpireHandle}};
 
 use super::{lazy_state::LazyState, transposer_frame::TransposerFrameInternal};
 
@@ -32,6 +23,10 @@ where
     // values to output
     pub(super) outputs: Vec<T::Output>,
 }
+
+impl<'a, T: Transposer> InitContext<'a, T> for EngineContext<'a, T> {}
+impl<'a, T: Transposer> InputContext<'a, T> for EngineContext<'a, T> {}
+impl<'a, T: Transposer> ScheduleContext<'a, T> for EngineContext<'a, T> {}
 
 impl<'a, T: Transposer> EngineContext<'a, T> {
     pub(super) fn new(

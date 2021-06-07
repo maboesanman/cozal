@@ -1,18 +1,15 @@
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::{pin::Pin, task::{Context, Poll}};
 
 use futures::Future;
 
-pub struct LazyState<S: Sized + Unpin>(LazyStateInner<S>);
-pub enum LazyStateInner<S: Sized + Unpin> {
+pub struct LazyState<S>(LazyStateInner<S>);
+pub enum LazyStateInner<S> {
     Ready(S),
     Requested,
     Pending,
 }
 
-impl<'a, S: Sized + Unpin> Future for &'a mut LazyState<S> {
+impl<'a, S> Future for &'a mut LazyState<S> {
     type Output = S;
 
     // it is ok to discard the context because this is never going to be directly executed.
@@ -36,9 +33,9 @@ impl<'a, S: Sized + Unpin> Future for &'a mut LazyState<S> {
     }
 }
 
-impl<S: Sized + Unpin> LazyState<S> {
+impl<S> LazyState<S> {
     pub fn new() -> Self {
-        Self(LazyStateInner::Pending)
+        Self::default()
     }
 
     pub fn set(&mut self, state: S) -> Result<(), S> {
@@ -63,8 +60,8 @@ impl<S: Sized + Unpin> LazyState<S> {
     }
 }
 
-impl<S: Sized + Unpin> Default for LazyState<S> {
+impl<S> Default for LazyState<S> {
     fn default() -> Self {
-        Self::new()
+        Self(LazyStateInner::Pending)
     }
 }
