@@ -5,7 +5,7 @@ use futures::Future;
 use crate::core::{
     transposer::{
         context::{
-            EmitEventContext, ExpireEventContext, ExpireEventError, InputStateContext,
+            EmitEventContext, ExpireEventContext, ExpireEventError, InputStateContext, RngContext,
             ScheduleEventContext, ScheduleEventError,
         },
         expire_handle::ExpireHandle,
@@ -82,6 +82,12 @@ impl<'a, T: Transposer> ExpireEventContext<T> for EngineContext<'a, T> {
 impl<'a, T: Transposer> EmitEventContext<T> for EngineContext<'a, T> {
     fn emit_event(&mut self, payload: T::Output) {
         self.outputs.push(payload);
+    }
+}
+
+impl<'a, T: Transposer> RngContext for EngineContext<'a, T> {
+    fn get_rng(&mut self) -> &mut dyn rand::RngCore {
+        unimplemented!()
     }
 }
 

@@ -1,39 +1,52 @@
 use std::pin::Pin;
 
 use futures::Future;
+use rand::{RngCore};
 
 use super::{expire_handle::ExpireHandle, Transposer};
 
 pub trait InitContext<'a, T: Transposer>:
-    InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T>
+    InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
 {
 }
 impl<'a, U, T: Transposer> InitContext<'a, T> for U where
-    U: InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T>
+    U: InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
 {
 }
 
 pub trait InputContext<'a, T: Transposer>:
-    InputStateContext<'a, T> + ScheduleEventContext<T> + ExpireEventContext<T> + EmitEventContext<T>
+    InputStateContext<'a, T>
+    + ScheduleEventContext<T>
+    + ExpireEventContext<T>
+    + EmitEventContext<T>
+    + RngContext
 {
 }
+
 impl<'a, U, T: Transposer> InputContext<'a, T> for U where
     U: InputStateContext<'a, T>
         + ScheduleEventContext<T>
         + ExpireEventContext<T>
         + EmitEventContext<T>
+        + RngContext
 {
 }
 
 pub trait ScheduleContext<'a, T: Transposer>:
-    InputStateContext<'a, T> + ScheduleEventContext<T> + ExpireEventContext<T> + EmitEventContext<T>
+    InputStateContext<'a, T>
+    + ScheduleEventContext<T>
+    + ExpireEventContext<T>
+    + EmitEventContext<T>
+    + RngContext
 {
 }
+
 impl<'a, U, T: Transposer> ScheduleContext<'a, T> for U where
     U: InputStateContext<'a, T>
         + ScheduleEventContext<T>
         + ExpireEventContext<T>
         + EmitEventContext<T>
+        + RngContext
 {
 }
 
@@ -72,4 +85,8 @@ pub enum ExpireEventError {
 
 pub trait EmitEventContext<T: Transposer> {
     fn emit_event(&mut self, payload: T::Output);
+}
+
+pub trait RngContext {
+    fn get_rng(&mut self) -> &mut dyn RngCore;
 }
