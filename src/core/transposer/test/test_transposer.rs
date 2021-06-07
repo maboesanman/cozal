@@ -1,6 +1,7 @@
 use crate::core::transposer::context::{InitContext, InputContext, ScheduleContext};
 use crate::core::Transposer;
 use async_trait::async_trait;
+use rand::Rng;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum HandleRecord {
@@ -12,7 +13,7 @@ pub(crate) enum HandleRecord {
 pub(crate) struct TestTransposer {
     init_events: Vec<(usize, usize)>,
 
-    pub handle_record: im::Vector<HandleRecord>,
+    pub handle_record: im::Vector<(HandleRecord, u64)>,
 }
 
 impl TestTransposer {
@@ -31,7 +32,7 @@ impl Transposer for TestTransposer {
 
     type InputState = usize;
 
-    type OutputState = Vec<HandleRecord>;
+    type OutputState = Vec<(HandleRecord, u64)>;
 
     type Input = usize;
 
@@ -56,7 +57,7 @@ impl Transposer for TestTransposer {
             vec.push(*payload);
         }
         let record = HandleRecord::Input(time, vec);
-        self.handle_record.push_back(record.clone());
+        self.handle_record.push_back((record, cx.get_rng().gen()));
 
         let state = cx.get_input_state().await;
         cx.emit_event(state);
@@ -69,7 +70,7 @@ impl Transposer for TestTransposer {
         cx: &mut dyn ScheduleContext<'_, Self>,
     ) {
         let record = HandleRecord::Scheduled(time, payload);
-        self.handle_record.push_back(record.clone());
+        self.handle_record.push_back((record, cx.get_rng().gen()));
 
         let state = cx.get_input_state().await;
         cx.emit_event(state);
