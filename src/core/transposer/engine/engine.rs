@@ -57,7 +57,11 @@ where
     T::Scheduled: Clone,
 {
     /// create a new TransposerEngine, consuming the input stream.
-    pub fn new(input_stream: S, initial_transposer: T) -> TransposerEngine<'map, T, S, N> {
+    pub fn new(
+        input_stream: S,
+        initial_transposer: T,
+        rng_seed: [u8; 32],
+    ) -> TransposerEngine<'map, T, S, N> {
         let first_state_map_item = UpdateItem::new(
             EngineTime::Init,
             UpdateItemData::Init(Box::new(initial_transposer.clone())),
@@ -67,7 +71,7 @@ where
             // pass in the first stack item
             first_state_map_item,
             // create the corresponding buffer using a reference to the stack item
-            |update_item| BufferedItem::new(initial_transposer, update_item),
+            |update_item| BufferedItem::new(initial_transposer, update_item, rng_seed),
         );
 
         Self {

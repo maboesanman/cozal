@@ -1,7 +1,7 @@
 use std::pin::Pin;
 
 use futures::Future;
-use rand::{RngCore};
+use rand::RngCore;
 
 use super::{expire_handle::ExpireHandle, Transposer};
 

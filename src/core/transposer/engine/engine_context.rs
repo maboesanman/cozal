@@ -2,7 +2,17 @@ use std::pin::Pin;
 
 use futures::Future;
 
-use crate::core::{Transposer, transposer::{context::{EmitEventContext, ExpireEventContext, ExpireEventError, InitContext, InputContext, InputStateContext, RngContext, ScheduleContext, ScheduleEventContext, ScheduleEventError}, expire_handle::ExpireHandle}};
+use crate::core::{
+    transposer::{
+        context::{
+            EmitEventContext, ExpireEventContext, ExpireEventError, InitContext, InputContext,
+            InputStateContext, RngContext, ScheduleContext, ScheduleEventContext,
+            ScheduleEventError,
+        },
+        expire_handle::ExpireHandle,
+    },
+    Transposer,
+};
 
 use super::{lazy_state::LazyState, transposer_frame::TransposerFrameInternal};
 
@@ -82,7 +92,7 @@ impl<'a, T: Transposer> EmitEventContext<T> for EngineContext<'a, T> {
 
 impl<'a, T: Transposer> RngContext for EngineContext<'a, T> {
     fn get_rng(&mut self) -> &mut dyn rand::RngCore {
-        unimplemented!()
+        &mut self.frame_internal.rng
     }
 }
 

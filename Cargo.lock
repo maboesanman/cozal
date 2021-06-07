@@ -225,6 +225,7 @@ dependencies = [
  "matches",
  "pin-project",
  "rand",
+ "rand_chacha",
  "take_mut",
  "tokio",
  "winit",

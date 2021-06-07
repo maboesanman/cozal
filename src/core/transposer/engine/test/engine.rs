@@ -1,5 +1,7 @@
 use std::{pin::Pin, task::Context};
 
+use rand::Rng;
+
 use crate::{
     core::{
         event_state_stream::{
@@ -17,7 +19,9 @@ fn poll() {
     let test_input_iter = (0..).map(|i| (10 * i, i, i * i));
     let test_input = IterEventStateStream::new(test_input_iter, 0);
 
-    let mut engine = test_input.into_engine::<_, 20>(TestTransposer::new(vec![]));
+    let seed = rand::thread_rng().gen();
+
+    let mut engine = test_input.into_engine::<_, 20>(TestTransposer::new(vec![]), seed);
     let engine_ref = &mut engine;
 
     let mut engine_pin = unsafe { Pin::new_unchecked(engine_ref) };
@@ -51,7 +55,9 @@ fn poll_forget() {
     let test_input_iter = (0..).map(|i| (10 * i, i, i * i));
     let test_input = IterEventStateStream::new(test_input_iter, 0);
 
-    let mut engine = test_input.into_engine::<_, 20>(TestTransposer::new(vec![]));
+    let seed = rand::thread_rng().gen();
+
+    let mut engine = test_input.into_engine::<_, 20>(TestTransposer::new(vec![]), seed);
     let engine_ref = &mut engine;
 
     let mut engine_pin = unsafe { Pin::new_unchecked(engine_ref) };
@@ -87,7 +93,9 @@ fn ordering_invariability() {
     // let test_input_iter = (0..).map(|i| (10 * i, i, i * i));
     let test_input = IterEventStateStream::new(test_input_iter, 0);
 
-    let mut engine = test_input.into_engine::<_, 20>(TestTransposer::new(vec![]));
+    let seed = rand::thread_rng().gen();
+
+    let mut engine = test_input.into_engine::<_, 20>(TestTransposer::new(vec![]), seed);
     let engine_ref = &mut engine;
 
     let mut engine_pin = unsafe { Pin::new_unchecked(engine_ref) };

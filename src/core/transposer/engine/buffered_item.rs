@@ -44,13 +44,17 @@ enum BufferedItemState<'a, T: Transposer> {
 
 impl<'a, T: Transposer> BufferedItem<'a, T> {
     #[allow(unused)]
-    pub fn new(transposer: T, update_item: &'a UpdateItem<'a, T>) -> BufferedItem<'a, T>
+    pub fn new(
+        transposer: T,
+        update_item: &'a UpdateItem<'a, T>,
+        rng_seed: [u8; 32],
+    ) -> BufferedItem<'a, T>
     where
         T: Clone,
     {
         BufferedItem {
             state: BufferedItemState::Unpollable { update_item },
-            transposer_frame: TransposerFrame::new(transposer),
+            transposer_frame: TransposerFrame::new(transposer, rng_seed),
             input_state: LazyState::new(),
             _marker: PhantomPinned,
         }
