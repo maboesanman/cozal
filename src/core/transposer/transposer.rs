@@ -12,15 +12,15 @@ use async_trait::async_trait;
 /// The name comes from the idea that we are converting a stream of events into another stream of events,
 /// perhaps in the way a stream of music notes can be *transposed* into another stream of music notes.
 #[async_trait(?Send)]
-pub trait Transposer: Sized {
+pub trait Transposer {
     /// The type used as the 'time' for events. This must be Ord and Copy because it is frequently used for comparisons,
     /// and it must be [`Default`] because the default value is used for the timestamp of events emitted.
     /// by the init function.
-    type Time: Copy + Ord + Default + Unpin;
+    type Time: Copy + Ord + Default;
 
-    type InputState: Sized + Unpin;
+    type InputState;
 
-    type OutputState: Sized + Unpin;
+    type OutputState;
 
     /// The type of the input payloads.
     ///
@@ -29,12 +29,12 @@ pub trait Transposer: Sized {
     /// This type is not intended to contain timing information. It may if you need it, but
     /// no timing information contained inside your `Input` type will be used to inform the order
     /// that events are handled.
-    type Input: Sized + Unpin;
+    type Input;
 
     /// The type of the payloads of scheduled events
     ///
     /// the events in the schedule are all of type `Event<Self::Time, Self::Scheduled>`
-    type Scheduled: Clone + Unpin;
+    type Scheduled: Clone;
 
     /// The type of the output payloads.
     ///
@@ -42,7 +42,7 @@ pub trait Transposer: Sized {
     ///
     /// If a rollback must occur which invalidates previously yielded events, an event of type
     /// `Event<Self::Time, RollbackPayload::Rollback>` will be emitted.
-    type Output: Sized + Unpin;
+    type Output;
 
     /// The function to initialize your transposer's events.
     ///

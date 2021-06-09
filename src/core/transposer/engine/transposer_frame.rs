@@ -15,6 +15,8 @@ use super::{
 };
 
 use im::{HashMap, OrdMap};
+use rand::SeedableRng;
+use rand_chacha::{rand_core::block::BlockRng, ChaCha12Core};
 
 #[derive(Clone)]
 pub struct TransposerFrame<'a, T: Transposer>
@@ -29,10 +31,10 @@ impl<'a, T: Transposer> TransposerFrame<'a, T>
 where
     T::Scheduled: Clone,
 {
-    pub fn new(transposer: T) -> Self {
+    pub fn new(transposer: T, rng_seed: [u8; 32]) -> Self {
         Self {
             transposer,
-            internal: TransposerFrameInternal::new(),
+            internal: TransposerFrameInternal::new(rng_seed),
         }
     }
 
@@ -84,20 +86,22 @@ where
     pub expire_handles: HashMap<ExpireHandle, EngineTimeSchedule<'a, T::Time>>,
 
     pub expire_handle_factory: ExpireHandleFactory,
-    // todo add rng seed info
+
+    pub rng: BlockRng<ChaCha12Core>,
 }
 
 impl<'a, T: Transposer> TransposerFrameInternal<'a, T>
 where
     T::Scheduled: Clone,
 {
-    fn new() -> Self {
+    fn new(rng_seed: [u8; 32]) -> Self {
         Self {
             current_time: MaybeUninit::uninit(),
             scheduling_index: 0,
             schedule: OrdMap::new(),
             expire_handles: HashMap::new(),
             expire_handle_factory: ExpireHandleFactory::new(),
+            rng: BlockRng::new(ChaCha12Core::from_seed(rng_seed)),
         }
     }
 

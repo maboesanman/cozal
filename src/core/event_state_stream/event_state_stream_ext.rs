@@ -37,13 +37,14 @@ pub trait EventStateStreamExt: EventStateStream {
     >(
         self,
         initial: T,
+        rng_seed: [u8; 32],
     ) -> TransposerEngine<'tr, T, Self, N>
     where
         T: Clone,
         T::Scheduled: Clone,
         Self: Sized,
     {
-        TransposerEngine::new(self, initial)
+        TransposerEngine::new(self, initial, rng_seed)
     }
 
     /// Adapter for converting the events and states of a stream.
