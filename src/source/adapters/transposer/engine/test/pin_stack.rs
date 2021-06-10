@@ -1,4 +1,4 @@
-use crate::core::transposer::engine::pin_stack::PinStack;
+use super::super::pin_stack::PinStack;
 
 #[test]
 fn basic_test() {

@@ -1,4 +1,4 @@
-use crate::core::transposer::expire_handle::ExpireHandle;
+use super::super::ExpireHandle;
 use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 
 #[derive(Debug)]

@@ -3,7 +3,7 @@ use std::sync::RwLock;
 use matches;
 use pin_project::pin_project;
 
-use crate::core::Transposer;
+use super::super::Transposer;
 
 use super::engine_time::EngineTime;
 

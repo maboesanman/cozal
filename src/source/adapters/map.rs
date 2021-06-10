@@ -2,10 +2,11 @@ use core::pin::Pin;
 use core::task::Context;
 use pin_project::pin_project;
 
-use super::{EventStatePoll, EventStateStream};
+use crate::source::Source;
+use crate::source::SourcePoll;
 
 #[pin_project]
-pub struct EventStateMapStream<St: EventStateStream, E, S> {
+pub struct Map<St: Source, E, S> {
     #[pin]
     stream: St,
 
@@ -13,12 +14,12 @@ pub struct EventStateMapStream<St: EventStateStream, E, S> {
     state_transform: fn(St::State) -> S,
 }
 
-impl<St: EventStateStream, E, S> EventStateMapStream<St, E, S> {
+impl<St: Source, E, S> Map<St, E, S> {
     pub fn new(
         stream: St,
         event_transform: fn(St::Event) -> E,
         state_transform: fn(St::State) -> S,
-    ) -> EventStateMapStream<St, E, S> {
+    ) -> Map<St, E, S> {
         Self {
             stream,
             event_transform,
@@ -27,7 +28,7 @@ impl<St: EventStateStream, E, S> EventStateMapStream<St, E, S> {
     }
 }
 
-impl<St: EventStateStream, E, S> EventStateStream for EventStateMapStream<St, E, S> {
+impl<St: Source, E, S> Source for Map<St, E, S> {
     type Time = St::Time;
     type Event = E;
     type State = S;
@@ -36,17 +37,17 @@ impl<St: EventStateStream, E, S> EventStateStream for EventStateMapStream<St, E,
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> EventStatePoll<St::Time, E, S> {
+    ) -> SourcePoll<St::Time, E, S> {
         let this = self.project();
         let e_fn = this.event_transform;
         let s_fn = this.state_transform;
 
         match this.stream.poll(time, cx) {
-            EventStatePoll::Pending => EventStatePoll::Pending,
-            EventStatePoll::Rollback(t) => EventStatePoll::Rollback(t),
-            EventStatePoll::Event(e, t) => EventStatePoll::Event(e_fn(e), t),
-            EventStatePoll::Scheduled(s, t) => EventStatePoll::Scheduled(s_fn(s), t),
-            EventStatePoll::Ready(s) => EventStatePoll::Ready(s_fn(s)),
+            SourcePoll::Pending => SourcePoll::Pending,
+            SourcePoll::Rollback(t) => SourcePoll::Rollback(t),
+            SourcePoll::Event(e, t) => SourcePoll::Event(e_fn(e), t),
+            SourcePoll::Scheduled(s, t) => SourcePoll::Scheduled(s_fn(s), t),
+            SourcePoll::Ready(s) => SourcePoll::Ready(s_fn(s)),
         }
     }
 }

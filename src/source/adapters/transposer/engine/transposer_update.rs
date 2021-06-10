@@ -6,7 +6,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use crate::core::Transposer;
+use super::super::Transposer;
 
 use super::{
     engine_context::EngineContext, lazy_state::LazyState, transposer_frame::TransposerFrame,

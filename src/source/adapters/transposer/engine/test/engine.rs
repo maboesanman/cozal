@@ -1,24 +1,21 @@
 use std::{pin::Pin, task::Context};
 
 use rand::{Rng, SeedableRng};
-use rand_chacha::{ChaCha12Core, rand_core::block::BlockRng};
+use rand_chacha::{rand_core::block::BlockRng, ChaCha12Core};
 
-use crate::{
-    core::{
-        event_state_stream::{
-            iter_event_state_stream::IterEventStateStream, EventStatePoll, EventStateStream,
-            EventStateStreamExt,
-        },
-        transposer::test::test_transposer::{HandleRecord, TestTransposer},
-    },
-    test::test_waker::DummyWaker,
-};
+use crate::source::adapters::transposer::test::test_transposer::HandleRecord;
+use crate::source::adapters::transposer::test::test_transposer::TestTransposer;
+use crate::source::adapters::Iter;
+use crate::source::Source;
+use crate::source::SourceExt;
+use crate::source::SourcePoll;
+use crate::test::test_waker::DummyWaker;
 
 #[test]
 fn poll() {
     // this event state stream emits an event every 10, with payload i, and state i^2
     let test_input_iter = (0..).map(|i| (10 * i, i, i * i));
-    let test_input = IterEventStateStream::new(test_input_iter, 0);
+    let test_input = Iter::new(test_input_iter, 0);
 
     let seed = rand::thread_rng().gen();
 
@@ -32,29 +29,29 @@ fn poll() {
     let mut cx = Context::from_waker(&waker);
 
     let poll = engine_pin.as_mut().poll(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Event(0, 0)));
+    assert!(matches!(poll, SourcePoll::Event(0, 0)));
 
     let poll = engine_pin.as_mut().poll(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Event(1, 10)));
+    assert!(matches!(poll, SourcePoll::Event(1, 10)));
 
     let poll = engine_pin.as_mut().poll(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Scheduled(_, 20)));
+    assert!(matches!(poll, SourcePoll::Scheduled(_, 20)));
 
     let poll = engine_pin.as_mut().poll(35, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Event(4, 20)));
+    assert!(matches!(poll, SourcePoll::Event(4, 20)));
 
     let poll = engine_pin.as_mut().poll(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Scheduled(_, 30)));
+    assert!(matches!(poll, SourcePoll::Scheduled(_, 30)));
 
     let poll = engine_pin.as_mut().poll(30, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Event(9, 30)));
+    assert!(matches!(poll, SourcePoll::Event(9, 30)));
 }
 
 #[test]
 fn poll_forget() {
     // this event state stream emits an event every 10, with payload i, and state i^2
     let test_input_iter = (0..).map(|i| (10 * i, i, i * i));
-    let test_input = IterEventStateStream::new(test_input_iter, 0);
+    let test_input = Iter::new(test_input_iter, 0);
 
     let seed = rand::thread_rng().gen();
 
@@ -68,22 +65,22 @@ fn poll_forget() {
     let mut cx = Context::from_waker(&waker);
 
     let poll = engine_pin.as_mut().poll_forget(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Event(0, 0)));
+    assert!(matches!(poll, SourcePoll::Event(0, 0)));
 
     let poll = engine_pin.as_mut().poll_forget(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Event(1, 10)));
+    assert!(matches!(poll, SourcePoll::Event(1, 10)));
 
     let poll = engine_pin.as_mut().poll_forget(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Scheduled(_, 20)));
+    assert!(matches!(poll, SourcePoll::Scheduled(_, 20)));
 
     let poll = engine_pin.as_mut().poll_forget(35, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Event(4, 20)));
+    assert!(matches!(poll, SourcePoll::Event(4, 20)));
 
     let poll = engine_pin.as_mut().poll_forget(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Scheduled(_, 30)));
+    assert!(matches!(poll, SourcePoll::Scheduled(_, 30)));
 
     let poll = engine_pin.as_mut().poll_forget(30, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Event(9, 30)));
+    assert!(matches!(poll, SourcePoll::Event(9, 30)));
 }
 
 #[test]
@@ -92,7 +89,7 @@ fn ordering_invariability() {
     let items = [1, 3, 0, 2];
     let test_input_iter = items.iter().map(|&i| (10 * i, i, i * i));
     // let test_input_iter = (0..).map(|i| (10 * i, i, i * i));
-    let test_input = IterEventStateStream::new(test_input_iter, 0);
+    let test_input = Iter::new(test_input_iter, 0);
 
     let seed = rand::thread_rng().gen();
 
@@ -106,19 +103,19 @@ fn ordering_invariability() {
     let mut cx = Context::from_waker(&waker);
 
     let poll = engine_pin.as_mut().poll_events(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Event(1, 10)));
+    assert!(matches!(poll, SourcePoll::Event(1, 10)));
 
     let poll = engine_pin.as_mut().poll_events(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Scheduled((), 30)));
+    assert!(matches!(poll, SourcePoll::Scheduled((), 30)));
 
     loop {
         match engine_pin.as_mut().poll_events(35, &mut cx) {
-            EventStatePoll::Ready(()) => break,
+            SourcePoll::Ready(()) => break,
             _ => continue,
         }
     }
 
-    if let EventStatePoll::Ready(state) = engine_pin.as_mut().poll(5, &mut cx) {
+    if let SourcePoll::Ready(state) = engine_pin.as_mut().poll(5, &mut cx) {
         if let (HandleRecord::Input(t, v), _) = &state[0] {
             assert_eq!(*t, 0);
             assert_eq!(v.len(), 1);
@@ -130,7 +127,7 @@ fn ordering_invariability() {
         panic!("poll wasn't ready");
     }
 
-    if let EventStatePoll::Ready(state) = engine_pin.as_mut().poll(15, &mut cx) {
+    if let SourcePoll::Ready(state) = engine_pin.as_mut().poll(15, &mut cx) {
         if let (HandleRecord::Input(t, v), _) = &state[0] {
             assert_eq!(*t, 0);
             assert_eq!(v.len(), 1);
@@ -150,7 +147,7 @@ fn ordering_invariability() {
         panic!("poll wasn't ready");
     }
 
-    if let EventStatePoll::Ready(state) = engine_pin.as_mut().poll(25, &mut cx) {
+    if let SourcePoll::Ready(state) = engine_pin.as_mut().poll(25, &mut cx) {
         if let (HandleRecord::Input(t, v), _) = &state[0] {
             assert_eq!(*t, 0);
             assert_eq!(v.len(), 1);
@@ -178,7 +175,7 @@ fn ordering_invariability() {
         panic!("poll wasn't ready");
     }
 
-    if let EventStatePoll::Ready(state) = engine_pin.as_mut().poll(35, &mut cx) {
+    if let SourcePoll::Ready(state) = engine_pin.as_mut().poll(35, &mut cx) {
         if let (HandleRecord::Input(t, v), _) = &state[0] {
             assert_eq!(*t, 0);
             assert_eq!(v.len(), 1);
@@ -221,7 +218,7 @@ fn rng() {
     let items = [1, 3, 0, 2];
     let test_input_iter = items.iter().map(|&i| (10 * i, i, i * i));
     // let test_input_iter = (0..).map(|i| (10 * i, i, i * i));
-    let test_input = IterEventStateStream::new(test_input_iter, 0);
+    let test_input = Iter::new(test_input_iter, 0);
 
     let seed = rand::thread_rng().gen();
 
@@ -237,19 +234,19 @@ fn rng() {
     let mut cx = Context::from_waker(&waker);
 
     let poll = engine_pin.as_mut().poll_events(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Event(1, 10)));
+    assert!(matches!(poll, SourcePoll::Event(1, 10)));
 
     let poll = engine_pin.as_mut().poll_events(15, &mut cx);
-    assert!(matches!(poll, EventStatePoll::Scheduled((), 30)));
+    assert!(matches!(poll, SourcePoll::Scheduled((), 30)));
 
     loop {
         match engine_pin.as_mut().poll_events(35, &mut cx) {
-            EventStatePoll::Ready(()) => break,
+            SourcePoll::Ready(()) => break,
             _ => continue,
         }
     }
 
-    if let EventStatePoll::Ready(state) = engine_pin.as_mut().poll(35, &mut cx) {
+    if let SourcePoll::Ready(state) = engine_pin.as_mut().poll(35, &mut cx) {
         assert_eq!(rng.gen::<u64>(), state[0].1);
         assert_eq!(rng.gen::<u64>(), state[1].1);
         assert_eq!(rng.gen::<u64>(), state[2].1);

@@ -1,20 +1,36 @@
+pub(self) mod buffered_item;
+pub(self) mod engine_context;
+pub(self) mod engine_time;
+pub(self) mod expire_handle_factory;
+pub(self) mod input_buffer;
+pub(self) mod pin_stack;
+pub(self) mod sparse_buffer_stack;
+pub(self) mod transposer_frame;
+pub(self) mod transposer_update;
+pub(self) mod update_item;
+pub(self) mod update_result;
+
+pub mod lazy_state;
+
+#[cfg(test)]
+pub mod test;
+
+
 use core::pin::Pin;
 use futures::{future::FusedFuture, task::Context, Future};
 use pin_project::pin_project;
 use std::{cmp::Ordering, collections::BTreeMap, task::Poll};
 
-use crate::core::{
-    event_state_stream::{EventStatePoll, EventStateStream},
-    Transposer,
-};
-
-use super::{
+use self::{
     buffered_item::BufferedItem,
     engine_time::EngineTime,
     input_buffer::InputBuffer,
     sparse_buffer_stack::SparseBufferStack,
     update_item::{DataEmitted, UpdateItem, UpdateItemData},
 };
+
+use super::super::Transposer;
+use crate::source::{Source, SourcePoll};
 
 type StateMap<'map, T, const N: usize> =
     SparseBufferStack<'map, UpdateItem<'map, T>, BufferedItem<'map, T>, N>;
@@ -32,7 +48,7 @@ type OutputBuffer<'map, T> =
 pub struct TransposerEngine<
     'map,
     T: Transposer + Clone + 'map,
-    S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
+    S: Source<Time = T::Time, Event = T::Input, State = T::InputState>,
     const N: usize,
 > where
     T::Scheduled: Clone,
@@ -50,7 +66,7 @@ pub struct TransposerEngine<
 impl<
         'map,
         T: Transposer + Clone + 'map,
-        S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
+        S: Source<Time = T::Time, Event = T::Input, State = T::InputState>,
         const N: usize,
     > TransposerEngine<'map, T, S, N>
 where
@@ -222,7 +238,7 @@ where
         poll_time: T::Time,
         cx: &mut Context<'_>,
         state_builder: F,
-    ) -> EventStatePoll<T::Time, T::Output, Out>
+    ) -> SourcePoll<T::Time, T::Output, Out>
     where
         F: Fn(
             Pin<&mut S>,
@@ -260,7 +276,7 @@ where
                         time,
                     );
                     if let Some(rollback_time) = rollback_time {
-                        break 'main EventStatePoll::Rollback(rollback_time);
+                        break 'main SourcePoll::Rollback(rollback_time);
                     }
                     Self::resolve_state_map_and_input_buffer(
                         input_buffer,
@@ -299,12 +315,12 @@ where
                         .as_mut()
                         .poll_events(output_time.raw_time(), cx)
                     {
-                        EventStatePoll::Pending => break 'main EventStatePoll::Pending,
-                        EventStatePoll::Rollback(time) => {
+                        SourcePoll::Pending => break 'main SourcePoll::Pending,
+                        SourcePoll::Rollback(time) => {
                             input_state_event_update = InputStateEventUpdate::Rollback(time);
                             continue 'main;
                         }
-                        EventStatePoll::Event(input, time) => {
+                        SourcePoll::Event(input, time) => {
                             input_state_event_update = match T::can_handle(time, &input) {
                                 true => InputStateEventUpdate::Event(time, input),
                                 false => InputStateEventUpdate::None,
@@ -315,7 +331,7 @@ where
                     }
 
                     let (time, input) = Self::pop_output_buffer(output_buffer, poll_time).unwrap();
-                    break 'main EventStatePoll::Event(input, time);
+                    break 'main SourcePoll::Event(input, time);
                 }
             }
 
@@ -326,20 +342,20 @@ where
                 match buffer.input_state.requested() {
                     true => {
                         let state = match input_stream.as_mut().poll(update.time.raw_time(), cx) {
-                            EventStatePoll::Pending => break 'main EventStatePoll::Pending,
-                            EventStatePoll::Rollback(time) => {
+                            SourcePoll::Pending => break 'main SourcePoll::Pending,
+                            SourcePoll::Rollback(time) => {
                                 input_state_event_update = InputStateEventUpdate::Rollback(time);
                                 continue 'main;
                             }
-                            EventStatePoll::Event(input, time) => {
+                            SourcePoll::Event(input, time) => {
                                 input_state_event_update = match T::can_handle(time, &input) {
                                     true => InputStateEventUpdate::Event(time, input),
                                     false => InputStateEventUpdate::None,
                                 };
                                 continue 'main;
                             }
-                            EventStatePoll::Scheduled(state, ..) => state,
-                            EventStatePoll::Ready(state) => state,
+                            SourcePoll::Scheduled(state, ..) => state,
+                            SourcePoll::Ready(state) => state,
                         };
 
                         // pass in our new state.
@@ -353,20 +369,20 @@ where
                             .as_mut()
                             .poll_events(update.time.raw_time(), cx)
                         {
-                            EventStatePoll::Pending => break 'main EventStatePoll::Pending,
-                            EventStatePoll::Rollback(time) => {
+                            SourcePoll::Pending => break 'main SourcePoll::Pending,
+                            SourcePoll::Rollback(time) => {
                                 input_state_event_update = InputStateEventUpdate::Rollback(time);
                                 continue 'main;
                             }
-                            EventStatePoll::Event(input, time) => {
+                            SourcePoll::Event(input, time) => {
                                 input_state_event_update = match T::can_handle(time, &input) {
                                     true => InputStateEventUpdate::Event(time, input),
                                     false => InputStateEventUpdate::None,
                                 };
                                 continue 'main;
                             }
-                            EventStatePoll::Scheduled((), ..) => {}
-                            EventStatePoll::Ready(()) => {}
+                            SourcePoll::Scheduled((), ..) => {}
+                            SourcePoll::Ready(()) => {}
                         }
                     }
                 };
@@ -388,13 +404,13 @@ where
                         Self::push_output_buffer(output_buffer, update.time.clone(), outputs);
                         let (time, input) =
                             Self::pop_output_buffer(output_buffer, poll_time).unwrap();
-                        break 'main EventStatePoll::Event(input, time);
+                        break 'main SourcePoll::Event(input, time);
                     }
                     Poll::Pending => {
                         if buffer.input_state.requested() {
                             continue 'main;
                         } else {
-                            break 'main EventStatePoll::Pending;
+                            break 'main SourcePoll::Pending;
                         }
                     }
                 }
@@ -437,7 +453,7 @@ where
                     last_buffered_index_before_poll,
                     cx,
                 ) {
-                    PollInternal::BreakPending => break 'main EventStatePoll::Pending,
+                    PollInternal::BreakPending => break 'main SourcePoll::Pending,
                     PollInternal::Continue {
                         input_state_event_update: new_update,
                     } => {
@@ -450,13 +466,13 @@ where
                     } => {
                         break 'main match (scheduled_input_time, next_possible_scheduled_event_time)
                         {
-                            (None, None) => EventStatePoll::Ready(interpolated),
-                            (None, Some(t)) => EventStatePoll::Scheduled(interpolated, t),
-                            (Some(t), None) => EventStatePoll::Scheduled(interpolated, t),
+                            (None, None) => SourcePoll::Ready(interpolated),
+                            (None, Some(t)) => SourcePoll::Scheduled(interpolated, t),
+                            (Some(t), None) => SourcePoll::Scheduled(interpolated, t),
                             (Some(t1), Some(t2)) => match t1.cmp(&t2) {
-                                Ordering::Less => EventStatePoll::Scheduled(interpolated, t1),
-                                Ordering::Equal => EventStatePoll::Scheduled(interpolated, t1),
-                                Ordering::Greater => EventStatePoll::Scheduled(interpolated, t2),
+                                Ordering::Less => SourcePoll::Scheduled(interpolated, t1),
+                                Ordering::Equal => SourcePoll::Scheduled(interpolated, t1),
+                                Ordering::Greater => SourcePoll::Scheduled(interpolated, t2),
                             },
                         }
                     }
@@ -469,7 +485,7 @@ where
         self: Pin<&mut Self>,
         poll_time: T::Time,
         cx: &mut Context<'_>,
-    ) -> EventStatePoll<T::Time, T::Output, T::OutputState> {
+    ) -> SourcePoll<T::Time, T::Output, T::OutputState> {
         self.poll_internal(
             poll_time,
             cx,
@@ -481,13 +497,13 @@ where
                 };
 
                 let (state, scheduled_input_time) = match poll {
-                    EventStatePoll::Pending => return PollInternal::BreakPending,
-                    EventStatePoll::Rollback(time) => {
+                    SourcePoll::Pending => return PollInternal::BreakPending,
+                    SourcePoll::Rollback(time) => {
                         return PollInternal::Continue {
                             input_state_event_update: InputStateEventUpdate::Rollback(time),
                         }
                     }
-                    EventStatePoll::Event(input, time) => {
+                    SourcePoll::Event(input, time) => {
                         return PollInternal::Continue {
                             input_state_event_update: match T::can_handle(time, &input) {
                                 true => InputStateEventUpdate::Event(time, input),
@@ -495,8 +511,8 @@ where
                             },
                         }
                     }
-                    EventStatePoll::Scheduled(state, time) => (state, Some(time)),
-                    EventStatePoll::Ready(state) => (state, None),
+                    SourcePoll::Scheduled(state, time) => (state, Some(time)),
+                    SourcePoll::Ready(state) => (state, None),
                 };
 
                 // get the buffer and update
@@ -548,9 +564,9 @@ enum InputStateEventUpdate<T: Transposer> {
 impl<
         'map,
         T: Transposer + Clone + 'map,
-        S: EventStateStream<Time = T::Time, Event = T::Input, State = T::InputState>,
+        S: Source<Time = T::Time, Event = T::Input, State = T::InputState>,
         const N: usize,
-    > EventStateStream for TransposerEngine<'map, T, S, N>
+    > Source for TransposerEngine<'map, T, S, N>
 where
     T::Scheduled: Clone,
 {
@@ -562,7 +578,7 @@ where
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         self.poll_forget_internal::<false>(poll_time, cx)
     }
 
@@ -570,7 +586,7 @@ where
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         self.poll_forget_internal::<true>(poll_time, cx)
     }
 
@@ -578,20 +594,20 @@ where
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> EventStatePoll<Self::Time, Self::Event, ()> {
+    ) -> SourcePoll<Self::Time, Self::Event, ()> {
         self.poll_internal(
             poll_time,
             cx,
             |mut input_stream, _state_map, _last_buffered_index_before_poll, cx| {
                 // get our state to interpolate with
                 let scheduled_input_time = match input_stream.as_mut().poll_events(poll_time, cx) {
-                    EventStatePoll::Pending => return PollInternal::BreakPending,
-                    EventStatePoll::Rollback(time) => {
+                    SourcePoll::Pending => return PollInternal::BreakPending,
+                    SourcePoll::Rollback(time) => {
                         return PollInternal::Continue {
                             input_state_event_update: InputStateEventUpdate::Rollback(time),
                         }
                     }
-                    EventStatePoll::Event(input, time) => {
+                    SourcePoll::Event(input, time) => {
                         return PollInternal::Continue {
                             input_state_event_update: match T::can_handle(time, &input) {
                                 true => InputStateEventUpdate::Event(time, input),
@@ -599,8 +615,8 @@ where
                             },
                         }
                     }
-                    EventStatePoll::Scheduled((), time) => Some(time),
-                    EventStatePoll::Ready(()) => None,
+                    SourcePoll::Scheduled((), time) => Some(time),
+                    SourcePoll::Ready(()) => None,
                 };
 
                 PollInternal::Ready {

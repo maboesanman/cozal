@@ -1,7 +1,8 @@
-use super::{EventStatePoll, EventStateStream};
 use std::{iter::Peekable, pin::Pin, task::Context};
 
-pub struct IterEventStateStream<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin>
+use crate::source::{Source, SourcePoll};
+
+pub struct Iter<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin>
 where
     I: Iterator<Item = (T, E, S)> + Unpin,
 {
@@ -9,7 +10,7 @@ where
     previous_state: S,
 }
 
-impl<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin> IterEventStateStream<I, T, E, S>
+impl<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin> Iter<I, T, E, S>
 where
     I: Iterator<Item = (T, E, S)> + Unpin,
 {
@@ -21,8 +22,7 @@ where
     }
 }
 
-impl<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin> EventStateStream
-    for IterEventStateStream<I, T, E, S>
+impl<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin> Source for Iter<I, T, E, S>
 where
     I: Iterator<Item = (T, E, S)> + Unpin,
 {
@@ -36,19 +36,19 @@ where
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         _cx: &mut Context<'_>,
-    ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         let this = self.get_mut();
         if let Some((t, ..)) = this.iter.peek() {
             let next_time = *t;
             if next_time <= poll_time {
                 let (t, e, s) = this.iter.next().unwrap();
                 this.previous_state = s;
-                EventStatePoll::Event(e, t)
+                SourcePoll::Event(e, t)
             } else {
-                EventStatePoll::Scheduled(this.previous_state.clone(), next_time)
+                SourcePoll::Scheduled(this.previous_state.clone(), next_time)
             }
         } else {
-            EventStatePoll::Ready(this.previous_state.clone())
+            SourcePoll::Ready(this.previous_state.clone())
         }
     }
 }

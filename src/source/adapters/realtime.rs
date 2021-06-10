@@ -1,4 +1,4 @@
-use super::{timestamp::Timestamp, EventStatePoll, EventStateStream};
+use super::{timestamp::Timestamp, EventStatePoll, Source};
 use futures::{Future, Stream};
 use pin_project::pin_project;
 use std::{
@@ -10,7 +10,7 @@ use tokio::time::{delay_for, Delay};
 
 /// Stream for the [`to_realtime`](super::schedule_stream_ext::ScheduleStreamExt::to_realtime) method.
 #[pin_project]
-pub struct Realtime<St: EventStateStream>
+pub struct Realtime<St: Source>
 where
     St::Time: Timestamp,
 {
@@ -23,7 +23,7 @@ where
     state: Option<St::State>,
 }
 
-impl<St: EventStateStream> Realtime<St>
+impl<St: Source> Realtime<St>
 where
     St::Time: Timestamp,
 {
@@ -37,7 +37,7 @@ where
     }
 }
 
-impl<St: EventStateStream> Stream for Realtime<St>
+impl<St: Source> Stream for Realtime<St>
 where
     St::Time: Timestamp,
 {

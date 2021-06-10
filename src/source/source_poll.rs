@@ -1,6 +1,6 @@
 /// A modified version of [`futures::task::Poll`], which has two new variants:
 /// [`Scheduled`](self::SchedulePoll::Scheduled) and [`Done`](self::SchedulePoll::Done).
-pub enum EventStatePoll<T, E, S>
+pub enum SourcePoll<T, E, S>
 where
     T: Ord + Copy,
 {

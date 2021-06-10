@@ -1,4 +1,4 @@
-use crate::{core::{event_state_stream::{EventStatePoll, EventStateStream}, transposer::{test::test_stateful_stream::TestStatefulStream, TransposerEngine}}, test::test_waker::DummyWaker};
+use crate::{core::{event_state_stream::{EventStatePoll}, transposer::{test::test_stateful_stream::TestStatefulStream, TransposerEngine}}, test::test_waker::DummyWaker};
 use std::{pin::Pin, task::Context};
 
 use crate::core::transposer::test::test_transposer::TestTransposer;

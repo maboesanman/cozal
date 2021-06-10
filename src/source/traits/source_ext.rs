@@ -1,18 +1,16 @@
 use either::Either;
 
-use crate::core::{transposer::TransposerEngine, Transposer};
-
-use super::{
-    event_state_map_stream::EventStateMapStream,
-    event_state_split_stream::{bounded, unbounded, EventStateSplitLeft, EventStateSplitRight},
-    EventStateStream,
+use crate::source::adapters::{
+    bounded, unbounded, LeftSplit, Map, RightSplit, Transposer, TransposerEngine,
 };
+
+use super::Source;
 #[cfg(realtime)]
 use super::{timestamp::Timestamp, RealtimeStream};
 
-impl<S> EventStateStreamExt for S where S: EventStateStream {}
+impl<S> SourceExt for S where S: Source {}
 
-pub trait EventStateStreamExt: EventStateStream {
+pub trait SourceExt: Source {
     /// Adapter for converting a schedule_stream into one that yields the items in realtime.
     ///
     /// a reference must be given for the conversion from [`S::Time`](super::schedule_stream::ScheduleStream::Time) to [`Instant`](std::time::Instant).
@@ -24,7 +22,7 @@ pub trait EventStateStreamExt: EventStateStream {
     #[cfg(realtime)]
     fn into_realtime(self, reference: <Self::Time as Timestamp>::Reference) -> RealtimeStream<Self>
     where
-        <Self as EventStateStream>::Time: Timestamp,
+        <Self as Source>::Time: Timestamp,
     {
         RealtimeStream::new(self, reference)
     }
@@ -52,28 +50,22 @@ pub trait EventStateStreamExt: EventStateStream {
         self,
         event_transform: fn(Self::Event) -> E,
         state_transform: fn(Self::State) -> S,
-    ) -> EventStateMapStream<Self, E, S>
+    ) -> Map<Self, E, S>
     where
         Self: Sized,
     {
-        EventStateMapStream::new(self, event_transform, state_transform)
+        Map::new(self, event_transform, state_transform)
     }
 }
 
-impl<S, L, R> EitherStateStreamExt<L, R> for S where S: EventStateStream<Event = Either<L, R>> {}
+impl<S, L, R> EitherStateStreamExt<L, R> for S where S: Source<Event = Either<L, R>> {}
 
-pub trait EitherStateStreamExt<L, R>: EventStateStream<Event = Either<L, R>> {
+pub trait EitherStateStreamExt<L, R>: Source<Event = Either<L, R>> {
     /// Adapter to split a stream of Either<L, R> events into two streams.
     /// both streams have the full state, but each gets only L or R.
     ///
     /// this variant will return pending on one half if the other gets too far ahead.
-    fn split_bounded(
-        self,
-        buffer_size: usize,
-    ) -> (
-        EventStateSplitLeft<Self, L, R>,
-        EventStateSplitRight<Self, L, R>,
-    )
+    fn split_bounded(self, buffer_size: usize) -> (LeftSplit<Self, L, R>, RightSplit<Self, L, R>)
     where
         Self: Sized,
     {
@@ -82,12 +74,7 @@ pub trait EitherStateStreamExt<L, R>: EventStateStream<Event = Either<L, R>> {
 
     /// Adapter to split a stream of Either<L, R> events into two streams.
     /// both streams have the full state, but each gets only L or R.
-    fn split_unbounded(
-        self,
-    ) -> (
-        EventStateSplitLeft<Self, L, R>,
-        EventStateSplitRight<Self, L, R>,
-    )
+    fn split_unbounded(self) -> (LeftSplit<Self, L, R>, RightSplit<Self, L, R>)
     where
         Self: Sized,
     {

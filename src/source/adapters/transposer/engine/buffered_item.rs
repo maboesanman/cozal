@@ -6,12 +6,12 @@ use std::{
     task::{Context, Poll},
 };
 
-use crate::core::{transposer::engine::update_item::UpdateItemData, Transposer};
+use super::super::Transposer;
 
 use super::{
     engine_time::EngineTime, input_buffer::InputBuffer, lazy_state::LazyState,
     transposer_frame::TransposerFrame, transposer_update::TransposerUpdate,
-    update_item::UpdateItem,
+    update_item::UpdateItem, update_item::UpdateItemData,
 };
 
 #[pin_project(project=BufferedItemProject)]

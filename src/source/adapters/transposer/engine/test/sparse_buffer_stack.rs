@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, pin::Pin};
 
-use crate::core::transposer::engine::sparse_buffer_stack::SparseBufferStack;
+use super::super::sparse_buffer_stack::SparseBufferStack;
 
 #[test]
 fn basic_test() {

@@ -1,17 +1,17 @@
-use super::EventStatePoll;
+use crate::source::SourcePoll;
 use std::pin::Pin;
 use std::task::Context;
 
-/// An interface for querying partially complete streams of [states](`EventStateStream::State`) and [events](`EventStateStream::Events`)
+/// An interface for querying partially complete streams of [states](`Source::State`) and [events](`Source::Events`)
 ///
-/// The [`EventStateStream`] trait is the core abstraction for the entire cozal library. Everything is designed around the idea of making chains of [`EventStateStream`]
+/// The [`Source`] trait is the core abstraction for the entire cozal library. Everything is designed around the idea of making chains of [`Source`]s
 ///
-/// When a type implements EventStateStream, it models two things:
+/// When a type implements Source, it models two things:
 ///
 /// - A timestamped set of events
 ///
-/// - A function (in the mathematical sense) mapping [`Time`](`EventStateStream::Time`) to [`State`](`EventStateStream::State`)
-pub trait EventStateStream {
+/// - A function (in the mathematical sense) mapping [`Time`](`Source::Time`) to [`State`](`Source::State`)
+pub trait Source {
     /// The type used for timestamping events and states.
     type Time: Ord + Copy;
 
@@ -33,14 +33,14 @@ pub trait EventStateStream {
     ///
     /// - [`Event(payload, t_e)`](EventStatePoll::Event) indicates that the requested state could not be computed because the returned event must be handled before the state can be made available. The stream should be immediately polled again, as it may never wake the task.
     ///
-    /// - [`Rollback(t_r)`](EventStatePoll::Rollback) indicates that previously emitted information has been discovered to be incorrect, and that the caller should re-poll information it believes it needs. Specifically, all emitted events at or after time `t_r` should be discarded, as well as all states returned from [`poll`](EventStateStream::poll). Emitting rollback makes no claims about states returned from [`poll_forget`](EventStateStream::poll_forget), which should be preferred when the caller doesn't need to be informed of states being invalidated.
+    /// - [`Rollback(t_r)`](EventStatePoll::Rollback) indicates that previously emitted information has been discovered to be incorrect, and that the caller should re-poll information it believes it needs. Specifically, all emitted events at or after time `t_r` should be discarded, as well as all states returned from [`poll`](Source::poll). Emitting rollback makes no claims about states returned from [`poll_forget`](Source::poll_forget), which should be preferred when the caller doesn't need to be informed of states being invalidated.
     ///
     /// - [`Pending`](EventStatePoll::Pending) indicates one of the other responses is not available at this time. the current thread will be woken up when progress can be made by calling poll again with the same time. You should be polling at the same time as the call which returned pending if you are responding to a task wake, or else you might not actually be able to make progress.
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> EventStatePoll<Self::Time, Self::Event, Self::State>;
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State>;
 
     /// Attempt to retrieve the state of the stream at `time`, registering the current task for wakeup in certain situations. Also inform the stream that the state emitted from this call is exempt from the requirement to be informed of future invalidations (that the stream can "forget" about this call to poll when determining how far to roll back).
     ///
@@ -49,24 +49,24 @@ pub trait EventStateStream {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> EventStatePoll<Self::Time, Self::Event, Self::State> {
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         self.poll(time, cx)
     }
 
-    /// Attempt to determine information about the set of events before `time` without generating a state. this function behaves the same as [`poll_forget`](EventStateStream::poll_forget) but returns `()` instead of [`State`](EventStateStream::State). This function should be used in all situations when the state is not actually needed, as the implementer of the trait may be able to do less work.
+    /// Attempt to determine information about the set of events before `time` without generating a state. this function behaves the same as [`poll_forget`](Source::poll_forget) but returns `()` instead of [`State`](Source::State). This function should be used in all situations when the state is not actually needed, as the implementer of the trait may be able to do less work.
     ///
     /// if you do not need to use the state, this should be preferred over poll. For example, if you are simply verifying the stream does not have new events before a time t, poll_ignore_state could be faster than poll (with a custom implementation).
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> EventStatePoll<Self::Time, Self::Event, ()> {
+    ) -> SourcePoll<Self::Time, Self::Event, ()> {
         match self.poll_forget(time, cx) {
-            EventStatePoll::Pending => EventStatePoll::Pending,
-            EventStatePoll::Rollback(t) => EventStatePoll::Rollback(t),
-            EventStatePoll::Event(e, t) => EventStatePoll::Event(e, t),
-            EventStatePoll::Scheduled(_s, t) => EventStatePoll::Scheduled((), t),
-            EventStatePoll::Ready(_s) => EventStatePoll::Ready(()),
+            SourcePoll::Pending => SourcePoll::Pending,
+            SourcePoll::Rollback(t) => SourcePoll::Rollback(t),
+            SourcePoll::Event(e, t) => SourcePoll::Event(e, t),
+            SourcePoll::Scheduled(_s, t) => SourcePoll::Scheduled((), t),
+            SourcePoll::Ready(_s) => SourcePoll::Ready(()),
         }
     }
 }

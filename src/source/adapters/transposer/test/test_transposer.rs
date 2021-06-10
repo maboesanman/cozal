@@ -1,7 +1,10 @@
-use crate::core::transposer::context::{InitContext, InputContext, ScheduleContext};
-use crate::core::Transposer;
 use async_trait::async_trait;
 use rand::Rng;
+
+use crate::source::adapters::transposer::{
+    context::{InitContext, InputContext, ScheduleContext},
+    Transposer,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum HandleRecord {
