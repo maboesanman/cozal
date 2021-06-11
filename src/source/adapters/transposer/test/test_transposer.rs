@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use rand::Rng;
 
 use crate::source::adapters::transposer::{
-    context::{InitContext, InputContext, ScheduleContext},
+    context::{HandleInputContext, HandleScheduleContext, InitContext},
     Transposer,
 };
 
@@ -53,7 +53,7 @@ impl Transposer for TestTransposer {
         &mut self,
         time: Self::Time,
         inputs: &[Self::Input],
-        cx: &mut dyn InputContext<'_, Self>,
+        cx: &mut dyn HandleInputContext<'_, Self>,
     ) {
         let mut vec = Vec::new();
         for payload in inputs {
@@ -70,7 +70,7 @@ impl Transposer for TestTransposer {
         &mut self,
         time: Self::Time,
         payload: Self::Scheduled,
-        cx: &mut dyn ScheduleContext<'_, Self>,
+        cx: &mut dyn HandleScheduleContext<'_, Self>,
     ) {
         let record = HandleRecord::Scheduled(time, payload);
         self.handle_record.push_back((record, cx.get_rng().gen()));

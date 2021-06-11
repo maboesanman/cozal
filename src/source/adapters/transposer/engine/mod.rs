@@ -15,7 +15,6 @@ pub mod lazy_state;
 #[cfg(test)]
 pub mod test;
 
-
 use core::pin::Pin;
 use futures::{future::FusedFuture, task::Context, Future};
 use pin_project::pin_project;

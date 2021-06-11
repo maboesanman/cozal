@@ -10,7 +10,7 @@ pub trait InitContext<'a, T: Transposer>:
 {
 }
 
-pub trait InputContext<'a, T: Transposer>:
+pub trait HandleInputContext<'a, T: Transposer>:
     InputStateContext<'a, T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
@@ -19,7 +19,7 @@ pub trait InputContext<'a, T: Transposer>:
 {
 }
 
-pub trait ScheduleContext<'a, T: Transposer>:
+pub trait HandleScheduleContext<'a, T: Transposer>:
     InputStateContext<'a, T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>

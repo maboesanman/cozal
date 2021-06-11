@@ -25,8 +25,8 @@ where
 }
 
 impl<'a, T: Transposer> InitContext<'a, T> for EngineContext<'a, T> {}
-impl<'a, T: Transposer> InputContext<'a, T> for EngineContext<'a, T> {}
-impl<'a, T: Transposer> ScheduleContext<'a, T> for EngineContext<'a, T> {}
+impl<'a, T: Transposer> HandleInputContext<'a, T> for EngineContext<'a, T> {}
+impl<'a, T: Transposer> HandleScheduleContext<'a, T> for EngineContext<'a, T> {}
 
 impl<'a, T: Transposer> EngineContext<'a, T> {
     pub(super) fn new(

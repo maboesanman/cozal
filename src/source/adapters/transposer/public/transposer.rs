@@ -1,4 +1,4 @@
-use super::context::{InitContext, InputContext, ScheduleContext};
+use super::context::{HandleInputContext, HandleScheduleContext, InitContext};
 use async_trait::async_trait;
 
 /// A `Transposer` is a type that can update itself in response to events.
@@ -67,7 +67,7 @@ pub trait Transposer {
         &mut self,
         time: Self::Time,
         inputs: &[Self::Input],
-        cx: &mut dyn InputContext<'_, Self>,
+        cx: &mut dyn HandleInputContext<'_, Self>,
     );
 
     /// The function to respond to internally scheduled events.
@@ -80,7 +80,7 @@ pub trait Transposer {
         &mut self,
         time: Self::Time,
         payload: Self::Scheduled,
-        cx: &mut dyn ScheduleContext<'_, Self>,
+        cx: &mut dyn HandleScheduleContext<'_, Self>,
     );
 
     /// The function to interpolate between states
