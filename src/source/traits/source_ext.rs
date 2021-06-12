@@ -1,7 +1,7 @@
 use either::Either;
 
 use crate::source::adapters::{
-    bounded, unbounded, LeftSplit, Map, RightSplit, Transposer, TransposerEngine,
+    bounded, unbounded, Join, LeftSplit, Map, RightSplit, Transposer, TransposerEngine,
 };
 
 use super::Source;
@@ -55,6 +55,20 @@ pub trait SourceExt: Source {
         Self: Sized,
     {
         Map::new(self, event_transform, state_transform)
+    }
+
+    fn joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State>
+    where
+        Self: Sized,
+    {
+        unimplemented!()
+    }
+
+    fn stateless_joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State>
+    where
+        Self: Sized,
+    {
+        unimplemented!()
     }
 }
 
