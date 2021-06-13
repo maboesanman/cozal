@@ -1,352 +1,81 @@
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
-use either::Either;
-use futures::lock::BiLock;
-use pin_project::pin_project;
-use std::{
-    cmp::{self, Ordering, Reverse},
-    collections::BinaryHeap,
-};
+use std::sync::{Arc, RwLock};
 
 use crate::source::{Source, SourcePoll};
 
-#[pin_project]
-struct SplitInner<S: Source<Event = Either<L, R>>, L, R> {
-    #[pin]
-    stream: S,
-
-    left: BufferData<S::Time, L>,
-    right: BufferData<S::Time, R>,
-    rough_buffer_size: Option<usize>,
-}
-
-struct BufferData<T: Ord + Copy, E> {
-    buffer: BinaryHeap<Reverse<BufferItem<T, E>>>,
-    latest_emission_time: Option<T>,
-    needs_rollback: Option<T>,
-    waker: Option<Waker>,
-    event_index: usize,
-}
-
-struct BufferItem<T: Ord + Copy, E> {
-    time: T,
+pub struct Split<Src: Source, E, ConvertFn>
+where
+    ConvertFn: Fn(Src::Event) -> E
+{
+    inner: Arc<RwLock<SplitInner<Src>>>,
+    convert: ConvertFn,
     index: usize,
-    event: E,
 }
 
-impl<T: Ord + Copy, E> Ord for BufferItem<T, E> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match self.time.cmp(&other.time) {
-            Ordering::Equal => self.index.cmp(&other.index),
-            ord => ord,
-        }
-    }
+pub struct SplitInner<Src: Source> {
+    input_source: Src,
+    deciders: Vec<(fn(&Src::Event) -> bool, Option<Waker>)>
 }
 
-impl<T: Ord + Copy, E> PartialOrd for BufferItem<T, E> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<T: Ord + Copy, E> PartialEq for BufferItem<T, E> {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-impl<T: Ord + Copy, E> Eq for BufferItem<T, E> {}
-
-impl<T: Ord + Copy, E> BufferData<T, E> {
-    fn new() -> Self {
-        Self {
-            buffer: BinaryHeap::new(),
-            latest_emission_time: None,
-            needs_rollback: None,
-            waker: None,
-            event_index: 0,
-        }
-    }
-
-    fn with_capacity(capacity: usize) -> Self {
-        Self {
-            buffer: BinaryHeap::with_capacity(capacity),
-            latest_emission_time: None,
-            needs_rollback: None,
-            waker: None,
-            event_index: 0,
-        }
-    }
-
-    fn full(&self, max: Option<usize>) -> bool {
-        match max {
-            Some(s) => self.buffer.len() >= s,
-            None => false,
-        }
-    }
-
-    fn pop_viable(&mut self, poll_time: T) -> Option<(T, E)> {
-        match self.buffer.peek() {
-            Some(Reverse(item)) => {
-                if item.time <= poll_time {
-                    let Reverse(BufferItem {
-                        time,
-                        index: _,
-                        event,
-                    }) = self.buffer.pop().unwrap();
-                    Some((time, event))
-                } else {
-                    None
-                }
-            }
-            None => None,
-        }
-    }
-
-    fn buffer_event(&mut self, time: T, event: E) {
-        let item = BufferItem {
-            time,
-            index: self.event_index,
-            event,
+impl<Src: Source, E, ConvertFn> Split<Src, E, ConvertFn>
+where
+    ConvertFn: Fn(Src::Event) -> E
+{
+    pub fn new(
+        source: Src,
+        decide: fn(&Src::Event) -> bool,
+        convert: ConvertFn
+    ) -> Self {
+        let inner = SplitInner {
+            input_source: source,
+            deciders: vec![(decide, None)],
         };
-        self.event_index += 1;
-        self.buffer.push(Reverse(item));
-    }
+        let inner = Arc::new(RwLock::new(inner));
 
-    fn rollback(&mut self, rollback_time: T) {
-        self.buffer
-            .retain(|Reverse(item)| item.time < rollback_time);
-        if let Some(t) = self.latest_emission_time {
-            if t >= rollback_time {
-                self.needs_rollback = Some(rollback_time);
-            }
-        }
-
-        if let Some(waker) = self.waker.take() {
-            waker.wake();
-        }
-    }
-
-    fn next_time(&self) -> Option<T> {
-        self.buffer.peek().map(|Reverse(x)| x.time)
-    }
-}
-
-impl<S: Source<Event = Either<L, R>>, L, R> SplitInner<S, L, R> {
-    fn new(stream: S, rough_buffer_size: Option<usize>) -> Self {
-        let (left, right) = match rough_buffer_size {
-            Some(cap) => (
-                BufferData::with_capacity(cap),
-                BufferData::with_capacity(cap),
-            ),
-            None => (BufferData::new(), BufferData::new()),
-        };
         Self {
-            stream,
-
-            left,
-            right,
-            rough_buffer_size,
+            inner,
+            convert,
+            index: 0,
         }
     }
 
-    fn poll_left(
-        self: Pin<&mut Self>,
-        poll_time: S::Time,
-        cx: &mut Context<'_>,
-    ) -> SourcePoll<S::Time, L, S::State> {
-        let mut this = self.project();
+    pub fn split(
+        &self,
+        decide: fn(&Src::Event) -> bool,
+        convert: ConvertFn
+    ) -> Self {
+        let inner = self.inner.clone();
 
-        loop {
-            if let Some(t) = this.left.needs_rollback {
-                this.left.needs_rollback = None;
-                break SourcePoll::Rollback(t);
-            }
+        let mut lock = inner.write().unwrap();
 
-            if let Some((time, event)) = this.left.pop_viable(poll_time) {
-                match this.left.latest_emission_time {
-                    Some(old) => this.left.latest_emission_time = Some(cmp::max(old, time)),
-                    None => this.left.latest_emission_time = Some(time),
-                }
-                if let Some(waker) = this.right.waker.take() {
-                    waker.wake();
-                }
+        let index = lock.deciders.len();
+        lock.deciders.push((decide, None));
+        std::mem::drop(lock);
 
-                break SourcePoll::Event(event, time);
-            }
-
-            if this.right.full(*this.rough_buffer_size) {
-                this.left.waker = Some(cx.waker().clone());
-                break SourcePoll::Pending;
-            }
-
-            match this.stream.as_mut().poll(poll_time, cx) {
-                SourcePoll::Pending => break SourcePoll::Pending,
-                SourcePoll::Rollback(t) => {
-                    this.right.rollback(t);
-                    this.left.rollback(t);
-                }
-                SourcePoll::Event(Either::Left(e), t) => {
-                    match this.left.latest_emission_time {
-                        Some(old) => this.left.latest_emission_time = Some(cmp::max(old, t)),
-                        None => this.left.latest_emission_time = Some(t),
-                    }
-                    break SourcePoll::Event(e, t);
-                }
-                SourcePoll::Event(Either::Right(e), t) => {
-                    this.right.buffer_event(t, e);
-                }
-                SourcePoll::Scheduled(s, mut t) => {
-                    if let Some(t_buf) = this.left.next_time() {
-                        t = cmp::min(t, t_buf);
-                    }
-                    break SourcePoll::Scheduled(s, t);
-                }
-                SourcePoll::Ready(s) => {
-                    break match this.left.next_time() {
-                        Some(t) => SourcePoll::Scheduled(s, t),
-                        None => SourcePoll::Ready(s),
-                    };
-                }
-            };
-        }
-    }
-
-    fn poll_right(
-        self: Pin<&mut Self>,
-        poll_time: S::Time,
-        cx: &mut Context<'_>,
-    ) -> SourcePoll<S::Time, R, S::State> {
-        let mut this = self.project();
-
-        loop {
-            if let Some(t) = this.right.needs_rollback {
-                this.right.needs_rollback = None;
-                break SourcePoll::Rollback(t);
-            }
-
-            if let Some((time, event)) = this.right.pop_viable(poll_time) {
-                match this.right.latest_emission_time {
-                    Some(old) => this.right.latest_emission_time = Some(cmp::max(old, time)),
-                    None => this.right.latest_emission_time = Some(time),
-                }
-
-                if let Some(waker) = this.left.waker.take() {
-                    waker.wake();
-                }
-
-                break SourcePoll::Event(event, time);
-            }
-
-            if this.left.full(*this.rough_buffer_size) {
-                this.right.waker = Some(cx.waker().clone());
-                break SourcePoll::Pending;
-            }
-
-            match this.stream.as_mut().poll(poll_time, cx) {
-                SourcePoll::Pending => break SourcePoll::Pending,
-                SourcePoll::Rollback(t) => {
-                    this.left.rollback(t);
-                    this.right.rollback(t);
-                }
-                SourcePoll::Event(Either::Right(e), t) => {
-                    match this.right.latest_emission_time {
-                        Some(old) => this.right.latest_emission_time = Some(cmp::max(old, t)),
-                        None => this.right.latest_emission_time = Some(t),
-                    }
-                    break SourcePoll::Event(e, t);
-                }
-                SourcePoll::Event(Either::Left(e), t) => {
-                    this.left.buffer_event(t, e);
-                }
-                SourcePoll::Scheduled(s, mut t) => {
-                    if let Some(t_buf) = this.right.next_time() {
-                        t = cmp::min(t, t_buf);
-                    }
-                    break SourcePoll::Scheduled(s, t);
-                }
-                SourcePoll::Ready(s) => {
-                    break match this.right.next_time() {
-                        Some(t) => SourcePoll::Scheduled(s, t),
-                        None => SourcePoll::Ready(s),
-                    };
-                }
-            };
+        Self {
+            inner,
+            convert,
+            index,
         }
     }
 }
 
-#[pin_project]
-pub struct LeftSplit<S: Source<Event = Either<L, R>>, L, R> {
-    #[pin]
-    inner: BiLock<SplitInner<S, L, R>>,
-}
+impl<Src: Source, E, ConvertFn> Source for Split<Src, E, ConvertFn>
+where
+    ConvertFn: Fn(Src::Event) -> E
+{
+    type Time = Src::Time;
 
-#[pin_project]
-pub struct RightSplit<S: Source<Event = Either<L, R>>, L, R> {
-    #[pin]
-    inner: BiLock<SplitInner<S, L, R>>,
-}
+    type Event = E;
 
-impl<S: Source<Event = Either<L, R>>, L, R> Source for LeftSplit<S, L, R> {
-    type Time = S::Time;
-    type Event = L;
-    type State = S::State;
+    type State = Src::State;
 
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> SourcePoll<S::Time, L, S::State> {
-        let this = Pin::into_inner(self);
-        let mut lock = match this.inner.poll_lock(cx) {
-            Poll::Pending => return SourcePoll::Pending,
-            Poll::Ready(lock) => lock,
-        };
-        lock.as_pin_mut().poll_left(time, cx)
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+        unimplemented!()
     }
-}
-
-impl<S: Source<Event = Either<L, R>>, L, R> Source for RightSplit<S, L, R> {
-    type Time = S::Time;
-    type Event = R;
-    type State = S::State;
-
-    fn poll(
-        self: Pin<&mut Self>,
-        time: Self::Time,
-        cx: &mut Context<'_>,
-    ) -> SourcePoll<S::Time, R, S::State> {
-        let this = Pin::into_inner(self);
-        let mut lock = match this.inner.poll_lock(cx) {
-            Poll::Pending => return SourcePoll::Pending,
-            Poll::Ready(lock) => lock,
-        };
-        lock.as_pin_mut().poll_right(time, cx)
-    }
-}
-
-pub fn bounded<S: Source<Event = Either<L, R>>, L, R>(
-    stream: S,
-    buffer_size: usize,
-) -> (LeftSplit<S, L, R>, RightSplit<S, L, R>) {
-    let inner = SplitInner::new(stream, Some(buffer_size));
-    let (left, right) = BiLock::new(inner);
-
-    let left = LeftSplit { inner: left };
-    let right = RightSplit { inner: right };
-
-    (left, right)
-}
-
-pub fn unbounded<S: Source<Event = Either<L, R>>, L, R>(
-    stream: S,
-) -> (LeftSplit<S, L, R>, RightSplit<S, L, R>) {
-    let inner = SplitInner::new(stream, None);
-    let (left, right) = BiLock::new(inner);
-
-    let left = LeftSplit { inner: left };
-    let right = RightSplit { inner: right };
-
-    (left, right)
 }

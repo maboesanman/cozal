@@ -12,6 +12,20 @@ enum JoinSource<T, E, S> {
 }
 
 impl<K, T: Ord + Copy, E, S> Join<K, T, E, S> {
+    pub fn new<Src>(source: Src, key: K) -> Self
+    where
+        Src: Source<Time = T, Event = E, State = S>
+    {
+        unimplemented!()
+    }
+
+    pub fn new_stateless<Src>(source: Src, key: K) -> Self
+    where
+        Src: StatelessSource<Time = T, Event = E>
+    {
+        unimplemented!()
+    }
+
     pub fn join<Src>(&mut self, new_source: Src, new_key: K) -> Result<(), ()>
     where
         Src: Source<Time = T, Event = E, State = S>,

@@ -11,6 +11,6 @@ pub use self::{
     iter::Iter,
     join::Join,
     map::Map,
-    split::{bounded, unbounded, LeftSplit, RightSplit},
+    split::Split,
     transposer::{context, ExpireHandle, Transposer, TransposerEngine},
 };

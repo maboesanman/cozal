@@ -19,7 +19,7 @@ fn poll() {
 
     let seed = rand::thread_rng().gen();
 
-    let mut engine = test_input.into_engine::<_, 20>(TestTransposer::new(vec![]), seed);
+    let mut engine = test_input.transpose::<_, 20>(TestTransposer::new(vec![]), seed);
     let engine_ref = &mut engine;
 
     let mut engine_pin = unsafe { Pin::new_unchecked(engine_ref) };
@@ -55,7 +55,7 @@ fn poll_forget() {
 
     let seed = rand::thread_rng().gen();
 
-    let mut engine = test_input.into_engine::<_, 20>(TestTransposer::new(vec![]), seed);
+    let mut engine = test_input.transpose::<_, 20>(TestTransposer::new(vec![]), seed);
     let engine_ref = &mut engine;
 
     let mut engine_pin = unsafe { Pin::new_unchecked(engine_ref) };
@@ -93,7 +93,7 @@ fn ordering_invariability() {
 
     let seed = rand::thread_rng().gen();
 
-    let mut engine = test_input.into_engine::<_, 20>(TestTransposer::new(vec![]), seed);
+    let mut engine = test_input.transpose::<_, 20>(TestTransposer::new(vec![]), seed);
     let engine_ref = &mut engine;
 
     let mut engine_pin = unsafe { Pin::new_unchecked(engine_ref) };
@@ -224,7 +224,7 @@ fn rng() {
 
     let mut rng = BlockRng::new(ChaCha12Core::from_seed(seed));
 
-    let mut engine = test_input.into_engine::<_, 20>(TestTransposer::new(vec![]), seed);
+    let mut engine = test_input.transpose::<_, 20>(TestTransposer::new(vec![]), seed);
     let engine_ref = &mut engine;
 
     let mut engine_pin = unsafe { Pin::new_unchecked(engine_ref) };

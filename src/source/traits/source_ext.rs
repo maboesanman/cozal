@@ -1,8 +1,6 @@
 use either::Either;
 
-use crate::source::adapters::{
-    bounded, unbounded, Join, LeftSplit, Map, RightSplit, Transposer, TransposerEngine,
-};
+use crate::source::adapters::{Join, Map, Split, Transposer, TransposerEngine};
 
 use super::Source;
 #[cfg(realtime)]
@@ -10,7 +8,7 @@ use super::{timestamp::Timestamp, RealtimeStream};
 
 impl<S> SourceExt for S where S: Source {}
 
-pub trait SourceExt: Source {
+pub trait SourceExt: Source + Sized {
     /// Adapter for converting a schedule_stream into one that yields the items in realtime.
     ///
     /// a reference must be given for the conversion from [`S::Time`](super::schedule_stream::ScheduleStream::Time) to [`Instant`](std::time::Instant).
@@ -28,7 +26,7 @@ pub trait SourceExt: Source {
     }
 
     /// Adapter for converting a schedule stream into another via a transposer.
-    fn into_engine<
+    fn transpose<
         'tr,
         T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State> + 'tr,
         const N: usize,
@@ -40,7 +38,6 @@ pub trait SourceExt: Source {
     where
         T: Clone,
         T::Scheduled: Clone,
-        Self: Sized,
     {
         TransposerEngine::new(self, initial, rng_seed)
     }
@@ -51,47 +48,28 @@ pub trait SourceExt: Source {
         event_transform: fn(Self::Event) -> E,
         state_transform: fn(Self::State) -> S,
     ) -> Map<Self, E, S>
-    where
-        Self: Sized,
     {
         Map::new(self, event_transform, state_transform)
     }
 
     fn joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State>
-    where
-        Self: Sized,
     {
-        unimplemented!()
+        Join::new(self, self_key)
     }
 
     fn stateless_joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State>
-    where
-        Self: Sized,
     {
-        unimplemented!()
-    }
-}
-
-impl<S, L, R> EitherStateStreamExt<L, R> for S where S: Source<Event = Either<L, R>> {}
-
-pub trait EitherStateStreamExt<L, R>: Source<Event = Either<L, R>> {
-    /// Adapter to split a stream of Either<L, R> events into two streams.
-    /// both streams have the full state, but each gets only L or R.
-    ///
-    /// this variant will return pending on one half if the other gets too far ahead.
-    fn split_bounded(self, buffer_size: usize) -> (LeftSplit<Self, L, R>, RightSplit<Self, L, R>)
-    where
-        Self: Sized,
-    {
-        bounded(self, buffer_size)
+        Join::new_stateless(self, self_key)
     }
 
-    /// Adapter to split a stream of Either<L, R> events into two streams.
-    /// both streams have the full state, but each gets only L or R.
-    fn split_unbounded(self) -> (LeftSplit<Self, L, R>, RightSplit<Self, L, R>)
+    fn splittable<E, ConvertFn>(
+        self,
+        decide: fn(&Self::Event) -> bool,
+        convert: ConvertFn
+    ) -> Split<Self, E, ConvertFn>
     where
-        Self: Sized,
+        ConvertFn: Fn(Self::Event) -> E
     {
-        unbounded(self)
+        Split::new(self, decide, convert)
     }
 }
