@@ -1,3 +1,4 @@
+mod duplicate;
 mod iter;
 mod join;
 mod map;
@@ -8,6 +9,7 @@ mod transposer;
 mod realtime;
 
 pub use self::{
+    duplicate::Duplicate,
     iter::Iter,
     join::Join,
     map::Map,

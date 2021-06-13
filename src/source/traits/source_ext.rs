@@ -1,6 +1,6 @@
 use either::Either;
 
-use crate::source::adapters::{Join, Map, Split, Transposer, TransposerEngine};
+use crate::source::adapters::{Duplicate, Join, Map, Split, Transposer, TransposerEngine};
 
 use super::Source;
 #[cfg(realtime)]
@@ -71,5 +71,11 @@ pub trait SourceExt: Source + Sized {
         ConvertFn: Fn(Self::Event) -> E
     {
         Split::new(self, decide, convert)
+    }
+
+    fn duplicate(self) -> Duplicate<Self>
+        where Self::Event: Clone
+    {
+        Duplicate::new(self)
     }
 }
