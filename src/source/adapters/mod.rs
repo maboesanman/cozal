@@ -2,6 +2,7 @@ mod duplicate;
 mod iter;
 mod join;
 mod map;
+mod shift;
 mod split;
 mod transposer;
 
@@ -13,6 +14,7 @@ pub use self::{
     iter::Iter,
     join::Join,
     map::Map,
+    shift::Shift,
     split::Split,
     transposer::{context, ExpireHandle, Transposer, TransposerEngine},
 };

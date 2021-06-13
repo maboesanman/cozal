@@ -1,6 +1,6 @@
 use either::Either;
 
-use crate::source::adapters::{Duplicate, Join, Map, Split, Transposer, TransposerEngine};
+use crate::source::adapters::{Duplicate, Join, Map, Shift, Split, Transposer, TransposerEngine};
 
 use super::Source;
 #[cfg(realtime)]
@@ -50,6 +50,14 @@ pub trait SourceExt: Source + Sized {
     ) -> Map<Self, E, S>
     {
         Map::new(self, event_transform, state_transform)
+    }
+
+    fn shift<T: Ord + Copy, IntoNew, IntoOld>(
+        self,
+        into_new: fn(Self::Time) -> T,
+        into_old: fn(T) -> Self::Time,
+    ) -> Shift<Self, T> {
+        Shift::new(self, into_new, into_old)
     }
 
     fn joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State>
