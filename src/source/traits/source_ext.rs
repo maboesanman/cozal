@@ -1,5 +1,3 @@
-use either::Either;
-
 use crate::source::adapters::{Duplicate, Join, Map, Shift, Split, Transposer, TransposerEngine};
 
 use super::Source;

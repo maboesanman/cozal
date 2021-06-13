@@ -12,28 +12,28 @@ enum JoinSource<T, E, S> {
 }
 
 impl<K, T: Ord + Copy, E, S> Join<K, T, E, S> {
-    pub fn new<Src>(source: Src, key: K) -> Self
+    pub fn new<Src>(_source: Src, _key: K) -> Self
     where
         Src: Source<Time = T, Event = E, State = S>,
     {
         unimplemented!()
     }
 
-    pub fn new_stateless<Src>(source: Src, key: K) -> Self
+    pub fn new_stateless<Src>(_source: Src, _key: K) -> Self
     where
         Src: StatelessSource<Time = T, Event = E>,
     {
         unimplemented!()
     }
 
-    pub fn join<Src>(&mut self, new_source: Src, new_key: K) -> Result<(), ()>
+    pub fn join<Src>(&mut self, _new_source: Src, _new_key: K) -> Result<(), ()>
     where
         Src: Source<Time = T, Event = E, State = S>,
     {
         unimplemented!()
     }
 
-    pub fn stateless_join<Src>(&mut self, new_source: Src, new_key: K) -> Result<(), ()>
+    pub fn stateless_join<Src>(&mut self, _new_source: Src, _new_key: K) -> Result<(), ()>
     where
         Src: StatelessSource<Time = T, Event = E>,
     {
@@ -48,8 +48,8 @@ impl<K, T: Ord + Copy, E, S> Source for Join<K, T, E, S> {
 
     fn poll(
         self: std::pin::Pin<&mut Self>,
-        time: Self::Time,
-        cx: &mut std::task::Context<'_>,
+        _time: Self::Time,
+        _cx: &mut std::task::Context<'_>,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         unimplemented!()
     }

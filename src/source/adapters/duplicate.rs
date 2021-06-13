@@ -13,7 +13,7 @@ impl<Src: Source> Duplicate<Src>
 where
     Src::Event: Clone,
 {
-    pub fn new(source: Src) -> Self {
+    pub fn new(_source: Src) -> Self {
         unimplemented!()
     }
 }
@@ -39,8 +39,8 @@ where
 
     fn poll(
         self: std::pin::Pin<&mut Self>,
-        time: Self::Time,
-        cx: &mut std::task::Context<'_>,
+        _time: Self::Time,
+        _cx: &mut std::task::Context<'_>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
         unimplemented!()
     }

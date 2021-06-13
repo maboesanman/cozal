@@ -1,5 +1,5 @@
 use core::pin::Pin;
-use core::task::{Context, Poll, Waker};
+use core::task::{Context, Waker};
 use std::sync::{Arc, RwLock};
 
 use crate::source::{Source, SourcePoll};
@@ -65,8 +65,8 @@ where
 
     fn poll(
         self: Pin<&mut Self>,
-        time: Self::Time,
-        cx: &mut Context<'_>,
+        _time: Self::Time,
+        _cx: &mut Context<'_>,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         unimplemented!()
     }
