@@ -6,7 +6,7 @@ use crate::source::{Source, SourcePoll};
 
 pub struct Split<Src: Source, E, ConvertFn>
 where
-    ConvertFn: Fn(Src::Event) -> E
+    ConvertFn: Fn(Src::Event) -> E,
 {
     inner: Arc<RwLock<SplitInner<Src>>>,
     convert: ConvertFn,
@@ -15,18 +15,14 @@ where
 
 pub struct SplitInner<Src: Source> {
     input_source: Src,
-    deciders: Vec<(fn(&Src::Event) -> bool, Option<Waker>)>
+    deciders: Vec<(fn(&Src::Event) -> bool, Option<Waker>)>,
 }
 
 impl<Src: Source, E, ConvertFn> Split<Src, E, ConvertFn>
 where
-    ConvertFn: Fn(Src::Event) -> E
+    ConvertFn: Fn(Src::Event) -> E,
 {
-    pub fn new(
-        source: Src,
-        decide: fn(&Src::Event) -> bool,
-        convert: ConvertFn
-    ) -> Self {
+    pub fn new(source: Src, decide: fn(&Src::Event) -> bool, convert: ConvertFn) -> Self {
         let inner = SplitInner {
             input_source: source,
             deciders: vec![(decide, None)],
@@ -40,11 +36,7 @@ where
         }
     }
 
-    pub fn split(
-        &self,
-        decide: fn(&Src::Event) -> bool,
-        convert: ConvertFn
-    ) -> Self {
+    pub fn split(&self, decide: fn(&Src::Event) -> bool, convert: ConvertFn) -> Self {
         let inner = self.inner.clone();
 
         let mut lock = inner.write().unwrap();
@@ -63,7 +55,7 @@ where
 
 impl<Src: Source, E, ConvertFn> Source for Split<Src, E, ConvertFn>
 where
-    ConvertFn: Fn(Src::Event) -> E
+    ConvertFn: Fn(Src::Event) -> E,
 {
     type Time = Src::Time;
 

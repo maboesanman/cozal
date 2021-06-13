@@ -3,7 +3,6 @@ use std::pin::Pin;
 use crate::source::{Source, SourcePoll};
 use pin_project::pin_project;
 
-
 #[pin_project]
 pub struct Shift<Src: Source, T: Ord + Copy> {
     #[pin]
@@ -14,11 +13,7 @@ pub struct Shift<Src: Source, T: Ord + Copy> {
 }
 
 impl<Src: Source, T: Ord + Copy> Shift<Src, T> {
-    pub fn new(
-        source: Src,
-        into_new: fn(Src::Time) -> T,
-        into_old: fn(T) -> Src::Time,
-    ) -> Self {
+    pub fn new(source: Src, into_new: fn(Src::Time) -> T, into_old: fn(T) -> Src::Time) -> Self {
         Self {
             source,
             into_new,

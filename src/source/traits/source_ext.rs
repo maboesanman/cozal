@@ -47,8 +47,7 @@ pub trait SourceExt: Source + Sized {
         self,
         event_transform: fn(Self::Event) -> E,
         state_transform: fn(Self::State) -> S,
-    ) -> Map<Self, E, S>
-    {
+    ) -> Map<Self, E, S> {
         Map::new(self, event_transform, state_transform)
     }
 
@@ -60,29 +59,28 @@ pub trait SourceExt: Source + Sized {
         Shift::new(self, into_new, into_old)
     }
 
-    fn joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State>
-    {
+    fn joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State> {
         Join::new(self, self_key)
     }
 
-    fn stateless_joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State>
-    {
+    fn stateless_joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State> {
         Join::new_stateless(self, self_key)
     }
 
     fn splittable<E, ConvertFn>(
         self,
         decide: fn(&Self::Event) -> bool,
-        convert: ConvertFn
+        convert: ConvertFn,
     ) -> Split<Self, E, ConvertFn>
     where
-        ConvertFn: Fn(Self::Event) -> E
+        ConvertFn: Fn(Self::Event) -> E,
     {
         Split::new(self, decide, convert)
     }
 
     fn duplicate(self) -> Duplicate<Self>
-        where Self::Event: Clone
+    where
+        Self::Event: Clone,
     {
         Duplicate::new(self)
     }
