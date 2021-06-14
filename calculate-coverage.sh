@@ -19,13 +19,20 @@ echo "building coverage for ci"
 ./grcov . \
     -s . \
     --binary-path ./target/debug/ \
-    -t coveralls+ \
-    --token $COVERALLS_TOKEN \
+    -t lcov \
     --branch \
     --ignore-not-existing \
-    -o ./target/debug/coverage/codecov.json
+    -o ./target/debug/coverage/lcov.info
 else
 echo "building coverage for local"
+grcov . \
+    -s . \
+    --binary-path ./target/debug/ \
+    -t lcov \
+    --branch \
+    --ignore-not-existing \
+    -o ./target/debug/coverage/lcov.info
+
 grcov . \
     -s . \
     --binary-path ./target/debug/ \
