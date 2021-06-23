@@ -1,4 +1,5 @@
-use std::mem::MaybeUninit;
+use core::cmp::Ordering;
+use core::mem::MaybeUninit;
 
 use super::super::{
     context::{ExpireEventError, ScheduleEventError},
@@ -63,9 +64,9 @@ where
             (None, Some(time)) => Some(time),
             (Some(time), None) => Some(time),
             (Some(input), Some(schedule)) => match input.cmp(&schedule) {
-                std::cmp::Ordering::Less => Some(input),
-                std::cmp::Ordering::Greater => Some(schedule),
-                std::cmp::Ordering::Equal => unreachable!(),
+                Ordering::Less => Some(input),
+                Ordering::Greater => Some(schedule),
+                Ordering::Equal => unreachable!(),
             },
         }
     }

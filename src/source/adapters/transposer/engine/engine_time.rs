@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use core::cmp::Ordering;
 
 // this is the time that the internal engine can take on.
 #[derive(Clone)]

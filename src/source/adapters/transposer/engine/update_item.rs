@@ -28,14 +28,14 @@ impl<'a, T: Transposer> UpdateItem<'a, T> {
     pub fn mark_none_emitted(&self) {
         let data_emitted = self.data_emitted.read().unwrap();
         debug_assert!(matches!(*data_emitted, DataEmitted::Pending));
-        std::mem::drop(data_emitted);
+        core::mem::drop(data_emitted);
 
         *self.data_emitted.write().unwrap() = DataEmitted::None
     }
     pub fn mark_event_emitted(&self) {
         let data_emitted = self.data_emitted.read().unwrap();
         debug_assert!(matches!(*data_emitted, DataEmitted::Pending));
-        std::mem::drop(data_emitted);
+        core::mem::drop(data_emitted);
 
         *self.data_emitted.write().unwrap() = DataEmitted::Event
     }
@@ -48,13 +48,13 @@ impl<'a, T: Transposer> UpdateItem<'a, T> {
         match *data_emitted {
             DataEmitted::Event => {}
             DataEmitted::State(t) => {
-                std::mem::drop(data_emitted);
+                core::mem::drop(data_emitted);
                 if time < t {
                     *self.data_emitted.write().unwrap() = DataEmitted::State(time)
                 }
             }
             _ => {
-                std::mem::drop(data_emitted);
+                core::mem::drop(data_emitted);
                 *self.data_emitted.write().unwrap() = DataEmitted::State(time)
             }
         }

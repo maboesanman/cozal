@@ -43,7 +43,7 @@ where
 
         let index = lock.deciders.len();
         lock.deciders.push((decide, None));
-        std::mem::drop(lock);
+        core::mem::drop(lock);
 
         Self {
             inner,

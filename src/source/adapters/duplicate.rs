@@ -1,3 +1,5 @@
+use core::pin::Pin;
+use core::task::Context;
 use std::sync::{Arc, Mutex};
 
 use crate::source::Source;
@@ -38,9 +40,9 @@ where
     type State = Src::State;
 
     fn poll(
-        self: std::pin::Pin<&mut Self>,
+        self: Pin<&mut Self>,
         _time: Self::Time,
-        _cx: &mut std::task::Context<'_>,
+        _cx: &mut Context<'_>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
         unimplemented!()
     }

@@ -1,6 +1,6 @@
-use std::pin::Pin;
+use core::pin::Pin;
 
-use futures::Future;
+use core::future::Future;
 use rand::RngCore;
 
 use super::{expire_handle::ExpireHandle, Transposer};

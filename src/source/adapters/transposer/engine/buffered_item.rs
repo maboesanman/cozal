@@ -1,6 +1,7 @@
-use futures::{future::FusedFuture, Future};
+use core::future::Future;
+use futures_core::FusedFuture;
 use pin_project::pin_project;
-use std::{
+use core::{
     marker::PhantomPinned,
     pin::Pin,
     task::{Context, Poll},

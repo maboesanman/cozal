@@ -14,9 +14,9 @@ realtime = ["tokio"]
 async-trait = "0.1.50"
 pin-project = "1.0.7"
 take_mut = "0.2.2"
-futures = { version = "0.3.15", features = ["unstable", "bilock"] }
+# futures = { version = "0.3.15" }
+futures-core = "0.3.15"
 im = "15.0.0"
-either = "1.6.1"
 array-init = "2.0.0"
 rand = "0.8.3"
 rand_chacha = "0.3.0"

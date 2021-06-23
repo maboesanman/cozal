@@ -1,9 +1,9 @@
-use std::{
+use core::{
     pin::Pin,
     task::{Context, Poll},
 };
 
-use futures::Future;
+use core::future::Future;
 
 pub struct LazyState<S>(LazyStateInner<S>);
 pub enum LazyStateInner<S> {

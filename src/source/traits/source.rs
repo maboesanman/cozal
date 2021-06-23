@@ -1,6 +1,6 @@
 use crate::source::SourcePoll;
-use std::pin::Pin;
-use std::task::Context;
+use core::pin::Pin;
+use core::task::Context;
 
 /// An interface for querying partially complete streams of [states](`Source::State`) and [events](`Source::Events`)
 ///

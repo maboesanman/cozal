@@ -1,3 +1,5 @@
+use core::pin::Pin;
+use core::task::Context;
 use std::collections::HashMap;
 
 use crate::source::{traits::StatelessSource, Source, SourcePoll};
@@ -47,9 +49,9 @@ impl<K, T: Ord + Copy, E, S> Source for Join<K, T, E, S> {
     type State = HashMap<K, S>;
 
     fn poll(
-        self: std::pin::Pin<&mut Self>,
+        self: Pin<&mut Self>,
         _time: Self::Time,
-        _cx: &mut std::task::Context<'_>,
+        _cx: &mut Context<'_>,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         unimplemented!()
     }

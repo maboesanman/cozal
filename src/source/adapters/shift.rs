@@ -1,7 +1,9 @@
-use std::pin::Pin;
+use core::pin::Pin;
+use core::task::Context;
+
+use pin_project::pin_project;
 
 use crate::source::{Source, SourcePoll};
-use pin_project::pin_project;
 
 #[pin_project]
 pub struct Shift<Src: Source, T: Ord + Copy> {
@@ -32,7 +34,7 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: &mut std::task::Context<'_>,
+        cx: &mut Context<'_>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
         let proj = self.project();
         let source = proj.source;
@@ -49,9 +51,9 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
     }
 
     fn poll_forget(
-        self: std::pin::Pin<&mut Self>,
+        self: Pin<&mut Self>,
         time: Self::Time,
-        cx: &mut std::task::Context<'_>,
+        cx: &mut Context<'_>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
         let proj = self.project();
         let source = proj.source;
@@ -68,9 +70,9 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
     }
 
     fn poll_events(
-        self: std::pin::Pin<&mut Self>,
+        self: Pin<&mut Self>,
         time: Self::Time,
-        cx: &mut std::task::Context<'_>,
+        cx: &mut Context<'_>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, ()> {
         let proj = self.project();
         let source = proj.source;
