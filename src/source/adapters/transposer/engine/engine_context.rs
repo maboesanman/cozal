@@ -1,5 +1,4 @@
-use std::pin::Pin;
-
+use core::pin::Pin;
 use core::future::Future;
 
 use super::super::{context::*, ExpireHandle, Transposer};

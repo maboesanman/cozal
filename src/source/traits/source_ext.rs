@@ -10,7 +10,7 @@ pub trait SourceExt: Source + Sized {
     /// Adapter for converting a schedule_stream into one that yields the items in realtime.
     ///
     /// a reference must be given for the conversion from [`S::Time`](super::schedule_stream::ScheduleStream::Time) to [`Instant`](std::time::Instant).
-    /// for example if you use [`Duration`](std::time::Duration) as your time, a "start time" must be given
+    /// for example if you use [`Duration`](core::time::Duration) as your time, a "start time" must be given
     /// so that the duration can be added to something.
     ///
     /// if your timestamp is an [`Instant`](std::time::Instant), then your reference is of type `()` because instants
