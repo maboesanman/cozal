@@ -1,12 +1,12 @@
-use core::num::NonZeroU64;
+
 
 /// this is the handle that you use to expire scheduled events.
 #[derive(Hash, Eq, PartialEq, Debug, Copy)]
-pub struct ExpireHandle(NonZeroU64);
+pub struct ExpireHandle(u64);
 
 impl ExpireHandle {
-    pub(crate) unsafe fn new_unchecked(value: u64) -> Self {
-        ExpireHandle(NonZeroU64::new_unchecked(value))
+    pub(crate) fn new(value: u64) -> Self {
+        ExpireHandle(value)
     }
 }
 
