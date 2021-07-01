@@ -1,4 +1,4 @@
-use core::sync::atomic::{Ordering, AtomicUsize};
+use core::sync::atomic::{AtomicUsize, Ordering};
 use core::task::{RawWaker, Waker};
 
 use std::sync::Arc;

@@ -16,9 +16,9 @@ pub mod lazy_state;
 pub mod test;
 
 use core::cmp::Ordering;
-use core::pin::Pin;
-use core::task::{Poll, Context};
 use core::future::Future;
+use core::pin::Pin;
+use core::task::{Context, Poll};
 
 use std::collections::BTreeMap;
 
