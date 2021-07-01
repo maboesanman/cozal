@@ -89,13 +89,16 @@ impl<T: Sized> PinStack<T> {
             false
         } else {
             self.length -= 1;
+            // SAFETY: self.length is low enough because we just decreased it by one.
             let top_item = unsafe { self.get_unchecked_mut(self.length) };
+            // SAFETY: top_item is init because it was at index self.length - 1 at the beginning of this function.
             unsafe { top_item.assume_init_drop() };
             *top_item = MaybeUninit::uninit();
             true
         }
     }
 
+    // SAFETY: you are not allowed to move something which has ever been pinned, which is exactly what this does. The caller of this function must be careful to only do sound operations on the T they might get from it.
     pub unsafe fn pop_recover(&mut self) -> Option<T> {
         if self.length == 0 {
             None
@@ -129,7 +132,9 @@ impl<T: Sized> PinStack<T> {
             None
         } else {
             let item = unsafe {
+                // SAFETY: We just checked that self.length > index.
                 let item_mut = self.get_unchecked(index);
+                // SAFETY: Because this is inside length, we can assume it is init.
                 item_mut.assume_init_ref()
             };
 
@@ -142,8 +147,11 @@ impl<T: Sized> PinStack<T> {
             None
         } else {
             let item_mut = unsafe {
+                // SAFETY: We just checked that self.length > index.
                 let item_mut = self.get_unchecked_mut(index);
+                // SAFETY: Because this is inside length, we can assume it is init.
                 let item_mut = item_mut.assume_init_mut();
+                // SAFETY: We never move any items we own.
                 Pin::new_unchecked(item_mut)
             };
 
