@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, mem::MaybeUninit, ops::RangeBounds, pin::Pin, usize};
+use core::{marker::PhantomData, mem::MaybeUninit, ops::RangeBounds, pin::Pin};
 
 pub struct PinStack<T: Sized> {
     length: usize,
@@ -81,7 +81,7 @@ impl<T: Sized> PinStack<T> {
             unsafe {
                 self.length -= 1;
                 let item_mut = self.get_unchecked_mut(self.length);
-                let item = std::mem::replace(item_mut, MaybeUninit::uninit());
+                let item = core::mem::replace(item_mut, MaybeUninit::uninit());
                 let item = item.assume_init();
                 Some(item)
             }
@@ -141,7 +141,7 @@ impl<T: Sized> Drop for PinStack<T> {
     fn drop(&mut self) {
         // items need to be dropped in reverse order, because they may contain references to previous elements.
         while let Some(t) = self.pop() {
-            std::mem::drop(t);
+            core::mem::drop(t);
         }
     }
 }
@@ -183,19 +183,19 @@ where
         let mut low = 0;
         let mut high = pin_stack.length - 1;
         let front = match range.start_bound() {
-            std::ops::Bound::Included(x) => {
+            core::ops::Bound::Included(x) => {
                 while low < high {
                     let m = (low + high) / 2;
                     let k = func(pin_stack.get(m).unwrap());
 
                     match k.cmp(x) {
-                        std::cmp::Ordering::Less => {
+                        core::cmp::Ordering::Less => {
                             low = m + 1;
                         }
-                        std::cmp::Ordering::Equal => {
+                        core::cmp::Ordering::Equal => {
                             high = m;
                         }
-                        std::cmp::Ordering::Greater => {
+                        core::cmp::Ordering::Greater => {
                             high = m;
                         }
                     }
@@ -203,19 +203,19 @@ where
 
                 low
             }
-            std::ops::Bound::Excluded(x) => {
+            core::ops::Bound::Excluded(x) => {
                 while low < high {
                     let m = (low + high) / 2;
                     let k = func(pin_stack.get(m).unwrap());
 
                     match k.cmp(x) {
-                        std::cmp::Ordering::Less => {
+                        core::cmp::Ordering::Less => {
                             low = m + 1;
                         }
-                        std::cmp::Ordering::Equal => {
+                        core::cmp::Ordering::Equal => {
                             low = m + 1;
                         }
-                        std::cmp::Ordering::Greater => {
+                        core::cmp::Ordering::Greater => {
                             high = m;
                         }
                     }
@@ -223,25 +223,25 @@ where
 
                 low
             }
-            std::ops::Bound::Unbounded => low,
+            core::ops::Bound::Unbounded => low,
         };
 
         let mut low = 0;
         let mut high = pin_stack.length - 1;
         let back = match range.end_bound() {
-            std::ops::Bound::Included(x) => {
+            core::ops::Bound::Included(x) => {
                 while low < high {
                     let m = (low + high + 1) / 2;
                     let k = func(pin_stack.get(m).unwrap());
 
                     match k.cmp(x) {
-                        std::cmp::Ordering::Less => {
+                        core::cmp::Ordering::Less => {
                             low = m;
                         }
-                        std::cmp::Ordering::Equal => {
+                        core::cmp::Ordering::Equal => {
                             low = m;
                         }
-                        std::cmp::Ordering::Greater => {
+                        core::cmp::Ordering::Greater => {
                             high = m - 1;
                         }
                     }
@@ -249,19 +249,19 @@ where
 
                 low
             }
-            std::ops::Bound::Excluded(x) => {
+            core::ops::Bound::Excluded(x) => {
                 while low < high {
                     let m = (low + high + 1) / 2;
                     let k = func(pin_stack.get(m).unwrap());
 
                     match k.cmp(x) {
-                        std::cmp::Ordering::Less => {
+                        core::cmp::Ordering::Less => {
                             low = m;
                         }
-                        std::cmp::Ordering::Equal => {
+                        core::cmp::Ordering::Equal => {
                             high = m - 1;
                         }
-                        std::cmp::Ordering::Greater => {
+                        core::cmp::Ordering::Greater => {
                             high = m - 1;
                         }
                     }
@@ -269,7 +269,7 @@ where
 
                 low
             }
-            std::ops::Bound::Unbounded => high,
+            core::ops::Bound::Unbounded => high,
         };
 
         if front > back {

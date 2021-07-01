@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, pin::Pin};
+use core::{borrow::Borrow, pin::Pin};
 
 use super::super::sparse_buffer_stack::SparseBufferStack;
 

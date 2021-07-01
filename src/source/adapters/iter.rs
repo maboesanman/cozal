@@ -1,4 +1,4 @@
-use std::{iter::Peekable, pin::Pin, task::Context};
+use core::{iter::Peekable, pin::Pin, task::Context};
 
 use crate::source::{Source, SourcePoll};
 

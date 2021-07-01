@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, mem::MaybeUninit, pin::Pin};
+use core::{marker::PhantomData, mem::MaybeUninit, pin::Pin};
 
 use super::pin_stack::PinStack;
 

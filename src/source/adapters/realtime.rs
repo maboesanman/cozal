@@ -1,82 +1,72 @@
-use super::{timestamp::Timestamp, EventStatePoll, Source};
-use futures::{Future, Stream};
+use core::pin::Pin;
+use core::task::Context;
+use futures_core::{Future, Stream};
 use pin_project::pin_project;
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-    time::Instant,
-};
-use tokio::time::{delay_for, Delay};
+use std::marker::PhantomData;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
-/// Stream for the [`to_realtime`](super::schedule_stream_ext::ScheduleStreamExt::to_realtime) method.
+use crate::source::traits::Timestamp;
+use crate::source::Source;
+
 #[pin_project]
-pub struct Realtime<St: Source>
+struct RealtimeInner<Src: Source>
 where
-    St::Time: Timestamp,
+    Src::Time: Timestamp,
 {
-    reference: <St::Time as Timestamp>::Reference,
     #[pin]
-    stream: St,
-    #[pin]
-    delay: Delay,
-
-    state: Option<St::State>,
+    source: Src,
 }
 
-impl<St: Source> Realtime<St>
+pub struct RealtimeEvents<Src: Source>
 where
-    St::Time: Timestamp,
+    Src::Time: Timestamp,
 {
-    pub(super) fn new(stream: St, reference: <St::Time as Timestamp>::Reference) -> Self {
-        Self {
-            stream,
-            reference,
-            delay: delay_for(std::time::Duration::from_secs(0)),
-            state: None,
-        }
+    inner: Arc<Mutex<RealtimeInner<Src>>>,
+}
+
+pub struct RealtimeStates<Src: Source>
+where
+    Src::Time: Timestamp,
+{
+    inner: Arc<Mutex<RealtimeInner<Src>>>,
+}
+
+// this is very generic because we want this to be runtime agnostic, but runtimes have their own mechanisms for waiting.
+pub fn realtime<Src: Source, SleepFut: Future, SleepFn: Fn(Instant) -> SleepFut>(
+    source: Src,
+    reference: <Src::Time as Timestamp>::Reference,
+    sleep_fn: SleepFn,
+) -> (RealtimeEvents<Src>, RealtimeStates<Src>)
+where
+    Src::Time: Timestamp,
+{
+    unimplemented!()
+}
+
+impl<Src: Source> Stream for RealtimeEvents<Src>
+where
+    Src::Time: Timestamp,
+{
+    type Item = (Src::Time, Src::Event);
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        unimplemented!()
     }
 }
 
-impl<St: Source> Stream for Realtime<St>
+impl<Src: Source> RealtimeStates<Src>
 where
-    St::Time: Timestamp,
+    Src::Time: Timestamp,
 {
-    type Item = (St::Time, St::Item, St::State);
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut this = self.project();
-
-        let time = St::Time::get_timestamp(&Instant::now(), this.reference);
-
-        match this.stream.poll(time, cx) {
-            EventStatePoll::Event(t, p, s) => {
-                *this.state = None;
-                Poll::Ready(Some((t, p, s)))
-            }
-            EventStatePoll::Scheduled(new_time, s) => {
-                *this.state = Some(s);
-                let instant = new_time.get_instant(&this.reference);
-                let instant = tokio::time::Instant::from_std(instant);
-
-                this.delay.reset(instant);
-                let _ = this.delay.poll(cx);
-
-                Poll::Pending
-            }
-            EventStatePoll::Ready(s) => {
-                *this.state = Some(s);
-                Poll::Pending
-            }
-            EventStatePoll::Pending => Poll::Pending,
-            EventStatePoll::Done(s) => {
-                *this.state = Some(s);
-                Poll::Ready(None)
-            }
-            EventStatePoll::Rollback(_t) => todo!(),
-        }
+    async fn poll_now(&self) -> Src::State {
+        self.poll(Instant::now()).await
     }
 
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.stream.size_hint()
+    async fn poll(&self, time: Instant) -> Src::State {
+        unimplemented!()
     }
 }

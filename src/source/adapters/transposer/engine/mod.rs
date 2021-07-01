@@ -15,10 +15,15 @@ pub mod lazy_state;
 #[cfg(test)]
 pub mod test;
 
+use core::cmp::Ordering;
+use core::future::Future;
 use core::pin::Pin;
-use futures::{future::FusedFuture, task::Context, Future};
+use core::task::{Context, Poll};
+
+use std::collections::BTreeMap;
+
+use futures_core::FusedFuture;
 use pin_project::pin_project;
-use std::{cmp::Ordering, collections::BTreeMap, task::Poll};
 
 use self::{
     buffered_item::BufferedItem,

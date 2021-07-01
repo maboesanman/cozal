@@ -1,10 +1,12 @@
-use futures::{future::FusedFuture, Future};
-use std::{
+use core::future::Future;
+use core::{
     marker::PhantomPinned,
     mem::MaybeUninit,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures_core::FusedFuture;
 
 use super::super::Transposer;
 
@@ -66,11 +68,11 @@ impl<'f, T: Transposer> Drop for TransposerUpdatePollableState<'f, T> {
 
 impl<'f, T: Transposer> TransposerUpdatePollableState<'f, T> {
     pub fn recover_cx(mut self) -> EngineContext<'f, T> {
-        let ret = unsafe { std::ptr::read(&self.context) };
+        let ret = unsafe { core::ptr::read(&self.context) };
         unsafe {
             self.future.assume_init_drop();
         }
-        std::mem::forget(self);
+        core::mem::forget(self);
         ret
     }
 }
@@ -315,7 +317,7 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
                     break 'poll match future.poll(cx) {
                         Poll::Ready(()) => {
                             if let TransposerUpdateState::Pollable(state) =
-                                std::mem::replace(inner, TransposerUpdateState::Terminated)
+                                core::mem::replace(inner, TransposerUpdateState::Terminated)
                             {
                                 Poll::Ready(state.recover_cx().into())
                             } else {

@@ -1,14 +1,19 @@
+mod duplicate;
 mod iter;
+mod join;
 mod map;
+mod realtime;
+mod shift;
 mod split;
 mod transposer;
 
-#[cfg(realtime)]
-mod realtime;
-
 pub use self::{
+    duplicate::Duplicate,
     iter::Iter,
+    join::Join,
     map::Map,
-    split::{bounded, unbounded, LeftSplit, RightSplit},
+    realtime::{realtime, RealtimeEvents, RealtimeStates},
+    shift::Shift,
+    split::Split,
     transposer::{context, ExpireHandle, Transposer, TransposerEngine},
 };

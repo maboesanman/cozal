@@ -6,30 +6,30 @@ use crate::source::Source;
 use crate::source::SourcePoll;
 
 #[pin_project]
-pub struct Map<St: Source, E, S> {
+pub struct Map<Src: Source, E, S> {
     #[pin]
-    stream: St,
+    source: Src,
 
-    event_transform: fn(St::Event) -> E,
-    state_transform: fn(St::State) -> S,
+    event_transform: fn(Src::Event) -> E,
+    state_transform: fn(Src::State) -> S,
 }
 
-impl<St: Source, E, S> Map<St, E, S> {
+impl<Src: Source, E, S> Map<Src, E, S> {
     pub fn new(
-        stream: St,
-        event_transform: fn(St::Event) -> E,
-        state_transform: fn(St::State) -> S,
-    ) -> Map<St, E, S> {
+        source: Src,
+        event_transform: fn(Src::Event) -> E,
+        state_transform: fn(Src::State) -> S,
+    ) -> Map<Src, E, S> {
         Self {
-            stream,
+            source,
             event_transform,
             state_transform,
         }
     }
 }
 
-impl<St: Source, E, S> Source for Map<St, E, S> {
-    type Time = St::Time;
+impl<Src: Source, E, S> Source for Map<Src, E, S> {
+    type Time = Src::Time;
     type Event = E;
     type State = S;
 
@@ -37,12 +37,12 @@ impl<St: Source, E, S> Source for Map<St, E, S> {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> SourcePoll<St::Time, E, S> {
+    ) -> SourcePoll<Src::Time, E, S> {
         let this = self.project();
         let e_fn = this.event_transform;
         let s_fn = this.state_transform;
 
-        match this.stream.poll(time, cx) {
+        match this.source.poll(time, cx) {
             SourcePoll::Pending => SourcePoll::Pending,
             SourcePoll::Rollback(t) => SourcePoll::Rollback(t),
             SourcePoll::Event(e, t) => SourcePoll::Event(e_fn(e), t),

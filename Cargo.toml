@@ -7,21 +7,15 @@ repository = "https://github.com/maboesanman/cozal.git"
 description = "deterministic game event pipeline with isolated configurable components"
 license = "MIT"
 
-[features]
-realtime = ["tokio"]
-
 [dependencies]
 async-trait = "0.1.50"
 pin-project = "1.0.7"
 take_mut = "0.2.2"
-futures = { version = "0.3.15", features = ["unstable", "bilock"] }
+futures-core = "0.3.15"
 im = "15.0.0"
-either = "1.6.1"
 array-init = "2.0.0"
 rand = "0.8.3"
 rand_chacha = "0.3.0"
-
-tokio = { version = "1.6.1", features = ["time"], optional = true }
 
 [dev-dependencies]
 matches = "0.1.8"

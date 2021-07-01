@@ -1,10 +1,11 @@
-use futures::{future::FusedFuture, Future};
-use pin_project::pin_project;
-use std::{
+use core::future::Future;
+use core::{
     marker::PhantomPinned,
     pin::Pin,
     task::{Context, Poll},
 };
+use futures_core::FusedFuture;
+use pin_project::pin_project;
 
 use super::super::Transposer;
 
