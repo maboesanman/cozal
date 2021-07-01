@@ -1,6 +1,7 @@
 use core::{marker::PhantomData, mem::MaybeUninit, pin::Pin};
 
 use super::pin_stack::PinStack;
+use pin_project::pin_project;
 
 pub struct SparseBufferStack<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> {
     stack: PinStack<StackItem<I>>,
@@ -194,7 +195,11 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
             .map(|(_, item)| &item.item)
     }
 
-    pub fn pop(self: Pin<&mut Self>) -> Option<I> {
+    pub fn can_pop(&self) -> bool {
+        self.stack.len() > 1
+    }
+
+    pub fn pop(self: Pin<&mut Self>) -> bool {
         // SAFETY: we don't move the buffered items here; just drop them.
         let this = unsafe { self.get_unchecked_mut() };
 
@@ -202,8 +207,21 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
             let stack_index = this.stack.len() - 1;
             let buffer_index = this.stack.peek().unwrap().buffer_index;
             this.drop_buffered(buffer_index, stack_index);
+            this.stack.pop();
+            true
+        } else {
+            false
+        }
+    }
 
-            Some(this.stack.pop().unwrap().item)
+    pub unsafe fn pop_recover(self: Pin<&mut Self>) -> Option<I> {
+        let this = self.get_unchecked_mut();
+
+        if this.stack.len() > 1 {
+            let stack_index = this.stack.len() - 1;
+            let buffer_index = this.stack.peek().unwrap().buffer_index;
+            this.drop_buffered(buffer_index, stack_index);
+            Some(this.stack.pop_recover().unwrap().item)
         } else {
             None
         }
@@ -211,6 +229,13 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
 
     pub fn peek(&self) -> &I {
         &self.stack.peek().unwrap().item
+    }
+
+    pub fn peek_pinned_mut(
+        self: Pin<&mut Self>,
+    ) -> Pin<&mut I> {
+        let this = unsafe { self.get_unchecked_mut() };
+        this.stack.peek_mut().unwrap().project().item
     }
 
     fn drop_buffered(&mut self, buffer_index: usize, expected_stack_index: usize) {
@@ -243,8 +268,11 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
     }
 }
 
+#[pin_project]
 struct StackItem<I: Sized> {
     buffer_index: usize,
+
+    #[pin]
     item: I,
 }
 

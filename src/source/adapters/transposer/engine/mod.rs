@@ -157,21 +157,23 @@ where
                 break;
             }
 
-            match state_map.as_mut().pop() {
-                Some(update_item) => {
-                    let events_emitted: DataEmitted<T::Time> = update_item.data_emitted();
-                    if events_emitted.any() {
-                        rollback_needed = match events_emitted {
-                            DataEmitted::Event => Some(last_state_map_time),
-                            DataEmitted::State(t) => Some(t),
-                            _ => unreachable!(),
-                        };
+            if state_map.as_ref().can_pop() {
+                let state_map_ref = state_map.as_ref();
+                let update_item = state_map_ref.peek();
+                let events_emitted: DataEmitted<T::Time> = update_item.data_emitted();
+                if events_emitted.any() {
+                    rollback_needed = match events_emitted {
+                        DataEmitted::Event => Some(last_state_map_time),
+                        DataEmitted::State(t) => Some(t),
+                        _ => unreachable!(),
+                    };
 
-                        // throw away everything at or after the discarded frame.
-                        output_buffer.split_off(&update_item.time);
-                    }
+                    // throw away everything at or after the discarded frame.
+                    output_buffer.split_off(&update_item.time);
                 }
-                None => break,
+                state_map.as_mut().pop();
+            } else {
+                break;
             }
         }
 
@@ -210,7 +212,7 @@ where
                 break;
             }
 
-            match state_map.as_mut().pop() {
+            match unsafe { state_map.as_mut().pop_recover() } {
                 Some(update_item) => {
                     if update_item.data_emitted().any() {
                         rollback_needed = Some(last_state_map_time);

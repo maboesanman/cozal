@@ -1,15 +1,12 @@
 use std::sync::RwLock;
 
 use matches;
-use pin_project::pin_project;
 
 use super::super::Transposer;
 
 use super::engine_time::EngineTime;
 
-#[pin_project]
 pub struct UpdateItem<'a, T: Transposer> {
-    #[pin]
     pub time: EngineTime<'a, T::Time>,
     // TODO: EngineTime and UpdateItemData both track the same thing. they probably should be merged.
     pub data: UpdateItemData<T>,

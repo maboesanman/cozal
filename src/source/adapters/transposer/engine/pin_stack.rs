@@ -50,13 +50,21 @@ impl<T: Sized> PinStack<T> {
 
     unsafe fn get_unchecked(&self, index: usize) -> &MaybeUninit<T> {
         let (chunk_i, i) = get_pos(index);
-        let chunk = self.chunks.get(chunk_i).unwrap();
+
+        debug_assert!(chunk_i < self.chunks.len());
+        let chunk = self.chunks.get_unchecked(chunk_i);
+
+        debug_assert!(i < chunk.len());
         chunk.get_unchecked(i)
     }
 
     unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut MaybeUninit<T> {
         let (chunk_i, i) = get_pos(index);
-        let chunk = self.chunks.get_mut(chunk_i).unwrap();
+
+        debug_assert!(chunk_i < self.chunks.len());
+        let chunk = self.chunks.get_unchecked_mut(chunk_i);
+
+        debug_assert!(i < chunk.len());
         chunk.get_unchecked_mut(i)
     }
 
@@ -64,40 +72,56 @@ impl<T: Sized> PinStack<T> {
         self.length
     }
 
-    pub fn push(&mut self, item: T) -> Pin<&mut T> {
+    pub fn empty(&self) -> bool {
+        self.length == 0
+    }
+
+    pub fn push(&mut self, item: T) {
         self.reserve(1);
         self.length += 1;
 
         let item_mut = unsafe { self.get_unchecked_mut(self.length - 1) };
         *item_mut = MaybeUninit::new(item);
-        let item_pin_ref = unsafe { item_mut.assume_init_mut() };
-        unsafe { Pin::new_unchecked(item_pin_ref) }
     }
 
-    pub fn pop(&mut self) -> Option<T> {
+    pub fn pop(&mut self) -> bool {
+        if self.length == 0 {
+            false
+        } else {
+            self.length -= 1;
+            let top_item = unsafe { self.get_unchecked_mut(self.length) };
+            unsafe { top_item.assume_init_drop() };
+            *top_item = MaybeUninit::uninit();
+            true
+        }
+    }
+
+    pub unsafe fn pop_recover(&mut self) -> Option<T> {
         if self.length == 0 {
             None
         } else {
-            unsafe {
-                self.length -= 1;
-                let item_mut = self.get_unchecked_mut(self.length);
-                let item = core::mem::replace(item_mut, MaybeUninit::uninit());
-                let item = item.assume_init();
-                Some(item)
-            }
+            self.length -= 1;
+            let item_mut = self.get_unchecked_mut(self.length);
+            let item = core::mem::replace(item_mut, MaybeUninit::uninit());
+            let item = item.assume_init();
+            Some(item)
         }
     }
 
     pub fn peek(&self) -> Option<&T> {
         if self.length == 0 {
-            None
-        } else {
-            unsafe {
-                let item = self.get_unchecked(self.length - 1);
-                let item = item.assume_init_ref();
-                Some(item)
-            }
+            return None;
         }
+
+        self.get(self.length - 1)
+    }
+
+    pub fn peek_mut(&mut self) -> Option<Pin<&mut T>> {
+        if self.length == 0 {
+            return None;
+        }
+
+        self.get_mut(self.length - 1)
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
@@ -140,9 +164,7 @@ impl<T: Sized> PinStack<T> {
 impl<T: Sized> Drop for PinStack<T> {
     fn drop(&mut self) {
         // items need to be dropped in reverse order, because they may contain references to previous elements.
-        while let Some(t) = self.pop() {
-            core::mem::drop(t);
-        }
+        while self.pop() {}
     }
 }
 

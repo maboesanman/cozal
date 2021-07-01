@@ -18,11 +18,11 @@ fn basic_test() {
         assert_eq!(pin_stack.get(i), Some(&i));
     }
 
-    for i in (0..100).rev() {
-        assert_eq!(pin_stack.pop().unwrap(), i);
+    for _ in (0..100).rev() {
+        assert_eq!(pin_stack.pop(), true);
     }
 
-    assert_eq!(pin_stack.pop(), None);
+    assert_eq!(pin_stack.pop(), false);
     assert_eq!(pin_stack.capacity(), 128);
 }
 
