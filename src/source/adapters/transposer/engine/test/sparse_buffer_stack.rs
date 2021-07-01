@@ -1,13 +1,12 @@
-use core::{borrow::Borrow, pin::Pin};
+use core::{borrow::Borrow};
 
 use super::super::sparse_buffer_stack::SparseBufferStack;
 
 #[test]
 fn basic_test() {
-    let mut sparse_buffer_stack: SparseBufferStack<'_, usize, (&usize, usize), 10>;
+    let sparse_buffer_stack: SparseBufferStack<'_, usize, (&usize, usize), 10>;
     sparse_buffer_stack = SparseBufferStack::new(17, |i| (i, 0));
-    let stack_ref = &mut sparse_buffer_stack;
-    let mut stack_pin = unsafe { Pin::new_unchecked(stack_ref) };
+    let mut stack_pin = Box::pin(sparse_buffer_stack);
 
     let dup = |prev_b: &(&usize, usize), i| (i, prev_b.1 + 2);
 
