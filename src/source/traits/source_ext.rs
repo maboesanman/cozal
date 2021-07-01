@@ -1,13 +1,18 @@
-use crate::source::adapters::{Duplicate, Join, Map, Shift, Split, Transposer, TransposerEngine};
+use std::time::Instant;
 
-use super::Source;
-#[cfg(realtime)]
-use super::{timestamp::Timestamp, RealtimeStream};
+use futures_core::Future;
+
+use crate::source::adapters::{
+    realtime, Duplicate, Join, Map, RealtimeEvents, RealtimeStates, Shift, Split, Transposer,
+    TransposerEngine,
+};
+
+use super::{Source, Timestamp};
 
 impl<S> SourceExt for S where S: Source {}
 
 pub trait SourceExt: Source + Sized {
-    /// Adapter for converting a schedule_stream into one that yields the items in realtime.
+    /// Adapter for converting a schedule_stream into one that yields the items in realtime, and a struct which can be queried yielding
     ///
     /// a reference must be given for the conversion from [`S::Time`](super::schedule_stream::ScheduleStream::Time) to [`Instant`](std::time::Instant).
     /// for example if you use [`Duration`](core::time::Duration) as your time, a "start time" must be given
@@ -15,12 +20,17 @@ pub trait SourceExt: Source + Sized {
     ///
     /// if your timestamp is an [`Instant`](std::time::Instant), then your reference is of type `()` because instants
     /// are already realtime and need no reference.
-    #[cfg(realtime)]
-    fn into_realtime(self, reference: <Self::Time as Timestamp>::Reference) -> RealtimeStream<Self>
+    ///
+    /// Additionally, a sleep_fn must be provided. This should be simply `tokio::time::sleep_until` if using tokio, but is left generic to avoid requiring a runtime.
+    fn realtime<SleepFut: Future, SleepFn: Fn(Instant) -> SleepFut>(
+        self,
+        reference: <Self::Time as Timestamp>::Reference,
+        sleep_fn: SleepFn,
+    ) -> (RealtimeEvents<Self>, RealtimeStates<Self>)
     where
-        <Self as Source>::Time: Timestamp,
+        Self::Time: Timestamp,
     {
-        RealtimeStream::new(self, reference)
+        realtime(self, reference, sleep_fn)
     }
 
     /// Adapter for converting a schedule stream into another via a transposer.
