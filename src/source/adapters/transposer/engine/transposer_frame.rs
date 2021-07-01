@@ -1,5 +1,4 @@
 use core::cmp::Ordering;
-use core::mem::MaybeUninit;
 
 use super::super::{
     context::{ExpireEventError, ScheduleEventError},
@@ -29,10 +28,14 @@ impl<'a, T: Transposer> TransposerFrame<'a, T>
 where
     T::Scheduled: Clone,
 {
-    pub fn new(transposer: T, rng_seed: [u8; 32]) -> Self {
+    pub fn new(
+        transposer: T,
+        init_time: &'a EngineTime<'a, T::Time>,
+        rng_seed: [u8; 32]
+    ) -> Self {
         Self {
             transposer,
-            internal: TransposerFrameInternal::new(rng_seed),
+            internal: TransposerFrameInternal::new(init_time, rng_seed),
         }
     }
 
@@ -40,7 +43,7 @@ where
         &mut self,
         update_item: &'a UpdateItem<'a, T>,
     ) -> Option<(EngineTimeSchedule<'a, T::Time>, T::Scheduled)> {
-        self.internal.current_time = MaybeUninit::new(&update_item.time);
+        self.internal.current_time = &update_item.time;
         match &update_item.time {
             EngineTime::Init => None,
             EngineTime::Input(_time) => None,
@@ -77,7 +80,7 @@ pub struct TransposerFrameInternal<'a, T: Transposer>
 where
     T::Scheduled: Clone,
 {
-    pub current_time: MaybeUninit<&'a EngineTime<'a, T::Time>>,
+    pub current_time: &'a EngineTime<'a, T::Time>,
     pub scheduling_index: usize,
     // schedule and expire_handles
     pub schedule: OrdMap<EngineTimeSchedule<'a, T::Time>, T::Scheduled>,
@@ -92,9 +95,12 @@ impl<'a, T: Transposer> TransposerFrameInternal<'a, T>
 where
     T::Scheduled: Clone,
 {
-    fn new(rng_seed: [u8; 32]) -> Self {
+    fn new(
+        time: &'a EngineTime<'a, T::Time>,
+        rng_seed: [u8; 32]
+    ) -> Self {
         Self {
-            current_time: MaybeUninit::uninit(),
+            current_time: time,
             scheduling_index: 0,
             schedule: OrdMap::new(),
             expire_handles: HashMap::new(),
@@ -108,14 +114,13 @@ where
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<(), ScheduleEventError> {
-        let current_time = unsafe { self.current_time.assume_init_ref() };
-        if time < current_time.raw_time() {
+        if time < self.current_time.raw_time() {
             return Err(ScheduleEventError::NewEventBeforeCurrent);
         }
 
         let time = EngineTimeSchedule {
             time,
-            parent: current_time,
+            parent: self.current_time,
             parent_index: self.scheduling_index,
         };
 
@@ -130,15 +135,14 @@ where
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, ScheduleEventError> {
-        let current_time = unsafe { self.current_time.assume_init_ref() };
-        if time < current_time.raw_time() {
+        if time < self.current_time.raw_time() {
             return Err(ScheduleEventError::NewEventBeforeCurrent);
         }
 
         let handle = self.expire_handle_factory.next();
         let time = EngineTimeSchedule {
             time,
-            parent: current_time,
+            parent: self.current_time,
             parent_index: self.scheduling_index,
         };
 
@@ -161,10 +165,6 @@ where
             None => Err(ExpireEventError::InvalidHandle),
         }
     }
-
-    // fn get_next_schedule_time(&self) -> Option<&EngineTimeSchedule<'a, T::Time>> {
-    //     self.schedule.get_min().map(|(next, _)| next)
-    // }
 
     fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<'a, T::Time>, T::Scheduled)> {
         let (result, new_schedule) = self.schedule.without_min_with_key();

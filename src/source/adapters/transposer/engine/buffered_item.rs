@@ -55,7 +55,7 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
     {
         BufferedItem {
             state: BufferedItemState::Unpollable { update_item },
-            transposer_frame: TransposerFrame::new(transposer, rng_seed),
+            transposer_frame: TransposerFrame::new(transposer, &update_item.time, rng_seed),
             input_state: LazyState::new(),
             _marker: PhantomPinned,
         }
