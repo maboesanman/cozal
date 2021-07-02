@@ -212,6 +212,7 @@ where
                 break;
             }
 
+            // SAFETY: the references in update_item.time are dropped before pop is called again, so they are never invalid.
             match unsafe { state_map.as_mut().pop_recover() } {
                 Some(update_item) => {
                     if update_item.data_emitted().any() {
