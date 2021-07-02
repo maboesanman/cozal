@@ -231,9 +231,7 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
         &self.stack.peek().unwrap().item
     }
 
-    pub fn peek_pinned_mut(
-        self: Pin<&mut Self>,
-    ) -> Pin<&mut I> {
+    pub fn peek_pinned_mut(self: Pin<&mut Self>) -> Pin<&mut I> {
         let this = unsafe { self.get_unchecked_mut() };
         this.stack.peek_mut().unwrap().project().item
     }

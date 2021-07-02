@@ -1,4 +1,4 @@
-use core::{borrow::Borrow};
+use core::borrow::Borrow;
 
 use super::super::sparse_buffer_stack::SparseBufferStack;
 

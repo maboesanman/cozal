@@ -1,5 +1,3 @@
-
-
 /// this is the handle that you use to expire scheduled events.
 #[derive(Hash, Eq, PartialEq, Debug, Copy)]
 pub struct ExpireHandle(u64);

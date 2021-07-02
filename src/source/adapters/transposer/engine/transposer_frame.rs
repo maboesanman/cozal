@@ -28,11 +28,7 @@ impl<'a, T: Transposer> TransposerFrame<'a, T>
 where
     T::Scheduled: Clone,
 {
-    pub fn new(
-        transposer: T,
-        init_time: &'a EngineTime<'a, T::Time>,
-        rng_seed: [u8; 32]
-    ) -> Self {
+    pub fn new(transposer: T, init_time: &'a EngineTime<'a, T::Time>, rng_seed: [u8; 32]) -> Self {
         Self {
             transposer,
             internal: TransposerFrameInternal::new(init_time, rng_seed),
@@ -95,10 +91,7 @@ impl<'a, T: Transposer> TransposerFrameInternal<'a, T>
 where
     T::Scheduled: Clone,
 {
-    fn new(
-        time: &'a EngineTime<'a, T::Time>,
-        rng_seed: [u8; 32]
-    ) -> Self {
+    fn new(time: &'a EngineTime<'a, T::Time>, rng_seed: [u8; 32]) -> Self {
         Self {
             current_time: time,
             scheduling_index: 0,
