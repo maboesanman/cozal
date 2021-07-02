@@ -48,6 +48,7 @@ impl<T: Sized> PinStack<T> {
         self.chunks.push(new_slice);
     }
 
+    // SAFETY: index must be reserved, ignore whether or not item is initialized
     unsafe fn get_unchecked(&self, index: usize) -> &MaybeUninit<T> {
         let (chunk_i, i) = get_pos(index);
 
@@ -58,6 +59,7 @@ impl<T: Sized> PinStack<T> {
         chunk.get_unchecked(i)
     }
 
+    // SAFETY: index must be reserved, ignore whether or not item is initialized
     unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut MaybeUninit<T> {
         let (chunk_i, i) = get_pos(index);
 
@@ -80,6 +82,7 @@ impl<T: Sized> PinStack<T> {
         self.reserve(1);
         self.length += 1;
 
+        // index is reserved from above, and uninit, so we can replace it.
         let item_mut = unsafe { self.get_unchecked_mut(self.length - 1) };
         *item_mut = MaybeUninit::new(item);
     }
@@ -131,12 +134,10 @@ impl<T: Sized> PinStack<T> {
         if self.length <= index {
             None
         } else {
-            let item = unsafe {
-                // SAFETY: We just checked that self.length > index.
-                let item_mut = self.get_unchecked(index);
-                // SAFETY: Because this is inside length, we can assume it is init.
-                item_mut.assume_init_ref()
-            };
+            // SAFETY: We just checked that self.length > index.
+            let item = unsafe { self.get_unchecked(index) };
+            // SAFETY: Because this is inside length, we can assume it is init.
+            let item = unsafe { item.assume_init_ref() };
 
             Some(item)
         }
@@ -146,14 +147,12 @@ impl<T: Sized> PinStack<T> {
         if self.length <= index {
             None
         } else {
-            let item_mut = unsafe {
-                // SAFETY: We just checked that self.length > index.
-                let item_mut = self.get_unchecked_mut(index);
-                // SAFETY: Because this is inside length, we can assume it is init.
-                let item_mut = item_mut.assume_init_mut();
-                // SAFETY: We never move any items we own.
-                Pin::new_unchecked(item_mut)
-            };
+            // SAFETY: We just checked that self.length > index.
+            let item_mut = unsafe { self.get_unchecked_mut(index) };
+            // SAFETY: Because this is inside length, we can assume it is init.
+            let item_mut = unsafe { item_mut.assume_init_mut() };
+            // SAFETY: We never move any items we own.
+            let item_mut = unsafe { Pin::new_unchecked(item_mut) };
 
             Some(item_mut)
         }
@@ -336,13 +335,15 @@ where
             return None;
         }
         let index = self.front;
-        let item = self.pin_stack.get(index).unwrap();
-        let item = item as *const T;
-        let item = unsafe { item.as_ref().unwrap() };
         self.front += 1;
         if self.front > self.back {
             self.done = true;
         }
+
+        let item = self.pin_stack.get(index).unwrap();
+        let item = item as *const T;
+        let item = unsafe { item.as_ref().unwrap() };
+
         Some((index, item))
     }
 }
@@ -357,10 +358,6 @@ where
             return None;
         }
         let index = self.back;
-        let item = self.pin_stack.get(index).unwrap();
-        let item = item as *const T;
-        let item = unsafe { item.as_ref().unwrap() };
-
         if self.back == 0 {
             self.done = true;
         } else {
@@ -369,6 +366,11 @@ where
                 self.done = true;
             }
         }
+
+        let item = self.pin_stack.get(index).unwrap();
+        let item = item as *const T;
+        let item = unsafe { item.as_ref().unwrap() };
+
         Some((index, item))
     }
 }
