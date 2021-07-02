@@ -341,8 +341,6 @@ where
         }
 
         let item = self.pin_stack.get(index).unwrap();
-        let item = item as *const T;
-        let item = unsafe { item.as_ref().unwrap() };
 
         Some((index, item))
     }
@@ -368,8 +366,6 @@ where
         }
 
         let item = self.pin_stack.get(index).unwrap();
-        let item = item as *const T;
-        let item = unsafe { item.as_ref().unwrap() };
 
         Some((index, item))
     }
