@@ -5,6 +5,7 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
+use std::mem::ManuallyDrop;
 
 use futures_core::FusedFuture;
 
@@ -67,13 +68,14 @@ impl<'f, T: Transposer> Drop for TransposerUpdatePollableState<'f, T> {
 }
 
 impl<'f, T: Transposer> TransposerUpdatePollableState<'f, T> {
-    pub fn recover_cx(mut self) -> EngineContext<'f, T> {
-        let ret = unsafe { core::ptr::read(&self.context) };
-        unsafe {
-            self.future.assume_init_drop();
-        }
-        core::mem::forget(self);
-        ret
+    pub fn into_engine_context(self) -> EngineContext<'f, T> {
+        let mut drop = ManuallyDrop::new(self);
+
+        // // SAFETY: self.future is only uninit during the constructor.
+        unsafe { drop.future.assume_init_drop() };
+
+        // // SAFETY: we are destroying self, so moving out of a reference to its field is fine
+        unsafe { core::ptr::read(&drop.context) }
     }
 }
 
@@ -174,7 +176,7 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
                         // take ref from newly pinned ref
                         let ptr: *mut _ = context;
 
-                        // SAFETY: this is
+                        // SAFETY: this lives longer than the future it is being stored in.
                         let cx_ref = unsafe { ptr.as_mut().unwrap() };
 
                         // create our future
@@ -228,14 +230,18 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
                     }) = inner
                     {
                         // SAFETY: if we are in pollable state, the take_or_recover call did not panic and these have been initialized.
-                        let transposer_ref = unsafe { transposer_ref.assume_init() };
-                        let time_val = unsafe { time_val.assume_init() };
-                        let inputs_ref = unsafe { inputs_ref.assume_init() };
+                        let (transposer_ref, time_val, inputs_ref) = unsafe {
+                            (
+                                transposer_ref.assume_init(),
+                                time_val.assume_init(),
+                                inputs_ref.assume_init(),
+                            )
+                        };
 
                         // take ref from newly pinned ref
                         let ptr: *mut _ = context;
 
-                        // SAFETY: this is
+                        // SAFETY: this lives longer than the future it is being stored in.
                         let cx_ref = unsafe { ptr.as_mut().unwrap() };
 
                         // create our future
@@ -289,14 +295,18 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
                     }) = inner
                     {
                         // SAFETY: if we are in pollable state, the take_or_recover call did not panic and these have been initialized.
-                        let transposer_ref = unsafe { transposer_ref.assume_init() };
-                        let time_val = unsafe { time_val.assume_init() };
-                        let payload_val = unsafe { payload_val.assume_init() };
+                        let (transposer_ref, time_val, payload_val) = unsafe {
+                            (
+                                transposer_ref.assume_init(),
+                                time_val.assume_init(),
+                                payload_val.assume_init(),
+                            )
+                        };
 
                         // take ref from newly pinned ref
                         let ptr: *mut _ = context;
 
-                        // SAFETY: this is
+                        // SAFETY: this lives longer than the future it is being stored in.
                         let cx_ref = unsafe { ptr.as_mut().unwrap() };
 
                         // create our future
@@ -310,8 +320,10 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
                 TransposerUpdateState::Pollable(TransposerUpdatePollableState {
                     future, ..
                 }) => {
+                    // SAFETY: the future is only uninit during the handling of the Unpollable variants.
+                    let future = unsafe { future.assume_init_mut() };
                     // SAFETY: structural pinning. we don't move the future if we don't move self.
-                    let future = unsafe { Pin::new_unchecked(future.assume_init_mut().as_mut()) };
+                    let future = unsafe { Pin::new_unchecked(future.as_mut()) };
 
                     // pass through the poll
                     break 'poll match future.poll(cx) {
@@ -319,7 +331,7 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
                             if let TransposerUpdateState::Pollable(state) =
                                 core::mem::replace(inner, TransposerUpdateState::Terminated)
                             {
-                                Poll::Ready(state.recover_cx().into())
+                                Poll::Ready(state.into_engine_context().into())
                             } else {
                                 unreachable!()
                             }
@@ -327,7 +339,7 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
                         Poll::Pending => Poll::Pending,
                     };
                 }
-                TransposerUpdateState::Terminated => unreachable!(),
+                TransposerUpdateState::Terminated => break 'poll Poll::Pending,
                 TransposerUpdateState::Poisioned => todo!(),
             };
         }
