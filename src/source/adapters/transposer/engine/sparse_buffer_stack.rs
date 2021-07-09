@@ -3,46 +3,42 @@ use core::{marker::PhantomData, mem::MaybeUninit, pin::Pin};
 use super::pin_stack::PinStack;
 use pin_project::pin_project;
 
-pub struct SparseBufferStack<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize> {
+#[pin_project]
+pub struct SparseBufferStack<
+    'stack,
+    I: 'stack,
+    B: 'stack,
+    const N: usize,
+> {
+    needs_init: Option<Box<dyn 'stack + FnOnce(&'stack I) -> B>>,
+    // this always has at least one item in it. pop doesn't let you pop the first item.
     stack: PinStack<StackItem<I>>,
+
+    #[pin]
     buffer: [BufferItem<'stack, I, B>; N],
 
     _marker: PhantomData<&'stack I>,
 }
 
 #[allow(unused)]
-impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
+impl<'stack, I: 'stack, B: 'stack, const N: usize>
     SparseBufferStack<'stack, I, B, N>
 {
-    // SAFETY: the closure must not move the supplied item reference anywhere but B
-    pub fn new<Con>(stack_item: I, constructor: Con) -> Self
+    pub fn new<Init>(first_item: I, constructor: Init) -> Self
     where
-        Con: FnOnce(&'stack I) -> B,
+        Init: 'stack + FnOnce(&'stack I) -> B
     {
         let mut stack = PinStack::new();
         stack.push(StackItem {
             buffer_index: 0,
-            item: stack_item,
+            item: first_item,
         });
-        let stack_item_ref = stack.peek().unwrap();
-        let stack_item_ref = stack_item_ref as *const StackItem<I>;
 
-        // SAFETY: the buffer is always dropped before the item, so this is safe.
-        let stack_item_ref: &'stack StackItem<I> = unsafe { stack_item_ref.as_ref().unwrap() };
-        let stack_item_ref = &stack_item_ref.item;
-
-        let mut buffer: [BufferItem<'stack, I, B>; N] =
+        let buffer: [BufferItem<'stack, I, B>; N] =
             array_init::array_init(|_| BufferItem::new_zeroed());
-        buffer[0].replace_with(0, constructor(stack_item_ref));
-        let buffer_item_ref = buffer.get_mut(0).unwrap();
-
-        // SAFETY: we just assigned this so it must exist.
-        let buffer_item_ref = unsafe { buffer_item_ref.item.assume_init_mut() };
-
-        // SAFETY: this buffer will never move so we can pin it.
-        let buffer_item_ref = unsafe { Pin::new_unchecked(buffer_item_ref) };
 
         Self {
+            needs_init: Some(Box::new(constructor)),
             stack,
             buffer,
 
@@ -50,19 +46,44 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
         }
     }
 
+    fn ensure_init(self: Pin<&mut Self>) {
+        let this = self.project();
+        if this.needs_init.is_none() {
+            return;
+        }
+
+        let constructor = core::mem::take(this.needs_init).unwrap();
+        let stack_item_ref = this.stack.peek().unwrap();
+        let stack_item_ref = stack_item_ref as *const StackItem<I>;
+
+        // SAFETY: the buffer is always dropped before the item, so this is safe.
+        let stack_item_ref: &'stack StackItem<I> = unsafe { stack_item_ref.as_ref().unwrap() };
+        let stack_item_ref = &stack_item_ref.item;
+
+        // SAFETY: structural pinning of an array
+        let buffer_item_pinned_ref = unsafe {
+            let buffer = this.buffer.get_unchecked_mut();
+            let item = &mut buffer[0];
+            Pin::new_unchecked(item)
+        };
+
+        buffer_item_pinned_ref.replace_with(0, constructor(stack_item_ref));
+    }
+
     // SAFETY: the closure must not move the supplied item reference anywhere but B
-    pub fn push<Con>(self: Pin<&mut Self>, constructor: Con)
+    pub fn push<Con>(mut self: Pin<&mut Self>, constructor: Con)
     where
         Con: FnOnce(&'stack I) -> I,
     {
-        // SAFETY: we don't touch the buffered items here.
-        let this = unsafe { self.get_unchecked_mut() };
+        self.as_mut().ensure_init();
+        let this = self.project();
+        debug_assert!(this.needs_init.is_none());
 
         // this is fine cause we don't allow stack to hit 0 elements ever.
         let top = &this.stack.peek().unwrap().item;
         let top = top as *const I;
 
-        // SAFETY: because this is a stack, subsequent values will be dropped first.
+        // SAFETY: because this is a pin_stack, subsequent values will be dropped first, and nothing will move.
         let top: &'stack I = unsafe { top.as_ref().unwrap() };
         let item = constructor(&top);
         this.stack.push(StackItem {
@@ -80,25 +101,38 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
     ) -> Result<(&I, Pin<&mut B>), ()>
     where
         Dup: FnOnce(&B, &'stack I) -> B, // reference to previous buffered item, use it to create a new one
-        Refurb: FnOnce(&mut B, &'stack I), // reference to previous buffered item, prepare for in place updates
+        Refurb: FnOnce(Pin<&mut B>, &'stack I), // reference to previous buffered item, prepare for in place updates
     {
+        self.as_mut().ensure_init();
         let buffer_index_to_replace = self.get_least_useful_buffer_index();
-
-        let this = unsafe { self.get_unchecked_mut() };
+        
+        let this = self.project();
+        debug_assert!(this.needs_init.is_none());
 
         let prev_stack_item_buffer_index = this.stack.get(stack_index - 1).ok_or(())?.buffer_index;
         let mut stack_item = this.stack.get_mut(stack_index).ok_or(())?;
         let stack_item = unsafe { stack_item.get_unchecked_mut() };
         stack_item.buffer_index = buffer_index_to_replace;
 
-        let (before, remaining) = this.buffer.split_at_mut(buffer_index_to_replace);
-        let (buffer_item, after) = remaining.split_first_mut().unwrap();
+        // SAFETY: structural pinning of an array.
+        let (before, mut buffer_item_pinned_ref, after) = unsafe {
+            let buffer = unsafe { this.buffer.get_unchecked_mut() };
+            let (before, remaining) = buffer.split_at_mut(buffer_index_to_replace);
+            let (buffer_item, after) = remaining.split_first_mut().unwrap();
+
+            (
+                Pin::new_unchecked(before),
+                Pin::new_unchecked(buffer_item),
+                Pin::new_unchecked(after),
+            )
+        };
 
         let stack_item_ptr: *const I = &stack_item.item;
         // SAFETY: this ref is going to be passed to duplicator/refurbisher, and always dropped before its target due to the stack gurantees.
         let stack_item_ref: &'stack I = unsafe { stack_item_ptr.as_ref().unwrap() };
 
-        if buffer_item.stack_index != stack_index - 1 {
+        let buffer_item = buffer_item_pinned_ref.as_mut().project();
+        if *buffer_item.stack_index != stack_index - 1 {
             let prev_buffer_item = if prev_stack_item_buffer_index < buffer_index_to_replace {
                 before.get(prev_stack_item_buffer_index).unwrap()
             } else {
@@ -107,21 +141,25 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
                     .unwrap()
             };
             let item = prev_buffer_item.get_buffer(stack_index - 1).ok_or(())?;
-            buffer_item.replace_with(stack_index, duplicator(item, stack_item_ref));
+            buffer_item_pinned_ref.as_mut().replace_with(stack_index, duplicator(item, stack_item_ref));
         } else {
-            buffer_item.stack_index = stack_index;
+            *buffer_item.stack_index = stack_index;
             refurbisher(
-                buffer_item.get_buffer_mut(stack_index).unwrap(),
+                buffer_item_pinned_ref.as_mut().get_buffer_mut(stack_index).unwrap(),
                 stack_item_ref,
             );
         }
-
         let stack_item: &I = &this.stack.get(stack_index).ok_or(())?.item;
+        
+        let mut buffer_item = buffer_item_pinned_ref.project();
 
-        let buffer_item = &mut buffer_item.item;
-        let buffer_item = unsafe { buffer_item.assume_init_mut() };
-        let buffer_item = unsafe { Pin::new_unchecked(buffer_item) };
-
+        let buffer_item: Pin<&mut MaybeUninit<B>> = buffer_item.item;
+        let buffer_item = unsafe {
+            let x = buffer_item.get_unchecked_mut();
+            let x = x.assume_init_mut();
+            Pin::new_unchecked(x)
+        };
+        
         Ok((stack_item, buffer_item))
     }
 
@@ -134,18 +172,25 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
     }
 
     pub fn get_pinned_mut(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         stack_index: usize,
     ) -> Option<(&I, Option<Pin<&mut B>>)> {
-        // SAFETY: we never move the buffered item after making it, so we can safely return a pinned pointer to it.
-        let this = unsafe { self.get_unchecked_mut() };
+        self.as_mut().ensure_init();
+        let this = self.project();
+        debug_assert!(this.needs_init.is_none());
 
         let stack_item = this.stack.get(stack_index)?;
-        let buffer_item = this.buffer.get_mut(stack_item.buffer_index);
+        
+        // SAFETY: Structural pinning of array.
+        let buffer_item = unsafe {
+            let buffer = this.buffer.get_unchecked_mut();
+            let buffer_item = buffer.get_mut(stack_item.buffer_index);
+            buffer_item.map(|x| Pin::new_unchecked(x))
+        };
+
         let stack_item = &stack_item.item;
+
         let buffer_item = buffer_item.map(|x| x.get_buffer_mut(stack_index)).flatten();
-        // SAFETY: we never move the buffered item after making it, so we can safely return a pinned pointer to it.
-        let buffer_item = buffer_item.map(|x| unsafe { Pin::new_unchecked(x) });
 
         Some((stack_item, buffer_item))
     }
@@ -199,29 +244,32 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
         self.stack.len() > 1
     }
 
-    pub fn pop(self: Pin<&mut Self>) -> bool {
-        // SAFETY: we don't move the buffered items here; just drop them.
-        let this = unsafe { self.get_unchecked_mut() };
+    pub fn pop(mut self: Pin<&mut Self>) -> bool {
+        self.as_mut().ensure_init();
+        let this = self.as_mut().project();
+        debug_assert!(this.needs_init.is_none());
 
         if this.stack.len() > 1 {
             let stack_index = this.stack.len() - 1;
             let buffer_index = this.stack.peek().unwrap().buffer_index;
-            this.drop_buffered(buffer_index, stack_index);
-            this.stack.pop();
+            self.as_mut().drop_buffered(buffer_index, stack_index);
+            self.project().stack.pop();
             true
         } else {
             false
         }
     }
 
-    pub unsafe fn pop_recover(self: Pin<&mut Self>) -> Option<I> {
-        let this = self.get_unchecked_mut();
+    pub unsafe fn pop_recover(mut self: Pin<&mut Self>) -> Option<I> {
+        self.as_mut().ensure_init();
+        let this = self.as_mut().project();
+        debug_assert!(this.needs_init.is_none());
 
         if this.stack.len() > 1 {
             let stack_index = this.stack.len() - 1;
             let buffer_index = this.stack.peek().unwrap().buffer_index;
-            this.drop_buffered(buffer_index, stack_index);
-            Some(this.stack.pop_recover().unwrap().item)
+            self.as_mut().drop_buffered(buffer_index, stack_index);
+            Some(self.project().stack.pop_recover().unwrap().item)
         } else {
             None
         }
@@ -231,17 +279,28 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack, const N: usize>
         &self.stack.peek().unwrap().item
     }
 
-    pub fn peek_pinned_mut(self: Pin<&mut Self>) -> Pin<&mut I> {
-        let this = unsafe { self.get_unchecked_mut() };
+    pub fn peek_pinned_mut(mut self: Pin<&mut Self>) -> Pin<&mut I> {
+        self.as_mut().ensure_init();
+        let this = self.project();
+        debug_assert!(this.needs_init.is_none());
+
         this.stack.peek_mut().unwrap().project().item
     }
 
-    fn drop_buffered(&mut self, buffer_index: usize, expected_stack_index: usize) {
+    fn drop_buffered(self: Pin<&mut Self>, buffer_index: usize, expected_stack_index: usize) {
+        let this = self.project();
         if expected_stack_index == usize::MAX {
             panic!("tried to drop an empty StateBufferItem")
         }
 
-        if let Some(item) = self.buffer.get_mut(buffer_index) {
+        // SAFETY: structural pinning of buffer
+        let buffer_item = unsafe {
+            let buffer = this.buffer.get_unchecked_mut();
+            let buffer_item = buffer.get_mut(buffer_index);
+            buffer_item.map(|x| Pin::new_unchecked(x))
+        };
+
+        if let Some(item) = buffer_item {
             if expected_stack_index == item.stack_index {
                 unsafe { item.assume_init_drop() }
             }
@@ -276,15 +335,18 @@ struct StackItem<I: Sized> {
 
 impl<I: Sized> StackItem<I> {}
 
-struct BufferItem<'stack, I: Sized + 'stack, B: Sized + 'stack> {
+#[pin_project]
+struct BufferItem<'stack, I: 'stack, B: 'stack> {
     // usize::MAX marks this as an empty buffer.
     stack_index: usize,
+    
+    #[pin]
     item: MaybeUninit<B>,
 
     _marker: PhantomData<&'stack I>,
 }
 
-impl<'stack, I: Sized + 'stack, B: Sized + 'stack> BufferItem<'stack, I, B> {
+impl<'stack, I: 'stack, B: 'stack> BufferItem<'stack, I, B> {
     pub fn new_zeroed() -> Self {
         Self {
             stack_index: usize::MAX,
@@ -294,12 +356,17 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack> BufferItem<'stack, I, B> {
         }
     }
 
-    pub fn get_buffer_mut(&mut self, stack_index: usize) -> Option<&mut B> {
-        if self.stack_index != stack_index {
+    pub fn get_buffer_mut(self: Pin<&mut Self>, stack_index: usize) -> Option<Pin<&mut B>> {
+        let this = self.project();
+        if *this.stack_index != stack_index {
             None
         } else {
-            // SAFETY: buffer_item.stack_index can't be usize::MAX here so it must be init.
-            Some(unsafe { self.item.assume_init_mut() })
+            // SAFETY: buffer_item.stack_index can't be usize::MAX here so it must be init. Also pin shuffling.
+            Some(unsafe {
+                let item = this.item.get_unchecked_mut();
+                let item = item.assume_init_mut();
+                Pin::new_unchecked(item)
+            })
         }
     }
 
@@ -316,16 +383,20 @@ impl<'stack, I: Sized + 'stack, B: Sized + 'stack> BufferItem<'stack, I, B> {
         }
     }
 
-    unsafe fn assume_init_drop(&mut self) {
-        self.stack_index = usize::MAX;
-        self.item.assume_init_drop()
+    unsafe fn assume_init_drop(self: Pin<&mut Self>) {
+        let this = self.project();
+        *this.stack_index = usize::MAX;
+        this.item.get_unchecked_mut().assume_init_drop();
     }
 
-    pub fn replace_with(&mut self, stack_index: usize, item: B) {
-        if self.stack_index != usize::MAX {
-            unsafe { self.item.assume_init_drop() };
+    pub fn replace_with(self: Pin<&mut Self>, stack_index: usize, item: B) {
+        let mut this = self.project();
+        if *this.stack_index != usize::MAX {
+            let item_mut = unsafe { this.item.as_mut().get_unchecked_mut() };
+            unsafe { item_mut.assume_init_drop() };
         }
-        self.stack_index = stack_index;
-        self.item = MaybeUninit::new(item);
+        *this.stack_index = stack_index;
+        let item_mut = unsafe { this.item.as_mut().get_unchecked_mut() };
+        *item_mut = MaybeUninit::new(item);
     }
 }

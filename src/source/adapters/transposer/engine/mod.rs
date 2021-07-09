@@ -91,7 +91,7 @@ where
             // pass in the first stack item
             first_state_map_item,
             // create the corresponding buffer using a reference to the stack item
-            |update_item| BufferedItem::new(initial_transposer, update_item, rng_seed),
+            move |update_item| BufferedItem::new(initial_transposer, update_item, rng_seed),
         );
 
         Self {

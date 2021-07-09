@@ -1,4 +1,5 @@
 use core::borrow::Borrow;
+use std::pin::Pin;
 
 use super::super::sparse_buffer_stack::SparseBufferStack;
 
@@ -10,7 +11,7 @@ fn basic_test() {
 
     let dup = |prev_b: &(&usize, usize), i| (i, prev_b.1 + 2);
 
-    let refurb = |b: &mut (&usize, usize), i| {
+    let refurb = |mut b: Pin<&mut (&usize, usize)>, i| {
         b.0 = i;
         b.1 += 2;
     };
