@@ -4,12 +4,7 @@ use super::pin_stack::PinStack;
 use pin_project::pin_project;
 
 #[pin_project]
-pub struct SparseBufferStack<
-    'stack,
-    I: 'stack,
-    B: 'stack,
-    const N: usize,
-> {
+pub struct SparseBufferStack<'stack, I: 'stack, B: 'stack, const N: usize> {
     needs_init: Option<Box<dyn 'stack + FnOnce(&'stack I) -> B>>,
     // this always has at least one item in it. pop doesn't let you pop the first item.
     stack: PinStack<StackItem<I>>,
@@ -21,12 +16,10 @@ pub struct SparseBufferStack<
 }
 
 #[allow(unused)]
-impl<'stack, I: 'stack, B: 'stack, const N: usize>
-    SparseBufferStack<'stack, I, B, N>
-{
+impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, B, N> {
     pub fn new<Init>(first_item: I, constructor: Init) -> Self
     where
-        Init: 'stack + FnOnce(&'stack I) -> B
+        Init: 'stack + FnOnce(&'stack I) -> B,
     {
         let mut stack = PinStack::new();
         stack.push(StackItem {
@@ -105,7 +98,7 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize>
     {
         self.as_mut().ensure_init();
         let buffer_index_to_replace = self.get_least_useful_buffer_index();
-        
+
         let this = self.project();
         debug_assert!(this.needs_init.is_none());
 
@@ -141,16 +134,21 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize>
                     .unwrap()
             };
             let item = prev_buffer_item.get_buffer(stack_index - 1).ok_or(())?;
-            buffer_item_pinned_ref.as_mut().replace_with(stack_index, duplicator(item, stack_item_ref));
+            buffer_item_pinned_ref
+                .as_mut()
+                .replace_with(stack_index, duplicator(item, stack_item_ref));
         } else {
             *buffer_item.stack_index = stack_index;
             refurbisher(
-                buffer_item_pinned_ref.as_mut().get_buffer_mut(stack_index).unwrap(),
+                buffer_item_pinned_ref
+                    .as_mut()
+                    .get_buffer_mut(stack_index)
+                    .unwrap(),
                 stack_item_ref,
             );
         }
         let stack_item: &I = &this.stack.get(stack_index).ok_or(())?.item;
-        
+
         let mut buffer_item = buffer_item_pinned_ref.project();
 
         let buffer_item: Pin<&mut MaybeUninit<B>> = buffer_item.item;
@@ -159,7 +157,7 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize>
             let x = x.assume_init_mut();
             Pin::new_unchecked(x)
         };
-        
+
         Ok((stack_item, buffer_item))
     }
 
@@ -177,7 +175,7 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize>
         debug_assert!(this.needs_init.is_none());
 
         let stack_item = this.stack.get(stack_index)?;
-        
+
         // SAFETY: Structural pinning of array.
         let buffer_item = unsafe {
             let buffer = this.buffer.get_unchecked_mut();
@@ -337,7 +335,7 @@ impl<I: Sized> StackItem<I> {}
 struct BufferItem<'stack, I: 'stack, B: 'stack> {
     // usize::MAX marks this as an empty buffer.
     stack_index: usize,
-    
+
     #[pin]
     item: MaybeUninit<B>,
 
