@@ -163,12 +163,9 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize>
         Ok((stack_item, buffer_item))
     }
 
-    pub fn get(&self, stack_index: usize) -> Option<(&I, Option<&B>)> {
+    pub fn get(&self, stack_index: usize) -> Option<&I> {
         let stack_item = self.stack.get(stack_index)?;
-        let buffer_item = self.buffer.get(stack_item.buffer_index);
-        let stack_item = &stack_item.item;
-        let buffer_item = buffer_item.map(|x| x.get_buffer(stack_index)).flatten();
-        Some((stack_item, buffer_item))
+        Some(&stack_item.item)
     }
 
     pub fn get_pinned_mut(
@@ -203,7 +200,7 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize>
         let range = self
             .stack
             .range_by(..=reference, |stack_item| func(&stack_item.item));
-        let (last_buffered_stack_index, _) = range
+        let last_buffered_stack_index = range
             .rev()
             .find(|(stack_index, stack_item)| {
                 // this stack item has a buffered state
@@ -213,7 +210,8 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize>
                     .stack_index
                     == *stack_index
             })
-            .unwrap();
+            .map(|(x, y)| x)
+            .unwrap_or(0);
 
         last_buffered_stack_index
     }

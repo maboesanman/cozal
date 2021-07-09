@@ -299,7 +299,7 @@ where
                 .last_buffered_index_by(poll_time, |x| x.time.raw_time());
             let last_index = state_map.len() - 1;
             let previously_processed_future_update = last_index != last_buffered_index_before_poll;
-            let mut has_next_update = if let Some((next_update, _)) =
+            let mut has_next_update = if let Some(next_update) =
                 state_map.get(last_buffered_index_before_poll + 1)
             {
                 next_update.time.raw_time() <= poll_time
