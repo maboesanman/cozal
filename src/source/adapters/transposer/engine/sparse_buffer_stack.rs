@@ -196,10 +196,9 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, 
         K: Ord,
         F: Fn(&I) -> K,
     {
-        let range = self
+        self
             .stack
-            .range_by(..=reference, |stack_item| func(&stack_item.item));
-        let last_buffered_stack_index = range
+            .range_by(..=reference, |stack_item| func(&stack_item.item))
             .rev()
             .find(|(stack_index, stack_item)| {
                 // this stack item has a buffered state
@@ -210,9 +209,7 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, 
                     == *stack_index
             })
             .map(|(x, y)| x)
-            .unwrap_or(0);
-
-        last_buffered_stack_index
+            .unwrap_or(0)
     }
 
     pub fn last_index_by<K, F>(&self, reference: K, func: F) -> usize
@@ -220,11 +217,12 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, 
         K: Ord,
         F: Fn(&I) -> K,
     {
-        let range = self
+        self
             .stack
-            .range_by(..=reference, |stack_item| func(&stack_item.item));
-        let (index, _) = range.last().unwrap();
-        index
+            .range_by(..=reference, |stack_item| func(&stack_item.item))
+            .last()
+            .unwrap()
+            .0
     }
 
     pub fn find<F>(&self, func: F) -> Option<&I>
