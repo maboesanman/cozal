@@ -81,10 +81,9 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
     #[allow(unused)]
     pub fn refurb(self: Pin<&mut Self>, update_item: &'a UpdateItem<'a, T>) {
         debug_assert!(self.is_terminated());
-        let this = self.project();
+        let mut this = self.project();
 
-        let state = unsafe { this.state.get_unchecked_mut() };
-        *state = BufferedItemState::Unpollable { update_item };
+        this.state.set(BufferedItemState::Unpollable { update_item });
         *this.input_state = LazyState::new();
     }
 
@@ -166,9 +165,8 @@ impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
                         }
                         _ => unreachable!(),
                     };
-                    // SAFETY: we're changing between enum variants, and no !Unpin fields are moved.
-                    let state = unsafe { state.get_unchecked_mut() };
-                    *state = BufferedItemState::Pollable { update_future };
+
+                    state.set(BufferedItemState::Pollable { update_future });
                 }
                 BufferedItemStateProject::Pollable { update_future } => {
                     let update_future: Pin<&mut TransposerUpdate<'a, T>> = update_future;

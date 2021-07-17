@@ -104,12 +104,11 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, 
 
         let prev_stack_item_buffer_index = this.stack.get(stack_index - 1).ok_or(())?.buffer_index;
         let mut stack_item = this.stack.get_mut(stack_index).ok_or(())?;
-        let stack_item = unsafe { stack_item.get_unchecked_mut() };
-        stack_item.buffer_index = buffer_index_to_replace;
+        *stack_item.as_mut().project().buffer_index = buffer_index_to_replace;
 
         // SAFETY: structural pinning of an array.
         let (before, mut buffer_item_pinned_ref, after) = unsafe {
-            let buffer = unsafe { this.buffer.get_unchecked_mut() };
+            let buffer = this.buffer.get_unchecked_mut();
             let (before, remaining) = buffer.split_at_mut(buffer_index_to_replace);
             let (buffer_item, after) = remaining.split_first_mut().unwrap();
 
@@ -152,6 +151,8 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, 
         let mut buffer_item = buffer_item_pinned_ref.project();
 
         let buffer_item: Pin<&mut MaybeUninit<B>> = buffer_item.item;
+
+        // SAFETY: we just assigned to buffer_item, so it is init. also we are re-pinning without moving.
         let buffer_item = unsafe {
             let x = buffer_item.get_unchecked_mut();
             let x = x.assume_init_mut();
@@ -256,6 +257,7 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, 
         }
     }
 
+    // SAFETY: you are not allowed to move something which has ever been pinned, which is exactly what this does. The caller of this function must be careful to only do sound operations on the I they might get from it, including dropping it.
     pub unsafe fn pop_recover(mut self: Pin<&mut Self>) -> Option<I> {
         self.as_mut().ensure_init();
         let this = self.as_mut().project();
@@ -298,6 +300,7 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, 
 
         if let Some(item) = buffer_item {
             if expected_stack_index == item.stack_index {
+                // SAFETY: we're sure we have the right value to drop because the index matches
                 unsafe { item.assume_init_drop() }
             }
         }
@@ -357,7 +360,7 @@ impl<'stack, I: 'stack, B: 'stack> BufferItem<'stack, I, B> {
         if *this.stack_index != stack_index {
             None
         } else {
-            // SAFETY: buffer_item.stack_index can't be usize::MAX here so it must be init. Also pin shuffling.
+            // SAFETY: buffer_item.stack_index can't be usize::MAX here so it must be init. Also structural pinning.
             Some(unsafe {
                 let item = this.item.get_unchecked_mut();
                 let item = item.assume_init_mut();
@@ -379,6 +382,7 @@ impl<'stack, I: 'stack, B: 'stack> BufferItem<'stack, I, B> {
         }
     }
 
+    // SAFETY: this item must be init to drop it.
     unsafe fn assume_init_drop(self: Pin<&mut Self>) {
         let this = self.project();
         *this.stack_index = usize::MAX;
@@ -388,11 +392,12 @@ impl<'stack, I: 'stack, B: 'stack> BufferItem<'stack, I, B> {
     pub fn replace_with(self: Pin<&mut Self>, stack_index: usize, item: B) {
         let mut this = self.project();
         if *this.stack_index != usize::MAX {
+            // SAFETY: we're immediately dropping
             let item_mut = unsafe { this.item.as_mut().get_unchecked_mut() };
+            // SAFETY: item is init because the index is not usize::MAX
             unsafe { item_mut.assume_init_drop() };
         }
         *this.stack_index = stack_index;
-        let item_mut = unsafe { this.item.as_mut().get_unchecked_mut() };
-        *item_mut = MaybeUninit::new(item);
+        this.item.as_mut().set(MaybeUninit::new(item));
     }
 }

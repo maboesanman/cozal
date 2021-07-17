@@ -82,7 +82,7 @@ impl<T: Sized> PinStack<T> {
         self.reserve(1);
         self.length += 1;
 
-        // index is reserved from above, and uninit, so we can replace it.
+        // SAFETY: index is reserved from above, and uninit, so we can replace it.
         let item_mut = unsafe { self.get_unchecked_mut(self.length - 1) };
         *item_mut = MaybeUninit::new(item);
     }
@@ -101,7 +101,7 @@ impl<T: Sized> PinStack<T> {
         }
     }
 
-    // SAFETY: you are not allowed to move something which has ever been pinned, which is exactly what this does. The caller of this function must be careful to only do sound operations on the T they might get from it.
+    // SAFETY: you are not allowed to move something which has ever been pinned, which is exactly what this does. The caller of this function must be careful to only do sound operations on the T they might get from it, including dropping it.
     pub unsafe fn pop_recover(&mut self) -> Option<T> {
         if self.length == 0 {
             None
