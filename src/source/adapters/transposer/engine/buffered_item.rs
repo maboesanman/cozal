@@ -83,7 +83,8 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
         debug_assert!(self.is_terminated());
         let mut this = self.project();
 
-        this.state.set(BufferedItemState::Unpollable { update_item });
+        this.state
+            .set(BufferedItemState::Unpollable { update_item });
         *this.input_state = LazyState::new();
     }
 
