@@ -55,7 +55,7 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
     {
         BufferedItem {
             state: BufferedItemState::Unpollable { update_item },
-            transposer_frame: TransposerFrame::new(transposer, rng_seed),
+            transposer_frame: TransposerFrame::new(transposer, &update_item.time, rng_seed),
             input_state: LazyState::new(),
             _marker: PhantomPinned,
         }
@@ -79,11 +79,13 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
 
     /// modify an existing buffered item for reuse
     #[allow(unused)]
-    pub fn refurb(&mut self, update_item: &'a UpdateItem<'a, T>) {
+    pub fn refurb(self: Pin<&mut Self>, update_item: &'a UpdateItem<'a, T>) {
         debug_assert!(self.is_terminated());
+        let mut this = self.project();
 
-        self.state = BufferedItemState::Unpollable { update_item };
-        self.input_state = LazyState::new();
+        this.state
+            .set(BufferedItemState::Unpollable { update_item });
+        *this.input_state = LazyState::new();
     }
 
     pub fn next_update_item(
@@ -164,9 +166,8 @@ impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
                         }
                         _ => unreachable!(),
                     };
-                    // SAFETY: we're changing between enum variants, and no !Unpin fields are moved.
-                    let state = unsafe { state.get_unchecked_mut() };
-                    *state = BufferedItemState::Pollable { update_future };
+
+                    state.set(BufferedItemState::Pollable { update_future });
                 }
                 BufferedItemStateProject::Pollable { update_future } => {
                     let update_future: Pin<&mut TransposerUpdate<'a, T>> = update_future;

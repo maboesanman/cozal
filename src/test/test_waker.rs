@@ -30,6 +30,7 @@ impl DummyWaker {
             waker: wake.clone(),
         };
         let raw_waker = RawWaker::from(wake);
+        // SAFETY: because we're using RawWaker::from(Arc<..>) we are upholding the contract.
         let waker = unsafe { Waker::from_raw(raw_waker) };
         (waker, watcher)
     }

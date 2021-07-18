@@ -6,11 +6,11 @@ pub struct ExpireHandleFactory(AtomicU64);
 
 impl ExpireHandleFactory {
     pub fn new() -> Self {
-        ExpireHandleFactory(AtomicU64::from(1))
+        ExpireHandleFactory(AtomicU64::new(0))
     }
 
     pub fn next(&self) -> ExpireHandle {
-        unsafe { ExpireHandle::new_unchecked(self.0.fetch_add(1, SeqCst)) }
+        ExpireHandle::new(self.0.fetch_add(1, SeqCst))
     }
 }
 

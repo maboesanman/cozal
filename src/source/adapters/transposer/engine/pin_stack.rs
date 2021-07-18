@@ -48,15 +48,25 @@ impl<T: Sized> PinStack<T> {
         self.chunks.push(new_slice);
     }
 
+    // SAFETY: index must be reserved, ignore whether or not item is initialized
     unsafe fn get_unchecked(&self, index: usize) -> &MaybeUninit<T> {
         let (chunk_i, i) = get_pos(index);
-        let chunk = self.chunks.get(chunk_i).unwrap();
+
+        debug_assert!(chunk_i < self.chunks.len());
+        let chunk = self.chunks.get_unchecked(chunk_i);
+
+        debug_assert!(i < chunk.len());
         chunk.get_unchecked(i)
     }
 
+    // SAFETY: index must be reserved, ignore whether or not item is initialized
     unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut MaybeUninit<T> {
         let (chunk_i, i) = get_pos(index);
-        let chunk = self.chunks.get_mut(chunk_i).unwrap();
+
+        debug_assert!(chunk_i < self.chunks.len());
+        let chunk = self.chunks.get_unchecked_mut(chunk_i);
+
+        debug_assert!(i < chunk.len());
         chunk.get_unchecked_mut(i)
     }
 
@@ -64,50 +74,70 @@ impl<T: Sized> PinStack<T> {
         self.length
     }
 
-    pub fn push(&mut self, item: T) -> Pin<&mut T> {
+    pub fn empty(&self) -> bool {
+        self.length == 0
+    }
+
+    pub fn push(&mut self, item: T) {
         self.reserve(1);
         self.length += 1;
 
+        // SAFETY: index is reserved from above, and uninit, so we can replace it.
         let item_mut = unsafe { self.get_unchecked_mut(self.length - 1) };
         *item_mut = MaybeUninit::new(item);
-        let item_pin_ref = unsafe { item_mut.assume_init_mut() };
-        unsafe { Pin::new_unchecked(item_pin_ref) }
     }
 
-    pub fn pop(&mut self) -> Option<T> {
+    pub fn pop(&mut self) -> bool {
+        if self.length == 0 {
+            false
+        } else {
+            self.length -= 1;
+            // SAFETY: self.length is low enough because we just decreased it by one.
+            let top_item = unsafe { self.get_unchecked_mut(self.length) };
+            // SAFETY: top_item is init because it was at index self.length - 1 at the beginning of this function.
+            unsafe { top_item.assume_init_drop() };
+            *top_item = MaybeUninit::uninit();
+            true
+        }
+    }
+
+    // SAFETY: you are not allowed to move something which has ever been pinned, which is exactly what this does. The caller of this function must be careful to only do sound operations on the T they might get from it, including dropping it.
+    pub unsafe fn pop_recover(&mut self) -> Option<T> {
         if self.length == 0 {
             None
         } else {
-            unsafe {
-                self.length -= 1;
-                let item_mut = self.get_unchecked_mut(self.length);
-                let item = core::mem::replace(item_mut, MaybeUninit::uninit());
-                let item = item.assume_init();
-                Some(item)
-            }
+            self.length -= 1;
+            let item_mut = self.get_unchecked_mut(self.length);
+            let item = core::mem::replace(item_mut, MaybeUninit::uninit());
+            let item = item.assume_init();
+            Some(item)
         }
     }
 
     pub fn peek(&self) -> Option<&T> {
         if self.length == 0 {
-            None
-        } else {
-            unsafe {
-                let item = self.get_unchecked(self.length - 1);
-                let item = item.assume_init_ref();
-                Some(item)
-            }
+            return None;
         }
+
+        self.get(self.length - 1)
+    }
+
+    pub fn peek_mut(&mut self) -> Option<Pin<&mut T>> {
+        if self.length == 0 {
+            return None;
+        }
+
+        self.get_mut(self.length - 1)
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
         if self.length <= index {
             None
         } else {
-            let item = unsafe {
-                let item_mut = self.get_unchecked(index);
-                item_mut.assume_init_ref()
-            };
+            // SAFETY: We just checked that self.length > index.
+            let item = unsafe { self.get_unchecked(index) };
+            // SAFETY: Because this is inside length, we can assume it is init.
+            let item = unsafe { item.assume_init_ref() };
 
             Some(item)
         }
@@ -117,11 +147,12 @@ impl<T: Sized> PinStack<T> {
         if self.length <= index {
             None
         } else {
-            let item_mut = unsafe {
-                let item_mut = self.get_unchecked_mut(index);
-                let item_mut = item_mut.assume_init_mut();
-                Pin::new_unchecked(item_mut)
-            };
+            // SAFETY: We just checked that self.length > index.
+            let item_mut = unsafe { self.get_unchecked_mut(index) };
+            // SAFETY: Because this is inside length, we can assume it is init.
+            let item_mut = unsafe { item_mut.assume_init_mut() };
+            // SAFETY: We never move any items we own.
+            let item_mut = unsafe { Pin::new_unchecked(item_mut) };
 
             Some(item_mut)
         }
@@ -140,9 +171,7 @@ impl<T: Sized> PinStack<T> {
 impl<T: Sized> Drop for PinStack<T> {
     fn drop(&mut self) {
         // items need to be dropped in reverse order, because they may contain references to previous elements.
-        while let Some(t) = self.pop() {
-            core::mem::drop(t);
-        }
+        while self.pop() {}
     }
 }
 
@@ -306,13 +335,13 @@ where
             return None;
         }
         let index = self.front;
-        let item = self.pin_stack.get(index).unwrap();
-        let item = item as *const T;
-        let item = unsafe { item.as_ref().unwrap() };
         self.front += 1;
         if self.front > self.back {
             self.done = true;
         }
+
+        let item = self.pin_stack.get(index).unwrap();
+
         Some((index, item))
     }
 }
@@ -327,10 +356,6 @@ where
             return None;
         }
         let index = self.back;
-        let item = self.pin_stack.get(index).unwrap();
-        let item = item as *const T;
-        let item = unsafe { item.as_ref().unwrap() };
-
         if self.back == 0 {
             self.done = true;
         } else {
@@ -339,6 +364,9 @@ where
                 self.done = true;
             }
         }
+
+        let item = self.pin_stack.get(index).unwrap();
+
         Some((index, item))
     }
 }

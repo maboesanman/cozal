@@ -91,7 +91,7 @@ where
             // pass in the first stack item
             first_state_map_item,
             // create the corresponding buffer using a reference to the stack item
-            |update_item| BufferedItem::new(initial_transposer, update_item, rng_seed),
+            move |update_item| BufferedItem::new(initial_transposer, update_item, rng_seed),
         );
 
         Self {
@@ -157,21 +157,23 @@ where
                 break;
             }
 
-            match state_map.as_mut().pop() {
-                Some(update_item) => {
-                    let events_emitted: DataEmitted<T::Time> = update_item.data_emitted();
-                    if events_emitted.any() {
-                        rollback_needed = match events_emitted {
-                            DataEmitted::Event => Some(last_state_map_time),
-                            DataEmitted::State(t) => Some(t),
-                            _ => unreachable!(),
-                        };
+            if state_map.as_ref().can_pop() {
+                let state_map_ref = state_map.as_ref();
+                let update_item = state_map_ref.peek();
+                let events_emitted: DataEmitted<T::Time> = update_item.data_emitted();
+                if events_emitted.any() {
+                    rollback_needed = match events_emitted {
+                        DataEmitted::Event => Some(last_state_map_time),
+                        DataEmitted::State(t) => Some(t),
+                        _ => unreachable!(),
+                    };
 
-                        // throw away everything at or after the discarded frame.
-                        output_buffer.split_off(&update_item.time);
-                    }
+                    // throw away everything at or after the discarded frame.
+                    output_buffer.split_off(&update_item.time);
                 }
-                None => break,
+                state_map.as_mut().pop();
+            } else {
+                break;
             }
         }
 
@@ -210,7 +212,8 @@ where
                 break;
             }
 
-            match state_map.as_mut().pop() {
+            // SAFETY: the references in update_item.time are dropped before pop is called again, so they are never invalid.
+            match unsafe { state_map.as_mut().pop_recover() } {
                 Some(update_item) => {
                     if update_item.data_emitted().any() {
                         rollback_needed = Some(last_state_map_time);
@@ -296,13 +299,12 @@ where
                 .last_buffered_index_by(poll_time, |x| x.time.raw_time());
             let last_index = state_map.len() - 1;
             let previously_processed_future_update = last_index != last_buffered_index_before_poll;
-            let mut has_next_update = if let Some((next_update, _)) =
-                state_map.get(last_buffered_index_before_poll + 1)
-            {
-                next_update.time.raw_time() <= poll_time
-            } else {
-                false
-            };
+            let mut has_next_update =
+                if let Some(next_update) = state_map.get(last_buffered_index_before_poll + 1) {
+                    next_update.time.raw_time() <= poll_time
+                } else {
+                    false
+                };
 
             let update_and_buffer = state_map
                 .as_mut()
