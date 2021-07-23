@@ -87,7 +87,7 @@ pub trait SourceExt: Source + Sized {
         Split::new(self, decide, convert)
     }
 
-    /// Wrap a source for duplication. 
+    /// Wrap a source for duplication.
     fn duplicate(self) -> Duplicate<Self>
     where
         Self::Event: Clone,

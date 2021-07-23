@@ -196,8 +196,7 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, 
         K: Ord,
         F: Fn(&I) -> K,
     {
-        self
-            .stack
+        self.stack
             .range_by(..=reference, |stack_item| func(&stack_item.item))
             .rev()
             .find(|(stack_index, stack_item)| {
@@ -217,8 +216,7 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, 
         K: Ord,
         F: Fn(&I) -> K,
     {
-        self
-            .stack
+        self.stack
             .range_by(..=reference, |stack_item| func(&stack_item.item))
             .last()
             .unwrap()
