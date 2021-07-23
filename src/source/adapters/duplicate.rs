@@ -84,10 +84,7 @@ impl<Time: Ord + Copy, Event> Eq for RollbackEvent<Time, Event> {}
 
 impl<Time: Ord + Copy, Event> PartialEq for RollbackEvent<Time, Event> {
     fn eq(&self, other: &Self) -> bool {
-        match self.cmp(other) {
-            Ordering::Equal => true,
-            _ => false,
-        }
+        matches!(self.cmp(other), Ordering::Equal)
     }
 }
 
@@ -97,14 +94,16 @@ impl<Time: Ord + Copy, Event, State> Into<SourcePoll<Time, Event, State>>
     fn into(self) -> SourcePoll<Time, Event, State> {
         match self {
             RollbackEvent::Event { time, event } => {
-                return SourcePoll::Event(event, time);
+                SourcePoll::Event(event, time)
             }
             RollbackEvent::Rollback { time } => {
-                return SourcePoll::Rollback(time);
+                SourcePoll::Rollback(time)
             }
         }
     }
 }
+
+type Events<Src> = BTreeSet<Arc<RollbackEvent<<Src as Source>::Time, <Src as Source>::Event>>>;
 
 struct DuplicateInner<Src: Source>
 where
@@ -114,7 +113,7 @@ where
 
     // treat this as pinned
     original: Arc<RwLock<Original<Src>>>,
-    events: RwLock<BTreeSet<Arc<RollbackEvent<Src::Time, Src::Event>>>>,
+    events: RwLock<Events<Src>>,
 }
 
 pub struct Duplicate<Src: Source>
@@ -146,7 +145,6 @@ where
         let mut original_mut = inner.original.write().unwrap();
         let children = &mut original_mut.children;
         children.insert(0, Arc::downgrade(&inner));
-        core::mem::drop(children);
         core::mem::drop(original_mut);
 
         Self { inner }
@@ -170,7 +168,6 @@ where
         let original_ref = original.read().unwrap();
         let children = &original_ref.children;
         let max_index = *children.last_key_value().unwrap().0;
-        core::mem::drop(children);
         core::mem::drop(original_ref);
         let index = max_index + 1;
         let inner = DuplicateInner {
@@ -182,7 +179,6 @@ where
         let mut original_mut = inner.original.write().unwrap();
         let children = &mut original_mut.children;
         children.insert(index, Arc::downgrade(&inner));
-        core::mem::drop(children);
         core::mem::drop(original_mut);
 
         Self { inner }
@@ -294,7 +290,7 @@ where
                 }
                 core::mem::drop(events_lock);
 
-                return SourcePoll::Scheduled(s, t);
+                SourcePoll::Scheduled(s, t)
             }
             SourcePoll::Ready(s) => {
                 let events_lock = self.inner.events.read().unwrap();
@@ -306,7 +302,7 @@ where
                 }
                 core::mem::drop(events_lock);
 
-                return SourcePoll::Ready(s);
+                SourcePoll::Ready(s)
             }
         }
     }
@@ -406,7 +402,7 @@ where
                 }
                 core::mem::drop(events_lock);
 
-                return SourcePoll::Scheduled(s, t);
+                SourcePoll::Scheduled(s, t)
             }
             SourcePoll::Ready(s) => {
                 let events_lock = self.inner.events.read().unwrap();
@@ -418,7 +414,7 @@ where
                 }
                 core::mem::drop(events_lock);
 
-                return SourcePoll::Ready(s);
+                SourcePoll::Ready(s)
             }
         }
     }
@@ -518,7 +514,7 @@ where
                 }
                 core::mem::drop(events_lock);
 
-                return SourcePoll::Scheduled(s, t);
+                SourcePoll::Scheduled(s, t)
             }
             SourcePoll::Ready(s) => {
                 let events_lock = self.inner.events.read().unwrap();
@@ -530,7 +526,7 @@ where
                 }
                 core::mem::drop(events_lock);
 
-                return SourcePoll::Ready(s);
+                SourcePoll::Ready(s)
             }
         }
     }
