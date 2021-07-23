@@ -93,12 +93,8 @@ impl<Time: Ord + Copy, Event, State> Into<SourcePoll<Time, Event, State>>
 {
     fn into(self) -> SourcePoll<Time, Event, State> {
         match self {
-            RollbackEvent::Event { time, event } => {
-                SourcePoll::Event(event, time)
-            }
-            RollbackEvent::Rollback { time } => {
-                SourcePoll::Rollback(time)
-            }
+            RollbackEvent::Event { time, event } => SourcePoll::Event(event, time),
+            RollbackEvent::Rollback { time } => SourcePoll::Rollback(time),
         }
     }
 }
@@ -115,6 +111,12 @@ where
     original: Arc<RwLock<Original<Src>>>,
     events: RwLock<Events<Src>>,
 }
+
+type PollFn<Src, State> = fn(
+    Pin<&mut Src>,
+    <Src as Source>::Time,
+    &mut Context,
+) -> SourcePoll<<Src as Source>::Time, <Src as Source>::Event, State>;
 
 pub struct Duplicate<Src: Source>
 where
@@ -156,6 +158,119 @@ where
         let waker = DuplicateWaker { wakers };
         let waker = Arc::new(waker);
         Waker::from(waker)
+    }
+
+    fn poll_internal<State>(
+        self: Pin<&mut Self>,
+        poll_time: Src::Time,
+        cx: &mut Context,
+        poll_fn: PollFn<Src, State>,
+    ) -> SourcePoll<Src::Time, Src::Event, State> {
+        let original_lock = self.inner.original.read().unwrap();
+        let mut wakers_lock = original_lock.wakers.lock().unwrap();
+        wakers_lock.insert(self.inner.index, cx.waker().clone());
+        core::mem::drop(wakers_lock);
+        core::mem::drop(original_lock);
+
+        // if original_lock.children.get(self.inner.index)
+        let events_lock = self.inner.events.read().unwrap();
+        let mut first = events_lock.first();
+        if let Some(x) = first {
+            if x.time() > &poll_time {
+                first = None;
+            }
+        }
+        let has_event = first.is_some();
+        core::mem::drop(events_lock);
+
+        if has_event {
+            let mut events_lock = self.inner.events.write().unwrap();
+            // this works because the only other writers are other duplicates, which are strictly additive.
+            // more events could be added, but the first one will be no later than the first one from before we relocked.
+            let first = events_lock.pop_first().unwrap();
+            // try to pull the event out of the arc; clone if there are other references
+            let owned = Arc::try_unwrap(first).unwrap_or_else(|a| (*a).clone());
+            return owned.into();
+        }
+
+        let waker = self.get_waker();
+        let mut context = Context::from_waker(&waker);
+
+        let mut original_lock = self.inner.original.write().unwrap();
+        let source: Pin<&mut Src> = unsafe { Pin::new_unchecked(&mut original_lock.source) };
+        let poll = poll_fn(source, poll_time, &mut context);
+        core::mem::drop(original_lock);
+
+        match poll {
+            SourcePoll::Pending => SourcePoll::Pending,
+            SourcePoll::Rollback(t) => {
+                let rollback_event = RollbackEvent::Rollback { time: t };
+                let rollback_event = Arc::new(rollback_event);
+
+                let original_lock = self.inner.original.read().unwrap();
+                for (i, dup) in original_lock.children.iter() {
+                    if *i != self.inner.index {
+                        if let Some(dup) = dup.upgrade() {
+                            let mut events_lock = dup.events.write().unwrap();
+                            events_lock.insert(rollback_event.clone());
+                            core::mem::drop(events_lock);
+                        }
+                    }
+                }
+                core::mem::drop(original_lock);
+
+                SourcePoll::Rollback(t)
+            }
+            SourcePoll::Event(e, t) => {
+                let rollback_event = RollbackEvent::Event {
+                    event: e.clone(),
+                    time: t,
+                };
+                let rollback_event = Arc::new(rollback_event);
+
+                let original_lock = self.inner.original.read().unwrap();
+                for (i, dup) in original_lock.children.iter() {
+                    if *i != self.inner.index {
+                        if let Some(dup) = dup.upgrade() {
+                            let mut events_lock = dup.events.write().unwrap();
+                            events_lock.insert(rollback_event.clone());
+                            core::mem::drop(events_lock);
+                        }
+                    }
+                }
+                core::mem::drop(original_lock);
+
+                SourcePoll::Event(e, t)
+            }
+            SourcePoll::Scheduled(s, t) => {
+                let events_lock = self.inner.events.read().unwrap();
+
+                for e in events_lock.iter() {
+                    if let RollbackEvent::Event { time, .. } = **e {
+                        if time < t {
+                            return SourcePoll::Scheduled(s, time);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                core::mem::drop(events_lock);
+
+                SourcePoll::Scheduled(s, t)
+            }
+            SourcePoll::Ready(s) => {
+                let events_lock = self.inner.events.read().unwrap();
+
+                for e in events_lock.iter() {
+                    if let RollbackEvent::Event { time, .. } = **e {
+                        return SourcePoll::Scheduled(s, time);
+                    }
+                }
+                core::mem::drop(events_lock);
+
+                SourcePoll::Ready(s)
+            }
+        }
     }
 }
 
@@ -199,335 +314,23 @@ where
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
-        let original_lock = self.inner.original.read().unwrap();
-        let mut wakers_lock = original_lock.wakers.lock().unwrap();
-        wakers_lock.insert(self.inner.index, cx.waker().clone());
-        core::mem::drop(wakers_lock);
-        core::mem::drop(original_lock);
-
-        // if original_lock.children.get(self.inner.index)
-        let events_lock = self.inner.events.read().unwrap();
-        let mut first = events_lock.first();
-        if let Some(x) = first {
-            if x.time() > &poll_time {
-                first = None;
-            }
-        }
-        let has_event = first.is_some();
-        core::mem::drop(events_lock);
-
-        if has_event {
-            let mut events_lock = self.inner.events.write().unwrap();
-            // this works because the only other writers are other duplicates, which are strictly additive.
-            // more events could be added, but the first one will be no later than the first one from before we relocked.
-            let first = events_lock.pop_first().unwrap();
-            // try to pull the event out of the arc; clone if there are other references
-            let owned = Arc::try_unwrap(first).unwrap_or_else(|a| (*a).clone());
-            return owned.into();
-        }
-
-        let waker = self.get_waker();
-        let mut context = Context::from_waker(&waker);
-
-        let mut original_lock = self.inner.original.write().unwrap();
-        let source: Pin<&mut Src> = unsafe { Pin::new_unchecked(&mut original_lock.source) };
-        let poll = source.poll(poll_time, &mut context);
-        core::mem::drop(original_lock);
-
-        match poll {
-            SourcePoll::Pending => SourcePoll::Pending,
-            SourcePoll::Rollback(t) => {
-                let rollback_event = RollbackEvent::Rollback { time: t };
-                let rollback_event = Arc::new(rollback_event);
-
-                let original_lock = self.inner.original.read().unwrap();
-                for (i, dup) in original_lock.children.iter() {
-                    if *i != self.inner.index {
-                        if let Some(dup) = dup.upgrade() {
-                            let mut events_lock = dup.events.write().unwrap();
-                            events_lock.insert(rollback_event.clone());
-                            core::mem::drop(events_lock);
-                        }
-                    }
-                }
-                core::mem::drop(original_lock);
-
-                SourcePoll::Rollback(t)
-            }
-            SourcePoll::Event(e, t) => {
-                let rollback_event = RollbackEvent::Event {
-                    event: e.clone(),
-                    time: t,
-                };
-                let rollback_event = Arc::new(rollback_event);
-
-                let original_lock = self.inner.original.read().unwrap();
-                for (i, dup) in original_lock.children.iter() {
-                    if *i != self.inner.index {
-                        if let Some(dup) = dup.upgrade() {
-                            let mut events_lock = dup.events.write().unwrap();
-                            events_lock.insert(rollback_event.clone());
-                            core::mem::drop(events_lock);
-                        }
-                    }
-                }
-                core::mem::drop(original_lock);
-
-                SourcePoll::Event(e, t)
-            }
-            SourcePoll::Scheduled(s, t) => {
-                let events_lock = self.inner.events.read().unwrap();
-
-                for e in events_lock.iter() {
-                    if let RollbackEvent::Event { time, .. } = **e {
-                        if time < t {
-                            return SourcePoll::Scheduled(s, time);
-                        } else {
-                            break;
-                        }
-                    }
-                }
-                core::mem::drop(events_lock);
-
-                SourcePoll::Scheduled(s, t)
-            }
-            SourcePoll::Ready(s) => {
-                let events_lock = self.inner.events.read().unwrap();
-
-                for e in events_lock.iter() {
-                    if let RollbackEvent::Event { time, .. } = **e {
-                        return SourcePoll::Scheduled(s, time);
-                    }
-                }
-                core::mem::drop(events_lock);
-
-                SourcePoll::Ready(s)
-            }
-        }
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+        self.poll_internal(poll_time, cx, Src::poll)
     }
 
     fn poll_forget(
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
-        let original_lock = self.inner.original.read().unwrap();
-        let mut wakers_lock = original_lock.wakers.lock().unwrap();
-        wakers_lock.insert(self.inner.index, cx.waker().clone());
-        core::mem::drop(wakers_lock);
-        core::mem::drop(original_lock);
-
-        // if original_lock.children.get(self.inner.index)
-        let events_lock = self.inner.events.read().unwrap();
-        let mut first = events_lock.first();
-        if let Some(x) = first {
-            if x.time() > &poll_time {
-                first = None;
-            }
-        }
-        let has_event = first.is_some();
-        core::mem::drop(events_lock);
-
-        if has_event {
-            let mut events_lock = self.inner.events.write().unwrap();
-            // this works because the only other writers are other duplicates, which are strictly additive.
-            // more events could be added, but the first one will be no later than the first one from before we relocked.
-            let first = events_lock.pop_first().unwrap();
-            // try to pull the event out of the arc; clone if there are other references
-            let owned = Arc::try_unwrap(first).unwrap_or_else(|a| (*a).clone());
-            return owned.into();
-        }
-
-        let waker = self.get_waker();
-        let mut context = Context::from_waker(&waker);
-
-        let mut original_lock = self.inner.original.write().unwrap();
-        let source: Pin<&mut Src> = unsafe { Pin::new_unchecked(&mut original_lock.source) };
-        let poll = source.poll_forget(poll_time, &mut context);
-        core::mem::drop(original_lock);
-
-        match poll {
-            SourcePoll::Pending => SourcePoll::Pending,
-            SourcePoll::Rollback(t) => {
-                let rollback_event = RollbackEvent::Rollback { time: t };
-                let rollback_event = Arc::new(rollback_event);
-
-                let original_lock = self.inner.original.read().unwrap();
-                for (i, dup) in original_lock.children.iter() {
-                    if *i != self.inner.index {
-                        if let Some(dup) = dup.upgrade() {
-                            let mut events_lock = dup.events.write().unwrap();
-                            events_lock.insert(rollback_event.clone());
-                            core::mem::drop(events_lock);
-                        }
-                    }
-                }
-                core::mem::drop(original_lock);
-
-                SourcePoll::Rollback(t)
-            }
-            SourcePoll::Event(e, t) => {
-                let rollback_event = RollbackEvent::Event {
-                    event: e.clone(),
-                    time: t,
-                };
-                let rollback_event = Arc::new(rollback_event);
-
-                let original_lock = self.inner.original.read().unwrap();
-                for (i, dup) in original_lock.children.iter() {
-                    if *i != self.inner.index {
-                        if let Some(dup) = dup.upgrade() {
-                            let mut events_lock = dup.events.write().unwrap();
-                            events_lock.insert(rollback_event.clone());
-                            core::mem::drop(events_lock);
-                        }
-                    }
-                }
-                core::mem::drop(original_lock);
-
-                SourcePoll::Event(e, t)
-            }
-            SourcePoll::Scheduled(s, t) => {
-                let events_lock = self.inner.events.read().unwrap();
-
-                for e in events_lock.iter() {
-                    if let RollbackEvent::Event { time, .. } = **e {
-                        if time < t {
-                            return SourcePoll::Scheduled(s, time);
-                        } else {
-                            break;
-                        }
-                    }
-                }
-                core::mem::drop(events_lock);
-
-                SourcePoll::Scheduled(s, t)
-            }
-            SourcePoll::Ready(s) => {
-                let events_lock = self.inner.events.read().unwrap();
-
-                for e in events_lock.iter() {
-                    if let RollbackEvent::Event { time, .. } = **e {
-                        return SourcePoll::Scheduled(s, time);
-                    }
-                }
-                core::mem::drop(events_lock);
-
-                SourcePoll::Ready(s)
-            }
-        }
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+        self.poll_internal(poll_time, cx, Src::poll_forget)
     }
 
     fn poll_events(
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> crate::source::SourcePoll<Self::Time, Self::Event, ()> {
-        let original_lock = self.inner.original.read().unwrap();
-        let mut wakers_lock = original_lock.wakers.lock().unwrap();
-        wakers_lock.insert(self.inner.index, cx.waker().clone());
-        core::mem::drop(wakers_lock);
-        core::mem::drop(original_lock);
-
-        // if original_lock.children.get(self.inner.index)
-        let events_lock = self.inner.events.read().unwrap();
-        let mut first = events_lock.first();
-        if let Some(x) = first {
-            if x.time() > &poll_time {
-                first = None;
-            }
-        }
-        let has_event = first.is_some();
-        core::mem::drop(events_lock);
-
-        if has_event {
-            let mut events_lock = self.inner.events.write().unwrap();
-            // this works because the only other writers are other duplicates, which are strictly additive.
-            // more events could be added, but the first one will be no later than the first one from before we relocked.
-            let first = events_lock.pop_first().unwrap();
-            // try to pull the event out of the arc; clone if there are other references
-            let owned = Arc::try_unwrap(first).unwrap_or_else(|a| (*a).clone());
-            return owned.into();
-        }
-
-        let waker = self.get_waker();
-        let mut context = Context::from_waker(&waker);
-
-        let mut original_lock = self.inner.original.write().unwrap();
-        let source: Pin<&mut Src> = unsafe { Pin::new_unchecked(&mut original_lock.source) };
-        let poll = source.poll_events(poll_time, &mut context);
-        core::mem::drop(original_lock);
-
-        match poll {
-            SourcePoll::Pending => SourcePoll::Pending,
-            SourcePoll::Rollback(t) => {
-                let rollback_event = RollbackEvent::Rollback { time: t };
-                let rollback_event = Arc::new(rollback_event);
-
-                let original_lock = self.inner.original.read().unwrap();
-                for (i, dup) in original_lock.children.iter() {
-                    if *i != self.inner.index {
-                        if let Some(dup) = dup.upgrade() {
-                            let mut events_lock = dup.events.write().unwrap();
-                            events_lock.insert(rollback_event.clone());
-                            core::mem::drop(events_lock);
-                        }
-                    }
-                }
-                core::mem::drop(original_lock);
-
-                SourcePoll::Rollback(t)
-            }
-            SourcePoll::Event(e, t) => {
-                let rollback_event = RollbackEvent::Event {
-                    event: e.clone(),
-                    time: t,
-                };
-                let rollback_event = Arc::new(rollback_event);
-
-                let original_lock = self.inner.original.read().unwrap();
-                for (i, dup) in original_lock.children.iter() {
-                    if *i != self.inner.index {
-                        if let Some(dup) = dup.upgrade() {
-                            let mut events_lock = dup.events.write().unwrap();
-                            events_lock.insert(rollback_event.clone());
-                            core::mem::drop(events_lock);
-                        }
-                    }
-                }
-                core::mem::drop(original_lock);
-
-                SourcePoll::Event(e, t)
-            }
-            SourcePoll::Scheduled(s, t) => {
-                let events_lock = self.inner.events.read().unwrap();
-
-                for e in events_lock.iter() {
-                    if let RollbackEvent::Event { time, .. } = **e {
-                        if time < t {
-                            return SourcePoll::Scheduled(s, time);
-                        } else {
-                            break;
-                        }
-                    }
-                }
-                core::mem::drop(events_lock);
-
-                SourcePoll::Scheduled(s, t)
-            }
-            SourcePoll::Ready(s) => {
-                let events_lock = self.inner.events.read().unwrap();
-
-                for e in events_lock.iter() {
-                    if let RollbackEvent::Event { time, .. } = **e {
-                        return SourcePoll::Scheduled(s, time);
-                    }
-                }
-                core::mem::drop(events_lock);
-
-                SourcePoll::Ready(s)
-            }
-        }
+    ) -> SourcePoll<Self::Time, Self::Event, ()> {
+        self.poll_internal(poll_time, cx, Src::poll_events)
     }
 }
