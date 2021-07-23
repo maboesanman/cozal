@@ -33,7 +33,7 @@ pub trait SourceExt: Source + Sized {
         realtime(self, reference, sleep_fn)
     }
 
-    /// Adapter for converting a schedule stream into another via a transposer.
+    /// Adapter for converting a source into another via a transposer.
     fn transpose<
         'tr,
         T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State> + 'tr,
@@ -50,7 +50,7 @@ pub trait SourceExt: Source + Sized {
         TransposerEngine::new(self, initial, rng_seed)
     }
 
-    /// Adapter for converting the events and states of a stream.
+    /// Adapter for converting the events and states of a source.
     fn map<E, S>(
         self,
         event_transform: fn(Self::Event) -> E,
@@ -59,6 +59,7 @@ pub trait SourceExt: Source + Sized {
         Map::new(self, event_transform, state_transform)
     }
 
+    /// Adapter for converting time of a source.
     fn shift<T: Ord + Copy, IntoNew, IntoOld>(
         self,
         into_new: fn(Self::Time) -> T,
@@ -86,6 +87,7 @@ pub trait SourceExt: Source + Sized {
         Split::new(self, decide, convert)
     }
 
+    /// Wrap a source for duplication. 
     fn duplicate(self) -> Duplicate<Self>
     where
         Self::Event: Clone,
