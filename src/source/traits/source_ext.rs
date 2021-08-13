@@ -53,7 +53,7 @@ pub trait SourceExt: Source + Sized {
     /// Adapter for converting the events and states of a source.
     fn map<E, S>(
         self,
-        event_transform: fn(Self::Event) -> E,
+        event_transform: fn(Self::Event) -> Option<E>,
         state_transform: fn(Self::State) -> S,
     ) -> Map<Self, E, S> {
         Map::new(self, event_transform, state_transform)
