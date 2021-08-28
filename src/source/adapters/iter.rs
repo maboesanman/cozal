@@ -1,6 +1,6 @@
 use core::{iter::Peekable, pin::Pin, task::Context};
 
-use crate::source::{Source, SourcePoll};
+use crate::source::{Source, SourcePoll, traits::SourceContext};
 
 pub struct Iter<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin>
 where
@@ -22,7 +22,7 @@ where
     }
 }
 
-impl<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin> Source for Iter<I, T, E, S>
+impl<I, T: Ord + Copy + Unpin, E: Unpin, S: Clone + Unpin> Source<1> for Iter<I, T, E, S>
 where
     I: Iterator<Item = (T, E, S)> + Unpin,
 {
@@ -35,7 +35,7 @@ where
     fn poll(
         self: Pin<&mut Self>,
         poll_time: Self::Time,
-        _cx: &mut Context<'_>,
+        _cx: &mut SourceContext<'_, 1, T>,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         let this = self.get_mut();
         if let Some((t, ..)) = this.iter.peek() {

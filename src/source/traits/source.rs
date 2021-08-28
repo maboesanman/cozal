@@ -1,6 +1,13 @@
 use crate::source::SourcePoll;
 use core::pin::Pin;
 use core::task::Context;
+use std::task::Waker;
+
+pub struct SourceContext<'a, const CHANNELS: usize> {
+    async_context: &'a mut Context<'a>,
+    poll_channel: usize,
+    source_waker: Waker,
+}
 
 /// An interface for querying partially complete streams of [states](`Source::State`) and [events](`Source::Events`)
 ///
@@ -11,7 +18,7 @@ use core::task::Context;
 /// - A timestamped set of events
 ///
 /// - A function (in the mathematical sense) mapping [`Time`](`Source::Time`) to [`State`](`Source::State`)
-pub trait Source {
+pub trait Source<const CHANNELS: usize> {
     /// The type used for timestamping events and states.
     type Time: Ord + Copy;
 
@@ -39,7 +46,7 @@ pub trait Source {
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: &mut Context<'_>,
+        cx: SourceContext<'_, CHANNELS>,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State>;
 
     /// Attempt to retrieve the state of the stream at `time`, registering the current task for wakeup in certain situations. Also inform the stream that the state emitted from this call is exempt from the requirement to be informed of future invalidations (that the stream can "forget" about this call to poll when determining how far to roll back).
@@ -48,7 +55,7 @@ pub trait Source {
     fn poll_forget(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: &mut Context<'_>,
+        cx: SourceContext<'_, CHANNELS>,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         self.poll(time, cx)
     }
@@ -59,7 +66,7 @@ pub trait Source {
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: &mut Context<'_>,
+        cx: SourceContext<'_, CHANNELS>,
     ) -> SourcePoll<Self::Time, Self::Event, ()> {
         match self.poll_forget(time, cx) {
             SourcePoll::Pending => SourcePoll::Pending,

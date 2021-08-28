@@ -2,23 +2,24 @@ use core::pin::Pin;
 use core::task::{Context, Waker};
 use std::sync::{Arc, RwLock};
 
+use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
 
-pub struct Split<Src: Source, E, ConvertFn>
+pub struct Split<const CHANNELS: usize, Src: Source<CHANNELS>, E, ConvertFn>
 where
     ConvertFn: Fn(Src::Event) -> E,
 {
-    inner: Arc<RwLock<SplitInner<Src>>>,
+    inner: Arc<RwLock<SplitInner<CHANNELS, Src>>>,
     convert: ConvertFn,
     index: usize,
 }
 
-pub struct SplitInner<Src: Source> {
+pub struct SplitInner<const CHANNELS: usize, Src: Source<CHANNELS>> {
     input_source: Src,
     deciders: Vec<(fn(&Src::Event) -> bool, Option<Waker>)>,
 }
 
-impl<Src: Source, E, ConvertFn> Split<Src, E, ConvertFn>
+impl<const CHANNELS: usize, Src: Source<CHANNELS>, E, ConvertFn> Split<CHANNELS, Src, E, ConvertFn>
 where
     ConvertFn: Fn(Src::Event) -> E,
 {
@@ -53,7 +54,7 @@ where
     }
 }
 
-impl<Src: Source, E, ConvertFn> Source for Split<Src, E, ConvertFn>
+impl<const CHANNELS: usize, Src: Source<CHANNELS>, E, ConvertFn> Source<CHANNELS> for Split<CHANNELS, Src, E, ConvertFn>
 where
     ConvertFn: Fn(Src::Event) -> E,
 {
@@ -66,7 +67,7 @@ where
     fn poll(
         self: Pin<&mut Self>,
         _time: Self::Time,
-        _cx: &mut Context<'_>,
+        _cx: &mut SourceContext<'_, CHANNELS, Src::Time>,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         unimplemented!()
     }

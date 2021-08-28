@@ -2,48 +2,48 @@ use core::pin::Pin;
 use core::task::Context;
 use std::collections::HashMap;
 
-use crate::source::{traits::StatelessSource, Source, SourcePoll};
+use crate::source::{Source, SourcePoll, traits::{SourceContext, StatelessSource}};
 
-pub struct Join<K, T: Ord + Copy, E, S> {
-    sources: HashMap<K, JoinSource<T, E, S>>,
+pub struct Join<const CHANNELS: usize, K, T: Ord + Copy, E, S> {
+    sources: HashMap<K, JoinSource<CHANNELS, T, E, S>>,
 }
 
-enum JoinSource<T, E, S> {
-    Stateful(Box<dyn Source<Time = T, Event = E, State = S>>),
-    Stateless(Box<dyn StatelessSource<Time = T, Event = E>>),
+enum JoinSource<const CHANNELS: usize, T, E, S> {
+    Stateful(Box<dyn Source<CHANNELS, Time = T, Event = E, State = S>>),
+    Stateless(Box<dyn StatelessSource<CHANNELS, Time = T, Event = E>>),
 }
 
-impl<K, T: Ord + Copy, E, S> Join<K, T, E, S> {
+impl<const CHANNELS: usize, K, T: Ord + Copy, E, S> Join<CHANNELS, K, T, E, S> {
     pub fn new<Src>(_source: Src, _key: K) -> Self
     where
-        Src: Source<Time = T, Event = E, State = S>,
+        Src: Source<CHANNELS, Time = T, Event = E, State = S>,
     {
         unimplemented!()
     }
 
     pub fn new_stateless<Src>(_source: Src, _key: K) -> Self
     where
-        Src: StatelessSource<Time = T, Event = E>,
+        Src: StatelessSource<CHANNELS, Time = T, Event = E>,
     {
         unimplemented!()
     }
 
     pub fn join<Src>(&mut self, _new_source: Src, _new_key: K) -> Result<(), ()>
     where
-        Src: Source<Time = T, Event = E, State = S>,
+        Src: Source<CHANNELS, Time = T, Event = E, State = S>,
     {
         unimplemented!()
     }
 
     pub fn stateless_join<Src>(&mut self, _new_source: Src, _new_key: K) -> Result<(), ()>
     where
-        Src: StatelessSource<Time = T, Event = E>,
+        Src: StatelessSource<CHANNELS, Time = T, Event = E>,
     {
         unimplemented!()
     }
 }
 
-impl<K, T: Ord + Copy, E, S> Source for Join<K, T, E, S> {
+impl<const CHANNELS: usize, K, T: Ord + Copy, E, S> Source<CHANNELS> for Join<CHANNELS, K, T, E, S> {
     type Time = T;
     type Event = E;
     type State = HashMap<K, S>;
@@ -51,7 +51,7 @@ impl<K, T: Ord + Copy, E, S> Source for Join<K, T, E, S> {
     fn poll(
         self: Pin<&mut Self>,
         _time: Self::Time,
-        _cx: &mut Context<'_>,
+        _cx: &mut SourceContext<'_, CHANNELS, Self::Time>,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         unimplemented!()
     }

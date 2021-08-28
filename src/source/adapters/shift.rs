@@ -1,12 +1,15 @@
 use core::pin::Pin;
-use core::task::Context;
 
 use pin_project::pin_project;
 
-use crate::source::{Source, SourcePoll};
+use crate::source::{Source, SourcePoll, traits::SourceContext};
 
 #[pin_project]
-pub struct Shift<Src: Source, T: Ord + Copy> {
+pub struct Shift<
+    const CHANNELS: usize,
+    Src: Source<CHANNELS>,
+    T: Ord + Copy,
+> {
     #[pin]
     source: Src,
 
@@ -14,8 +17,16 @@ pub struct Shift<Src: Source, T: Ord + Copy> {
     into_old: fn(T) -> Src::Time,
 }
 
-impl<Src: Source, T: Ord + Copy> Shift<Src, T> {
-    pub fn new(source: Src, into_new: fn(Src::Time) -> T, into_old: fn(T) -> Src::Time) -> Self {
+impl<
+    const CHANNELS: usize,
+    Src: Source<CHANNELS>,
+    T: Ord + Copy,
+> Shift<CHANNELS, Src, T> {
+    pub fn new(
+        source: Src,
+        into_new: fn(Src::Time) -> T,
+        into_old: fn(T) -> Src::Time,
+    ) -> Self {
         Self {
             source,
             into_new,
@@ -24,7 +35,7 @@ impl<Src: Source, T: Ord + Copy> Shift<Src, T> {
     }
 }
 
-impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
+impl<const CHANNELS: usize, Src: Source<CHANNELS>, T: Ord + Copy> Source<CHANNELS> for Shift<CHANNELS, Src, T> {
     type Time = T;
 
     type Event = Src::Event;
@@ -34,7 +45,7 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: &mut Context<'_>,
+        cx: SourceContext<'_, CHANNELS>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
         let proj = self.project();
         let source = proj.source;
@@ -53,7 +64,7 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
     fn poll_forget(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: &mut Context<'_>,
+        cx: SourceContext<'_, CHANNELS>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
         let proj = self.project();
         let source = proj.source;
@@ -72,7 +83,7 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: &mut Context<'_>,
+        cx: SourceContext<'_, CHANNELS>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, ()> {
         let proj = self.project();
         let source = proj.source;
