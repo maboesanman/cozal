@@ -2,14 +2,10 @@ use core::pin::Pin;
 
 use pin_project::pin_project;
 
-use crate::source::{Source, SourcePoll, traits::SourceContext};
+use crate::source::{traits::SourceContext, Source, SourcePoll};
 
 #[pin_project]
-pub struct Shift<
-    const CHANNELS: usize,
-    Src: Source<CHANNELS>,
-    T: Ord + Copy,
-> {
+pub struct Shift<const CHANNELS: usize, Src: Source<CHANNELS>, T: Ord + Copy> {
     #[pin]
     source: Src,
 
@@ -17,16 +13,8 @@ pub struct Shift<
     into_old: fn(T) -> Src::Time,
 }
 
-impl<
-    const CHANNELS: usize,
-    Src: Source<CHANNELS>,
-    T: Ord + Copy,
-> Shift<CHANNELS, Src, T> {
-    pub fn new(
-        source: Src,
-        into_new: fn(Src::Time) -> T,
-        into_old: fn(T) -> Src::Time,
-    ) -> Self {
+impl<const CHANNELS: usize, Src: Source<CHANNELS>, T: Ord + Copy> Shift<CHANNELS, Src, T> {
+    pub fn new(source: Src, into_new: fn(Src::Time) -> T, into_old: fn(T) -> Src::Time) -> Self {
         Self {
             source,
             into_new,
@@ -35,7 +23,9 @@ impl<
     }
 }
 
-impl<const CHANNELS: usize, Src: Source<CHANNELS>, T: Ord + Copy> Source<CHANNELS> for Shift<CHANNELS, Src, T> {
+impl<const CHANNELS: usize, Src: Source<CHANNELS>, T: Ord + Copy> Source<CHANNELS>
+    for Shift<CHANNELS, Src, T>
+{
     type Time = T;
 
     type Event = Src::Event;
