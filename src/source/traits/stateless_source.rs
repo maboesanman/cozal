@@ -1,5 +1,6 @@
 use crate::source::SourcePoll;
 use core::pin::Pin;
+use std::num::NonZeroUsize;
 
 use super::source::SourceContext;
 use super::Source;
@@ -7,7 +8,7 @@ use super::Source;
 /// An interface for calling poll_events on trait objects when state is not known.
 ///
 /// Simply passes through poll_events to the underlying `Source`
-pub trait StatelessSource<const CHANNELS: usize> {
+pub trait StatelessSource {
     /// The type used for timestamping events and states.
     type Time: Ord + Copy;
 
@@ -20,13 +21,15 @@ pub trait StatelessSource<const CHANNELS: usize> {
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, CHANNELS>,
+        cx: SourceContext<'_, '_>,
     ) -> SourcePoll<Self::Time, Self::Event, ()>;
+
+    fn max_channels(&self) -> Option<NonZeroUsize>;
 }
 
-impl<const CHANNELS: usize, S> StatelessSource<CHANNELS> for S
+impl<S> StatelessSource for S
 where
-    S: Source<CHANNELS>,
+    S: Source,
 {
     type Time = S::Time;
 
@@ -35,8 +38,12 @@ where
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, CHANNELS>,
+        cx: SourceContext<'_, '_>,
     ) -> SourcePoll<Self::Time, Self::Event, ()> {
         S::poll_events(self, time, cx)
+    }
+
+    fn max_channels(&self) -> Option<NonZeroUsize> {
+        S::max_channels(self)
     }
 }

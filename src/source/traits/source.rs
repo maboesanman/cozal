@@ -1,12 +1,30 @@
 use crate::source::SourcePoll;
+use crate::source::source_poll::SourcePollOk;
 use core::pin::Pin;
 use core::task::Context;
-use std::task::Waker;
+use std::num::NonZeroUsize;
+use std::task::{Poll, Waker};
 
-pub struct SourceContext<'a, const CHANNELS: usize> {
-    async_context: &'a mut Context<'a>,
+pub struct SourceContext<'a, 'context> {
+    async_context: &'a mut Context<'context>,
     poll_channel: usize,
     source_waker: Waker,
+}
+
+impl<'a, 'context> SourceContext<'a, 'context> {
+    pub fn from_mut_borrow<'b>(&'b mut self) -> SourceContext<'b, 'context>
+        where 'a: 'b
+    {
+        let async_context: &'b mut Context<'context> = self.async_context;
+        let poll_channel: usize = self.poll_channel;
+        let source_waker: Waker = self.source_waker.clone();
+
+        SourceContext {
+            async_context,
+            poll_channel,
+            source_waker,
+        }
+    }
 }
 
 /// An interface for querying partially complete streams of [states](`Source::State`) and [events](`Source::Events`)
@@ -18,7 +36,7 @@ pub struct SourceContext<'a, const CHANNELS: usize> {
 /// - A timestamped set of events
 ///
 /// - A function (in the mathematical sense) mapping [`Time`](`Source::Time`) to [`State`](`Source::State`)
-pub trait Source<const CHANNELS: usize> {
+pub trait Source {
     /// The type used for timestamping events and states.
     type Time: Ord + Copy;
 
@@ -46,7 +64,7 @@ pub trait Source<const CHANNELS: usize> {
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, CHANNELS>,
+        cx: SourceContext<'_, '_>,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State>;
 
     /// Attempt to retrieve the state of the stream at `time`, registering the current task for wakeup in certain situations. Also inform the stream that the state emitted from this call is exempt from the requirement to be informed of future invalidations (that the stream can "forget" about this call to poll when determining how far to roll back).
@@ -55,7 +73,7 @@ pub trait Source<const CHANNELS: usize> {
     fn poll_forget(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, CHANNELS>,
+        cx: SourceContext<'_, '_>,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         self.poll(time, cx)
     }
@@ -66,14 +84,21 @@ pub trait Source<const CHANNELS: usize> {
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, CHANNELS>,
+        cx: SourceContext<'_, '_>,
     ) -> SourcePoll<Self::Time, Self::Event, ()> {
         match self.poll_forget(time, cx) {
-            SourcePoll::Pending => SourcePoll::Pending,
-            SourcePoll::Rollback(t) => SourcePoll::Rollback(t),
-            SourcePoll::Event(e, t) => SourcePoll::Event(e, t),
-            SourcePoll::Scheduled(_s, t) => SourcePoll::Scheduled((), t),
-            SourcePoll::Ready(_s) => SourcePoll::Ready(()),
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
+            Poll::Ready(Ok(result)) => Poll::Ready(Ok(match result {
+                SourcePollOk::Rollback(t) => SourcePollOk::Rollback(t),
+                SourcePollOk::Event(e, t) => SourcePollOk::Event(e, t),
+                SourcePollOk::Scheduled(_s, t) => SourcePollOk::Scheduled((), t),
+                SourcePollOk::Ready(_s) => SourcePollOk::Ready(()),
+            }))
         }
+    }
+
+    fn max_channels(&self) -> Option<NonZeroUsize> {
+        None
     }
 }

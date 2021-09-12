@@ -4,32 +4,30 @@ use futures_core::Future;
 
 use crate::source::{Source, traits::SourceContext};
 
-struct OffloadInner<const CHANNELS: usize, Src: Source<CHANNELS>> {
+struct OffloadInner<Src: Source> {
     source: Src
 }
 
-pub struct OffloadSource<const CHANNELS: usize, Src: Source<CHANNELS>> {
-    inner: OffloadInner<CHANNELS, Src>
+pub struct OffloadSource<Src: Source> {
+    inner: OffloadInner<Src>
 }
 
-pub struct OffloadWork<const CHANNELS: usize, Src: Source<CHANNELS>> {
-    inner: OffloadInner<CHANNELS, Src>
+pub struct OffloadWork<Src: Source> {
+    inner: OffloadInner<Src>
 }
 
 pub fn offload<
-    const CHANNELS: usize,
-    Src: Source<CHANNELS>,
+        Src: Source,
 >(source: Src) -> (
-    OffloadSource<CHANNELS, Src>,
-    OffloadWork<CHANNELS, Src>,
+    OffloadSource<Src>,
+    OffloadWork<Src>,
 ) {
     unimplemented!()
 }
 
 impl<
-    const CHANNELS: usize,
-    Src: Source<CHANNELS>,
-> Source<CHANNELS> for OffloadSource<CHANNELS, Src> {
+        Src: Source,
+> Source for OffloadSource<Src> {
     type Time = Src::Time;
 
     type Event = Src::Event;
@@ -39,16 +37,15 @@ impl<
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: &mut SourceContext<'_, CHANNELS, Self::Time>,
+        cx: SourceContext<'_, '_>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
         unimplemented!()
     }
 }
 
 impl<
-    const CHANNELS: usize,
-    Src: Source<CHANNELS>,
-> Future for OffloadWork<CHANNELS, Src> {
+        Src: Source,
+> Future for OffloadWork<Src> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

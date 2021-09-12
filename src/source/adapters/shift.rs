@@ -1,11 +1,12 @@
 use core::pin::Pin;
+use std::task::Poll;
 
 use pin_project::pin_project;
 
-use crate::source::{traits::SourceContext, Source, SourcePoll};
+use crate::source::{Source, SourcePoll, source_poll::SourcePollOk, traits::SourceContext};
 
 #[pin_project]
-pub struct Shift<const CHANNELS: usize, Src: Source<CHANNELS>, T: Ord + Copy> {
+pub struct Shift<Src: Source, T: Ord + Copy> {
     #[pin]
     source: Src,
 
@@ -13,7 +14,7 @@ pub struct Shift<const CHANNELS: usize, Src: Source<CHANNELS>, T: Ord + Copy> {
     into_old: fn(T) -> Src::Time,
 }
 
-impl<const CHANNELS: usize, Src: Source<CHANNELS>, T: Ord + Copy> Shift<CHANNELS, Src, T> {
+impl<Src: Source, T: Ord + Copy> Shift<Src, T> {
     pub fn new(source: Src, into_new: fn(Src::Time) -> T, into_old: fn(T) -> Src::Time) -> Self {
         Self {
             source,
@@ -21,10 +22,40 @@ impl<const CHANNELS: usize, Src: Source<CHANNELS>, T: Ord + Copy> Shift<CHANNELS
             into_old,
         }
     }
+
+    fn poll_internal<F, S>(
+        mut self: Pin<&mut Self>,
+        time: T,
+        cx: SourceContext<'_, '_>,
+        poll_fn: F,
+    ) -> SourcePoll<T, Src::Event, S>
+    where
+        F: Fn(
+            Pin<&mut Src>,
+            Src::Time,
+            SourceContext<'_, '_>,
+        ) -> SourcePoll<Src::Time, Src::Event, S>,
+    {
+        let proj = self.project();
+        let source = proj.source;
+        let into_new = proj.into_new;
+        let into_old = proj.into_old;
+
+        match poll_fn(source, into_old(time), cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
+            Poll::Ready(Ok(result)) => Poll::Ready(Ok(match result {
+                SourcePollOk::Rollback(t) => SourcePollOk::Rollback(into_new(t)),
+                SourcePollOk::Event(e, t) => SourcePollOk::Event(e, into_new(t)),
+                SourcePollOk::Scheduled(s, t) => SourcePollOk::Scheduled(s, into_new(t)),
+                SourcePollOk::Ready(s) => SourcePollOk::Ready(s),
+            }))
+        }
+    }
 }
 
-impl<const CHANNELS: usize, Src: Source<CHANNELS>, T: Ord + Copy> Source<CHANNELS>
-    for Shift<CHANNELS, Src, T>
+impl<Src: Source, T: Ord + Copy> Source
+    for Shift<Src, T>
 {
     type Time = T;
 
@@ -35,57 +66,28 @@ impl<const CHANNELS: usize, Src: Source<CHANNELS>, T: Ord + Copy> Source<CHANNEL
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, CHANNELS>,
+        cx: SourceContext<'_, '_>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
-        let proj = self.project();
-        let source = proj.source;
-        let into_new = proj.into_new;
-        let into_old = proj.into_old;
-
-        match source.poll(into_old(time), cx) {
-            SourcePoll::Pending => SourcePoll::Pending,
-            SourcePoll::Rollback(t) => SourcePoll::Rollback(into_new(t)),
-            SourcePoll::Event(e, t) => SourcePoll::Event(e, into_new(t)),
-            SourcePoll::Scheduled(s, t) => SourcePoll::Scheduled(s, into_new(t)),
-            SourcePoll::Ready(s) => SourcePoll::Ready(s),
-        }
+        self.poll_internal(time, cx, Src::poll)
     }
 
     fn poll_forget(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, CHANNELS>,
+        cx: SourceContext<'_, '_>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
-        let proj = self.project();
-        let source = proj.source;
-        let into_new = proj.into_new;
-        let into_old = proj.into_old;
-
-        match source.poll_forget(into_old(time), cx) {
-            SourcePoll::Pending => SourcePoll::Pending,
-            SourcePoll::Rollback(t) => SourcePoll::Rollback(into_new(t)),
-            SourcePoll::Event(e, t) => SourcePoll::Event(e, into_new(t)),
-            SourcePoll::Scheduled(s, t) => SourcePoll::Scheduled(s, into_new(t)),
-            SourcePoll::Ready(s) => SourcePoll::Ready(s),
-        }
+        self.poll_internal(time, cx, Src::poll_forget)
     }
 
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, CHANNELS>,
+        cx: SourceContext<'_, '_>,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, ()> {
-        let proj = self.project();
-        let source = proj.source;
-        let into_new = proj.into_new;
-        let into_old = proj.into_old;
+        self.poll_internal(time, cx, Src::poll_events)
+    }
 
-        match source.poll_events(into_old(time), cx) {
-            SourcePoll::Pending => SourcePoll::Pending,
-            SourcePoll::Rollback(t) => SourcePoll::Rollback(into_new(t)),
-            SourcePoll::Event(e, t) => SourcePoll::Event(e, into_new(t)),
-            SourcePoll::Scheduled((), t) => SourcePoll::Scheduled((), into_new(t)),
-            SourcePoll::Ready(()) => SourcePoll::Ready(()),
-        }
+    fn max_channels(&self) -> Option<std::num::NonZeroUsize> {
+        self.source.max_channels()
     }
 }

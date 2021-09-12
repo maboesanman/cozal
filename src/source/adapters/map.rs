@@ -1,13 +1,14 @@
 use core::pin::Pin;
-use core::task::Context;
+use std::task::Poll;
 use pin_project::pin_project;
 
 use crate::source::Source;
 use crate::source::SourcePoll;
+use crate::source::source_poll::SourcePollOk;
 use crate::source::traits::SourceContext;
 
 #[pin_project]
-pub struct Map<const CHANNELS: usize, Src: Source<CHANNELS>, E, S> {
+pub struct Map<Src: Source, E, S> {
     #[pin]
     source: Src,
 
@@ -15,7 +16,7 @@ pub struct Map<const CHANNELS: usize, Src: Source<CHANNELS>, E, S> {
     state_transform: fn(Src::State) -> S,
 }
 
-impl<const CHANNELS: usize, Src: Source<CHANNELS>, E, S> Map<CHANNELS, Src, E, S> {
+impl<Src: Source, E, S> Map<Src, E, S> {
     pub fn new(
         source: Src,
         event_transform: fn(Src::Event) -> Option<E>,
@@ -27,38 +28,67 @@ impl<const CHANNELS: usize, Src: Source<CHANNELS>, E, S> Map<CHANNELS, Src, E, S
             state_transform,
         }
     }
+
+    fn poll_internal<F, Sin, Sout, SFn>(
+        self: Pin<&mut Self>,
+        time: Src::Time,
+        mut cx: SourceContext<'_, '_>,
+        poll_fn: F,
+        state_fn: SFn,
+    ) -> SourcePoll<Src::Time, E, Sout>
+    where
+        F: Fn(
+            Pin<&mut Src>,
+            Src::Time,
+            SourceContext<'_, '_>,
+        ) -> SourcePoll<Src::Time, Src::Event, Sin>,
+        SFn: Fn(Sin) -> Sout,
+    {
+        let mut this = self.project();
+        let e_fn = this.event_transform;
+
+        loop {
+            break match poll_fn(this.source.as_mut(), time, cx.from_mut_borrow()) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
+                Poll::Ready(Ok(result)) => Poll::Ready(Ok(match result {
+                    SourcePollOk::Rollback(t) => SourcePollOk::Rollback(t),
+                    SourcePollOk::Event(e, t) => match e_fn(e) {
+                        Some(e) => SourcePollOk::Event(e, t),
+                        None => continue
+                    },
+                    SourcePollOk::Scheduled(s, t) => SourcePollOk::Scheduled(state_fn(s), t),
+                    SourcePollOk::Ready(s) => SourcePollOk::Ready(state_fn(s)),
+                }))
+            }
+        }
+    }
 }
 
 impl<
-    const CHANNELS: usize,
-    Src: Source<CHANNELS>,
+    Src: Source,
     E,
     S
-> Source<CHANNELS> for Map<CHANNELS, Src, E, S> {
+> Source for Map<Src, E, S> {
     type Time = Src::Time;
     type Event = E;
     type State = S;
 
-    fn poll(
-        self: Pin<&mut Self>,
-        time: Self::Time,
-        cx: &mut SourceContext<'_, CHANNELS, Src::Time>,
-    ) -> SourcePoll<Src::Time, E, S> {
-        let mut this = self.project();
-        let e_fn = this.event_transform;
-        let s_fn = this.state_transform;
+    fn poll(self: Pin<&mut Self>, time: Self::Time, cx: SourceContext<'_, '_>) -> SourcePoll<Src::Time, E, S> {
+        let state_transform = self.state_transform;
+        self.poll_internal(time, cx, Src::poll, state_transform)
+    }
 
-        loop {
-            break match this.source.as_mut().poll(time, cx) {
-                SourcePoll::Pending => SourcePoll::Pending,
-                SourcePoll::Rollback(t) => SourcePoll::Rollback(t),
-                SourcePoll::Event(e, t) => match e_fn(e) {
-                    Some(e) => SourcePoll::Event(e, t),
-                    None => continue
-                },
-                SourcePoll::Scheduled(s, t) => SourcePoll::Scheduled(s_fn(s), t),
-                SourcePoll::Ready(s) => SourcePoll::Ready(s_fn(s)),
-            }
-        }
+    fn poll_forget(self: Pin<&mut Self>, time: Self::Time, cx: SourceContext<'_, '_>) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+        let state_transform = self.state_transform;
+        self.poll_internal(time, cx, Src::poll_forget, state_transform)
+    }
+
+    fn poll_events(self: Pin<&mut Self>, time: Self::Time, cx: SourceContext<'_, '_>) -> SourcePoll<Self::Time, Self::Event, ()> {
+        self.poll_internal(time, cx, Src::poll_events, |()| ())
+    }
+
+    fn max_channels(&self) -> Option<std::num::NonZeroUsize> {
+        self.source.max_channels()
     }
 }

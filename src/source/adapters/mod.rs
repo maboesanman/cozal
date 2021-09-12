@@ -1,12 +1,12 @@
 // mod duplicate;
 // mod iter;
 // mod join;
-// mod map;
-// mod offload;
+mod map;
+mod offload;
 mod shift;
 // mod split;
 // mod transposer;
-// mod multiplex;
+mod multiplex;
 
 // pub use self::{
 //     duplicate::Duplicate,

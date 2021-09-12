@@ -1,18 +1,11 @@
+use std::{error::Error, task::Poll};
+
 /// A modified version of [`futures::task::Poll`], which has two new variants:
 /// [`Scheduled`](self::SchedulePoll::Scheduled) and [`Done`](self::SchedulePoll::Done).
-pub enum SourcePoll<T, E, S>
+pub enum SourcePollOk<T, E, S>
 where
     T: Ord + Copy,
 {
-    /// Represents that a value is not ready yet.
-    ///
-    /// When a function returns `Pending`, the function *must* also
-    /// ensure that the current task is scheduled to be awoken when
-    /// progress can be made.
-    ///
-    /// The promise that progress can be made only applies if polled at the same time.
-    Pending,
-
     /// An event was previously emitted which is now invalid
     ///
     ///
@@ -35,3 +28,9 @@ where
     /// pushed to the input stream.
     Ready(S),
 }
+
+pub enum SourcePollErr {
+    OutOfBoundsChannel
+}
+
+pub type SourcePoll<T, E, S> = Poll<Result<SourcePollOk<T, E, S>, SourcePollErr>>;

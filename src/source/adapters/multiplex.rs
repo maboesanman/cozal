@@ -1,6 +1,6 @@
-use std::{pin::Pin, task::{Context, Waker}};
+use std::{collections::HashMap, pin::Pin, task::{Context, Waker}};
 use pin_project::pin_project;
-use crate::source::{SourcePoll, traits::MultiChannelSource};
+use crate::source::{Source, SourcePoll};
 
 type EventWaker = Waker;
 type AsyncWaker = Waker;
@@ -8,13 +8,11 @@ type OutChannelID = usize;
 type SrcChannelID = usize;
 
 #[pin_project]
-pub struct Multiplex<Src: MultiChannelSource, const NEW_CHANNELS: usize>
-where
-    [(); NEW_CHANNELS]: Sized,
+pub struct Multiplex<Src: Source>
 {
     #[pin]
     source: Src,
-    out_channel_statuses: [OutChannelStatus<Src::Time>; NEW_CHANNELS],
+    out_channel_statuses: HashMap<usize, OutChannelStatus<Src::Time>>,
     next_channel: usize,
 }
 
@@ -28,9 +26,7 @@ enum OutChannelStatus<Time> {
     PendingPollEvents(Time, AsyncWaker),
 }
 
-impl<Src: MultiChannelSource, const NEW_CHANNELS: usize> MultiChannelSource for Multiplex<Src, NEW_CHANNELS>
-where
-    [(); NEW_CHANNELS]: Sized,
+impl<Src: Source> Source for Multiplex<Src>
 {
     type Time = Src::Time;
 
@@ -38,48 +34,15 @@ where
 
     type State = Src::State;
 
-    const CHANNELS: usize = NEW_CHANNELS;
+    fn max_channels(&self) -> Option<std::num::NonZeroUsize> {
+        None
+    }
 
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        channel: usize,
-        cx: &mut Context<'_>,
-        event_waker: Waker,
+        cx: crate::source::traits::SourceContext<'_, '_>,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
-        if channel >= Self::CHANNELS {
-            panic!()
-        }
-
-        let this = self.project();
-        let source: Pin<&mut Src> = this.source;
-        let out_channel_statuses: &mut [OutChannelStatus<Src::Time>; NEW_CHANNELS] = this.out_channel_statuses;
-
-        if let OutChannelStatus::AssignedPoll(assigned_time, src_channel) =  out_channel_statuses[channel] {
-            if assigned_time == time {
-                match source.poll(time, channel, cx, event_waker) {
-                    SourcePoll::Pending => return SourcePoll::Pending,
-                    result => {
-                        out_channel_statuses[channel] = OutChannelStatus::Free;
-                        return result;
-                    }
-                }
-            }
-        }
-
-        out_channel_statuses[channel] = OutChannelStatus::PendingPoll(time, cx.waker().clone());
-
-        let mut available_channels = Src::CHANNELS;
-        for s in out_channel_statuses {
-            if let OutChannelStatus::Assigned(_, _) = s {
-                available_channels -= 1;
-            }
-        };
-
-        for i in [0..Self::CHANNELS] {
-            // let corrected = 
-        }
-
         todo!()
     }
 }
