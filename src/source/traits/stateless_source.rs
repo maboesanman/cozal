@@ -1,6 +1,6 @@
 use crate::source::SourcePoll;
-use core::pin::Pin;
 use core::num::NonZeroUsize;
+use core::pin::Pin;
 
 use super::source::SourceContext;
 use super::Source;

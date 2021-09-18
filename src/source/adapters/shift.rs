@@ -1,6 +1,6 @@
+use core::num::NonZeroUsize;
 use core::pin::Pin;
 use core::task::Poll;
-use core::num::NonZeroUsize;
 
 use pin_project::pin_project;
 

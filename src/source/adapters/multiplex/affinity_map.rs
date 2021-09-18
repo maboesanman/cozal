@@ -1,8 +1,7 @@
-use std::collections::BTreeMap;
 use core::num::NonZeroUsize;
+use std::collections::BTreeMap;
 
 use super::{OutChannelID, SrcChannelID};
-
 
 pub struct AffinityMap {
     max_src_channels: NonZeroUsize,
@@ -20,7 +19,13 @@ impl AffinityMap {
     pub fn get_affiliated_source_channel(&self, channel: OutChannelID) -> Option<SrcChannelID> {
         match self.output_channels.get(&channel) {
             Some(src_channel) => Some(*src_channel),
-            None => if channel < self.max_src_channels.into() { Some(channel) } else { None },
+            None => {
+                if channel < self.max_src_channels.into() {
+                    Some(channel)
+                } else {
+                    None
+                }
+            }
         }
     }
 
