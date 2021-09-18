@@ -49,3 +49,24 @@ jobs:
         flags: Test
         name: Cargo Tests
         fail_ci_if_error: true
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Install nightly toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: nightly
+        override: true
+
+    - name: Install rustfmt
+      run: rustup component add rustfmt
+      shell: bash
+
+    - name: Check formatting
+      run: cargo fmt -- --check --verbose
+      shell: bash

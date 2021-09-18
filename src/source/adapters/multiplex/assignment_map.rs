@@ -49,7 +49,7 @@ impl<Time: Ord + Copy> AssignmentMap<Time> {
     }
 
     pub fn get_assigned_source_channel(&self, channel: OutChannelID) -> Option<Assignment<Time>> {
-        self.output_channels.get(&channel).map(|x| *x)
+        self.output_channels.get(&channel).copied()
     }
 
     pub fn get_assigned_output_channel(&self, channel: SrcChannelID) -> Option<OutChannelID> {
@@ -66,11 +66,8 @@ impl<Time: Ord + Copy> AssignmentMap<Time> {
     }
 
     pub fn unassign(&mut self, src_channel: SrcChannelID) {
-        match self.source_channels.remove(&src_channel) {
-            Some(out_channel) => {
-                self.output_channels.remove(&out_channel);
-            },
-            None => {},
+        if let Some(out_channel) = self.source_channels.remove(&src_channel) {
+            self.output_channels.remove(&out_channel);
         };
     }
 }

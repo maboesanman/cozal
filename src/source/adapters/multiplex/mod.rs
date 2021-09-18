@@ -69,7 +69,7 @@ impl<Src: Source> Multiplex<Src> {
                             let mut new_cx = cx.re_borrow();
                             new_cx.change_channel(assignment.source_channel);
                             let result = poll_fn(source, poll_time, new_cx);
-                            if let Poll::Ready(_) = result {
+                            if result.is_ready() {
                                 if let Some(pending) = pending_channels.pop_front() {
                                     assigned_channels.assign(pending.out_channel, Assignment {
                                         poll_type:      pending.poll_type,
@@ -98,7 +98,7 @@ impl<Src: Source> Multiplex<Src> {
                                     let mut new_cx = cx.re_borrow();
                                     new_cx.change_channel(assignment.source_channel);
                                     let result = poll_fn(source, poll_time, new_cx);
-                                    if let Poll::Pending = result {
+                                    if result.is_pending() {
                                         assigned_channels.assign(out_channel, Assignment {
                                             poll_type,
                                             time: poll_time,
@@ -132,7 +132,7 @@ impl<Src: Source> Multiplex<Src> {
                     }
 
                     match channel {
-                        // assign channel
+                        // assign channel and loop
                         Some(source_channel) => {
                             assigned_channels.assign(out_channel, Assignment {
                                 poll_type,
@@ -142,7 +142,7 @@ impl<Src: Source> Multiplex<Src> {
                             channel_affinity.set_affiliation(source_channel, out_channel);
                             continue
                         },
-                        // enqueue pending
+                        // enqueue call and return pending
                         None => {
                             let new_pending = PendingPoll {
                                 poll_type,
@@ -152,9 +152,9 @@ impl<Src: Source> Multiplex<Src> {
                             };
                             for pending in pending_channels.iter_mut() {
                                 if pending.out_channel == out_channel {
-                                    *pending = new_pending
+                                    *pending = new_pending;
+                                    break 'main Poll::Pending
                                 }
-                                break 'main Poll::Pending
                             }
                             pending_channels.push_back(new_pending);
                             break Poll::Pending
@@ -164,13 +164,6 @@ impl<Src: Source> Multiplex<Src> {
             }
         }
     }
-}
-
-#[derive(Clone, Copy)]
-struct AssignedPoll<Time> {
-    poll_type:   PollType,
-    time:        Time,
-    src_channel: SrcChannelID,
 }
 
 struct PendingPoll<Time> {
