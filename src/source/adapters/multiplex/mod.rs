@@ -3,12 +3,10 @@ mod assignment_map;
 
 use crate::source::{Source, SourcePoll, adapters::multiplex::assignment_map::{Assignment, PollType}, traits::SourceContext};
 use pin_project::pin_project;
-use core::num;
-use std::{collections::{BTreeMap, HashMap, VecDeque}, iter::Peekable, pin::Pin, task::{Context, Poll, Waker}};
+use std::{collections::VecDeque, pin::Pin, task::{Poll, Waker}};
 
 use self::{affinity_map::AffinityMap, assignment_map::AssignmentMap};
 
-type EventWaker = Waker;
 type AsyncWaker = Waker;
 type OutChannelID = usize;
 type SrcChannelID = usize;
@@ -23,7 +21,7 @@ pub struct Multiplex<Src: Source> {
 }
 
 impl<Src: Source> Multiplex<Src> {
-    fn new(source: Src) -> Self {
+    pub fn new(source: Src) -> Self {
         let max_channels = source.max_channels();
         Self {
             source,
@@ -60,7 +58,7 @@ impl<Src: Source> Multiplex<Src> {
             match assigned_channels.get_assigned_source_channel(out_channel) {
                 Some(assignment) => break {
                     // full match, use existing assignment
-                    if matches!(assignment.poll_type, poll_type) || assignment.time == poll_time {
+                    if assignment.poll_type == poll_type && assignment.time == poll_time {
                         let mut new_cx = cx.re_borrow();
                         new_cx.change_channel(assignment.source_channel);
                         let result = poll_fn(source, poll_time, new_cx);
@@ -77,7 +75,6 @@ impl<Src: Source> Multiplex<Src> {
                             }
                         }
                         result
-    
                     // partial match, only use existing assignment if nothing is queued
                     } else {
                         match pending_channels.pop_front() {
