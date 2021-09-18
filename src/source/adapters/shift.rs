@@ -1,5 +1,6 @@
 use core::pin::Pin;
-use std::task::Poll;
+use core::task::Poll;
+use core::num::NonZeroUsize;
 
 use pin_project::pin_project;
 
@@ -24,7 +25,7 @@ impl<Src: Source, T: Ord + Copy> Shift<Src, T> {
     }
 
     fn poll_internal<F, S>(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         time: T,
         cx: SourceContext<'_, '_>,
         poll_fn: F,
@@ -87,7 +88,7 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
         self.poll_internal(time, cx, Src::poll_events)
     }
 
-    fn max_channels(&self) -> std::num::NonZeroUsize {
+    fn max_channels(&self) -> NonZeroUsize {
         self.source.max_channels()
     }
 }

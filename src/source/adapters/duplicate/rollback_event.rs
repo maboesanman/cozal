@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, task::Poll};
+use core::{cmp::Ordering, task::Poll};
 
 use crate::source::{SourcePoll, source_poll::SourcePollOk};
 

@@ -1,4 +1,5 @@
-use std::{collections::BTreeMap, num::NonZeroUsize};
+use core::num::NonZeroUsize;
+use std::collections::BTreeMap;
 
 use super::{OutChannelID, SrcChannelID};
 

@@ -1,6 +1,6 @@
 use crate::source::SourcePoll;
 use core::pin::Pin;
-use std::num::NonZeroUsize;
+use core::num::NonZeroUsize;
 
 use super::source::SourceContext;
 use super::Source;

@@ -2,8 +2,8 @@ use crate::source::source_poll::SourcePollOk;
 use crate::source::SourcePoll;
 use core::pin::Pin;
 use core::task::Context;
-use std::num::NonZeroUsize;
-use std::task::{Poll, Waker};
+use core::num::NonZeroUsize;
+use core::task::{Poll, Waker};
 
 pub struct SourceContext<'a, 'context> {
     pub async_context: &'a mut Context<'context>,

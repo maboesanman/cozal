@@ -3,7 +3,8 @@ mod assignment_map;
 
 use crate::source::{Source, SourcePoll, adapters::multiplex::assignment_map::{Assignment, PollType}, traits::SourceContext};
 use pin_project::pin_project;
-use std::{collections::VecDeque, pin::Pin, task::{Poll, Waker}};
+use std::collections::VecDeque;
+use core::{pin::Pin, task::{Poll, Waker}};
 
 use self::{affinity_map::AffinityMap, assignment_map::AssignmentMap};
 

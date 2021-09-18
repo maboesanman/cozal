@@ -1,4 +1,4 @@
-use std::{error::Error, task::Poll};
+use core::task::Poll;
 
 /// A modified version of [`futures::task::Poll`], which has two new variants:
 /// [`Scheduled`](self::SchedulePoll::Scheduled) and [`Done`](self::SchedulePoll::Done).

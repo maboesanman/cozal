@@ -1,6 +1,7 @@
 use core::pin::Pin;
+use core::num::NonZeroUsize;
+use core::task::Poll;
 use pin_project::pin_project;
-use std::task::Poll;
 
 use crate::source::source_poll::SourcePollOk;
 use crate::source::traits::SourceContext;
@@ -97,7 +98,7 @@ impl<Src: Source, E, S> Source for Map<Src, E, S> {
         self.poll_internal(time, cx, Src::poll_events, |()| ())
     }
 
-    fn max_channels(&self) -> std::num::NonZeroUsize {
+    fn max_channels(&self) -> NonZeroUsize {
         self.source.max_channels()
     }
 }
