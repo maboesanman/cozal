@@ -3,7 +3,9 @@ mod assignment_map;
 
 use core::pin::Pin;
 use core::task::{Poll, Waker};
-use std::collections::VecDeque;
+use std::collections::{
+    VecDeque
+};
 
 use pin_project::pin_project;
 
