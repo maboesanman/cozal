@@ -1,14 +1,16 @@
-use crate::source::source_poll::SourcePollOk;
-use crate::source::SourcePoll;
 use core::num::NonZeroUsize;
 use core::pin::Pin;
 use core::task::Context;
-use core::task::{Poll, Waker};
+use core::task::Poll;
+use core::task::Waker;
+
+use crate::source::source_poll::SourcePollOk;
+use crate::source::SourcePoll;
 
 pub struct SourceContext<'a, 'context> {
     pub async_context: &'a mut Context<'context>,
-    pub poll_channel: usize,
-    pub source_waker: Waker,
+    pub poll_channel:  usize,
+    pub source_waker:  Waker,
 }
 
 impl<'a, 'context> SourceContext<'a, 'context> {

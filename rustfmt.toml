@@ -1,0 +1,9 @@
+imports_layout = "HorizontalVertical"
+match_block_trailing_comma = true
+imports_granularity = "Item"
+overflow_delimited_expr = true
+group_imports = "StdExternalCrate"
+struct_field_align_threshold = 20
+struct_lit_single_line = false
+trailing_semicolon = false
+use_field_init_shorthand = true

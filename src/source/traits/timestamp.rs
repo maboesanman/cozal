@@ -1,5 +1,4 @@
 use core::time::Duration;
-
 use std::time::Instant;
 
 /// Timestamps are the types used by `ScheduleStreams` to allow for streams that need a

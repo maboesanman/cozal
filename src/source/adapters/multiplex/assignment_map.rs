@@ -1,18 +1,19 @@
 use core::num::NonZeroUsize;
 use std::collections::BTreeMap;
 
-use super::{OutChannelID, SrcChannelID};
+use super::OutChannelID;
+use super::SrcChannelID;
 
 pub struct AssignmentMap<Time: Ord + Copy> {
     max_src_channels: NonZeroUsize,
-    source_channels: BTreeMap<SrcChannelID, OutChannelID>,
-    output_channels: BTreeMap<OutChannelID, Assignment<Time>>,
+    source_channels:  BTreeMap<SrcChannelID, OutChannelID>,
+    output_channels:  BTreeMap<OutChannelID, Assignment<Time>>,
 }
 
 #[derive(Clone, Copy)]
 pub struct Assignment<Time: Ord + Copy> {
-    pub poll_type: PollType,
-    pub time: Time,
+    pub poll_type:      PollType,
+    pub time:           Time,
     pub source_channel: SrcChannelID,
 }
 
@@ -27,8 +28,8 @@ impl<Time: Ord + Copy> AssignmentMap<Time> {
     pub fn new(max_channels: NonZeroUsize) -> Self {
         Self {
             max_src_channels: max_channels,
-            source_channels: BTreeMap::new(),
-            output_channels: BTreeMap::new(),
+            source_channels:  BTreeMap::new(),
+            output_channels:  BTreeMap::new(),
         }
     }
 
@@ -36,14 +37,14 @@ impl<Time: Ord + Copy> AssignmentMap<Time> {
         let mut channel: SrcChannelID = 0;
         loop {
             if channel >= self.max_src_channels.into() {
-                break None;
+                break None
             }
 
             if self.get_assigned_output_channel(channel).is_some() {
                 channel += 1;
-                continue;
+                continue
             } else {
-                break Some(channel);
+                break Some(channel)
             }
         }
     }
@@ -69,8 +70,8 @@ impl<Time: Ord + Copy> AssignmentMap<Time> {
         match self.source_channels.remove(&src_channel) {
             Some(out_channel) => {
                 self.output_channels.remove(&out_channel);
-            }
-            None => {}
+            },
+            None => {},
         };
     }
 }

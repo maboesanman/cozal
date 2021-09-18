@@ -1,9 +1,9 @@
-use crate::source::SourcePoll;
 use core::num::NonZeroUsize;
 use core::pin::Pin;
 
 use super::source::SourceContext;
 use super::Source;
+use crate::source::SourcePoll;
 
 /// An interface for calling poll_events on trait objects when state is not known.
 ///

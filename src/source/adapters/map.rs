@@ -1,6 +1,7 @@
 use core::num::NonZeroUsize;
 use core::pin::Pin;
 use core::task::Poll;
+
 use pin_project::pin_project;
 
 use crate::source::source_poll::SourcePollOk;
@@ -61,7 +62,7 @@ impl<Src: Source, E, S> Map<Src, E, S> {
                     SourcePollOk::Scheduled(s, t) => SourcePollOk::Scheduled(state_fn(s), t),
                     SourcePollOk::Ready(s) => SourcePollOk::Ready(state_fn(s)),
                 })),
-            };
+            }
         }
     }
 }

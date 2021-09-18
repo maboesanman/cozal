@@ -1,11 +1,11 @@
-use core::{
-    pin::Pin,
-    task::{Context, Poll},
-};
+use core::pin::Pin;
+use core::task::Context;
+use core::task::Poll;
 
 use futures_core::Future;
 
-use crate::source::{traits::SourceContext, Source};
+use crate::source::traits::SourceContext;
+use crate::source::Source;
 
 struct OffloadInner<Src: Source> {
     source: Src,
