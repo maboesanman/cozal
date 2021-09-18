@@ -1,6 +1,6 @@
 imports_layout = "HorizontalVertical"
 match_block_trailing_comma = true
-imports_granularity = "Item"
+imports_granularity = "Module"
 overflow_delimited_expr = true
 group_imports = "StdExternalCrate"
 struct_field_align_threshold = 20

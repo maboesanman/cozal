@@ -2,19 +2,16 @@ mod affinity_map;
 mod assignment_map;
 
 use core::pin::Pin;
-use core::task::Poll;
-use core::task::Waker;
+use core::task::{Poll, Waker};
 use std::collections::VecDeque;
 
 use pin_project::pin_project;
 
 use self::affinity_map::AffinityMap;
 use self::assignment_map::AssignmentMap;
-use crate::source::adapters::multiplex::assignment_map::Assignment;
-use crate::source::adapters::multiplex::assignment_map::PollType;
+use crate::source::adapters::multiplex::assignment_map::{Assignment, PollType};
 use crate::source::traits::SourceContext;
-use crate::source::Source;
-use crate::source::SourcePoll;
+use crate::source::{Source, SourcePoll};
 
 type AsyncWaker = Waker;
 type OutChannelID = usize;

@@ -6,8 +6,7 @@ use pin_project::pin_project;
 
 use crate::source::source_poll::SourcePollOk;
 use crate::source::traits::SourceContext;
-use crate::source::Source;
-use crate::source::SourcePoll;
+use crate::source::{Source, SourcePoll};
 
 #[pin_project]
 pub struct Shift<Src: Source, T: Ord + Copy> {

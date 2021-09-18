@@ -1,8 +1,6 @@
 use core::num::NonZeroUsize;
 use core::pin::Pin;
-use core::task::Context;
-use core::task::Poll;
-use core::task::Waker;
+use core::task::{Context, Poll, Waker};
 
 use crate::source::source_poll::SourcePollOk;
 use crate::source::SourcePoll;

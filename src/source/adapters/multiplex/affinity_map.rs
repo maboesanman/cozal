@@ -1,8 +1,7 @@
 use core::num::NonZeroUsize;
 use std::collections::BTreeMap;
 
-use super::OutChannelID;
-use super::SrcChannelID;
+use super::{OutChannelID, SrcChannelID};
 
 pub struct AffinityMap {
     max_src_channels: NonZeroUsize,
