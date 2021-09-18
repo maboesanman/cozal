@@ -30,11 +30,13 @@ impl<Src: Source> Source for OffloadSource<Src> {
 
     type State = Src::State;
 
+    type Error = Src::Error;
+
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext<'_, '_>,
-    ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State> {
+    ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         unimplemented!()
     }
 }

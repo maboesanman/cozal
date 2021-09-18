@@ -35,13 +35,13 @@ impl<Src: Source, E, S> Map<Src, E, S> {
         mut cx: SourceContext<'_, '_>,
         poll_fn: F,
         state_fn: SFn,
-    ) -> SourcePoll<Src::Time, E, Sout>
+    ) -> SourcePoll<Src::Time, E, Sout, Src::Error>
     where
         F: Fn(
             Pin<&mut Src>,
             Src::Time,
             SourceContext<'_, '_>,
-        ) -> SourcePoll<Src::Time, Src::Event, Sin>,
+        ) -> SourcePoll<Src::Time, Src::Event, Sin, Src::Error>,
         SFn: Fn(Sin) -> Sout,
     {
         let mut this = self.project();
@@ -69,12 +69,13 @@ impl<Src: Source, E, S> Source for Map<Src, E, S> {
     type Time = Src::Time;
     type Event = E;
     type State = S;
+    type Error = Src::Error;
 
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext<'_, '_>,
-    ) -> SourcePoll<Src::Time, E, S> {
+    ) -> SourcePoll<Src::Time, E, S, Src::Error> {
         let state_transform = self.state_transform;
         self.poll_internal(time, cx, Src::poll, state_transform)
     }
@@ -83,7 +84,7 @@ impl<Src: Source, E, S> Source for Map<Src, E, S> {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext<'_, '_>,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         let state_transform = self.state_transform;
         self.poll_internal(time, cx, Src::poll_forget, state_transform)
     }
@@ -92,7 +93,7 @@ impl<Src: Source, E, S> Source for Map<Src, E, S> {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext<'_, '_>,
-    ) -> SourcePoll<Self::Time, Self::Event, ()> {
+    ) -> SourcePoll<Self::Time, Self::Event, (), Src::Error> {
         self.poll_internal(time, cx, Src::poll_events, |()| ())
     }
 

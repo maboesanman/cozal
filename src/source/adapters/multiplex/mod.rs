@@ -37,13 +37,13 @@ impl<Src: Source> Multiplex<Src> {
         mut cx: SourceContext<'_, '_>,
         poll_fn: F,
         poll_type: PollType,
-    ) -> SourcePoll<Src::Time, Src::Event, S>
+    ) -> SourcePoll<Src::Time, Src::Event, S, Src::Error>
     where
         F: Fn(
             Pin<&mut Src>,
             Src::Time,
             SourceContext<'_, '_>,
-        ) -> SourcePoll<Src::Time, Src::Event, S>,
+        ) -> SourcePoll<Src::Time, Src::Event, S, Src::Error>,
     {
         let this = self.project();
         let source: Pin<&mut Src> = this.source;
@@ -175,11 +175,13 @@ impl<Src: Source> Source for Multiplex<Src> {
 
     type State = Src::State;
 
+    type Error = Src::Error;
+
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext<'_, '_>,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         self.poll_internal(time, cx, Src::poll, PollType::Poll)
     }
 
@@ -187,7 +189,7 @@ impl<Src: Source> Source for Multiplex<Src> {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext<'_, '_>,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         self.poll_internal(time, cx, Src::poll_forget, PollType::PollForget)
     }
 
@@ -195,7 +197,7 @@ impl<Src: Source> Source for Multiplex<Src> {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext<'_, '_>,
-    ) -> SourcePoll<Self::Time, Self::Event, ()> {
+    ) -> SourcePoll<Self::Time, Self::Event, (), Src::Error> {
         self.poll_internal(time, cx, Src::poll_events, PollType::PollEvents)
     }
 }

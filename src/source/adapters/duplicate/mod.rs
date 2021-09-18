@@ -1,6 +1,5 @@
 use core::pin::Pin;
 use core::task::{Context, Waker};
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::RwLock;
 use std::{
@@ -8,9 +7,14 @@ use std::{
     task::Wake,
 };
 
+mod rollback_event;
+use rollback_event::RollbackEvent;
+
 use pin_project::pin_project;
 
+use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
+
 
 #[pin_project]
 struct Original<Src: Source>
@@ -36,78 +40,6 @@ impl Wake for DuplicateWaker {
                 waker.wake()
             }
             core::mem::drop(wakers_ref);
-        }
-    }
-}
-
-enum RollbackEvent<Time: Ord + Copy, Event> {
-    Event { time: Time, event: Event },
-    Rollback { time: Time },
-
-    // never stored; used for searching.
-    Search { time: Time },
-}
-
-impl<Time: Ord + Copy, Event> Clone for RollbackEvent<Time, Event>
-where
-    Event: Clone,
-{
-    fn clone(&self) -> Self {
-        match self {
-            Self::Event { time, event } => Self::Event {
-                time: *time,
-                event: event.clone(),
-            },
-            Self::Rollback { time } => Self::Rollback { time: *time },
-            Self::Search { time } => Self::Search { time: *time },
-        }
-    }
-}
-
-impl<Time: Ord + Copy, Event> RollbackEvent<Time, Event> {
-    fn time(&self) -> &Time {
-        match self {
-            Self::Event { time, .. } => time,
-            Self::Rollback { time, .. } => time,
-            Self::Search { time, .. } => time,
-        }
-    }
-}
-
-impl<Time: Ord + Copy, Event> Ord for RollbackEvent<Time, Event> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (Self::Event { .. }, Self::Rollback { .. }) => Ordering::Greater,
-            (Self::Rollback { .. }, Self::Event { .. }) => Ordering::Less,
-            (Self::Rollback { .. }, Self::Search { .. }) => Ordering::Less,
-            (Self::Search { .. }, Self::Rollback { .. }) => Ordering::Greater,
-            (s, o) => s.time().cmp(o.time()),
-        }
-    }
-}
-
-impl<Time: Ord + Copy, Event> PartialOrd for RollbackEvent<Time, Event> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<Time: Ord + Copy, Event> Eq for RollbackEvent<Time, Event> {}
-
-impl<Time: Ord + Copy, Event> PartialEq for RollbackEvent<Time, Event> {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(self.cmp(other), Ordering::Equal)
-    }
-}
-
-impl<Time: Ord + Copy, Event, State> Into<SourcePoll<Time, Event, State>>
-    for RollbackEvent<Time, Event>
-{
-    fn into(self) -> SourcePoll<Time, Event, State> {
-        match self {
-            Self::Event { time, event } => SourcePoll::Event(event, time),
-            Self::Rollback { time } => SourcePoll::Rollback(time),
-            Self::Search { .. } => unreachable!(),
         }
     }
 }
@@ -139,7 +71,7 @@ type PollFn<Src, State> = fn(
     Pin<&mut Src>,
     <Src as Source>::Time,
     &mut Context,
-) -> SourcePoll<<Src as Source>::Time, <Src as Source>::Event, State>;
+) -> SourcePoll<<Src as Source>::Time, <Src as Source>::Event, State, <Src as Source>::Error>;
 
 pub struct Duplicate<Src: Source>
 where
@@ -184,9 +116,9 @@ where
     fn poll_internal<State>(
         self: Pin<&mut Self>,
         poll_time: Src::Time,
-        cx: &mut Context,
+        mut cx: SourceContext<'_, '_>,
         poll_fn: PollFn<Src, State>,
-    ) -> SourcePoll<Src::Time, Src::Event, State> {
+    ) -> SourcePoll<Src::Time, Src::Event, State, Src::Error> {
         // store waker right away
         let mut wakers_lock = self.inner.original.wakers.lock().unwrap();
         wakers_lock.insert(self.inner.index, cx.waker().clone());
@@ -363,27 +295,29 @@ where
 
     type State = Src::State;
 
+    type Error = Src::Error;
+
     fn poll(
         self: Pin<&mut Self>,
         poll_time: Self::Time,
-        cx: &mut Context<'_>,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+        cx: SourceContext<'_, '_>,
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         self.poll_internal(poll_time, cx, Src::poll)
     }
 
     fn poll_forget(
         self: Pin<&mut Self>,
         poll_time: Self::Time,
-        cx: &mut Context<'_>,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+        cx: SourceContext<'_, '_>,
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         self.poll_internal(poll_time, cx, Src::poll_forget)
     }
 
     fn poll_events(
         self: Pin<&mut Self>,
         poll_time: Self::Time,
-        cx: &mut Context<'_>,
-    ) -> SourcePoll<Self::Time, Self::Event, ()> {
+        cx: SourceContext<'_, '_>,
+    ) -> SourcePoll<Self::Time, Self::Event, (), Src::Error> {
         self.poll_internal(poll_time, cx, Src::poll_events)
     }
 }

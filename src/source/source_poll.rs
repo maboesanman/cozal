@@ -29,8 +29,9 @@ where
     Ready(S),
 }
 
-pub enum SourcePollErr {
+pub enum SourcePollErr<Err> {
     OutOfBoundsChannel,
+    SpecificError(Err)
 }
 
-pub type SourcePoll<T, E, S> = Poll<Result<SourcePollOk<T, E, S>, SourcePollErr>>;
+pub type SourcePoll<T, E, S, Err> = Poll<Result<SourcePollOk<T, E, S>, SourcePollErr<Err>>>;
