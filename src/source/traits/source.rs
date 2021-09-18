@@ -1,29 +1,34 @@
-use crate::source::SourcePoll;
 use crate::source::source_poll::SourcePollOk;
+use crate::source::SourcePoll;
 use core::pin::Pin;
 use core::task::Context;
 use std::num::NonZeroUsize;
 use std::task::{Poll, Waker};
 
 pub struct SourceContext<'a, 'context> {
-    async_context: &'a mut Context<'context>,
-    poll_channel: usize,
-    source_waker: Waker,
+    pub async_context: &'a mut Context<'context>,
+    pub poll_channel: usize,
+    pub source_waker: Waker,
 }
 
 impl<'a, 'context> SourceContext<'a, 'context> {
-    pub fn from_mut_borrow<'b>(&'b mut self) -> SourceContext<'b, 'context>
-        where 'a: 'b
+    pub fn re_borrow<'b>(&'b mut self) -> SourceContext<'b, 'context>
+    where
+        'a: 'b,
     {
-        let async_context: &'b mut Context<'context> = self.async_context;
-        let poll_channel: usize = self.poll_channel;
-        let source_waker: Waker = self.source_waker.clone();
+        let async_context = &mut self.async_context;
+        let poll_channel = self.poll_channel;
+        let source_waker = self.source_waker.clone();
 
         SourceContext {
             async_context,
             poll_channel,
             source_waker,
         }
+    }
+
+    pub fn change_channel(&mut self, new_channel: usize) {
+        self.poll_channel = new_channel;
     }
 }
 
@@ -94,11 +99,11 @@ pub trait Source {
                 SourcePollOk::Event(e, t) => SourcePollOk::Event(e, t),
                 SourcePollOk::Scheduled(_s, t) => SourcePollOk::Scheduled((), t),
                 SourcePollOk::Ready(_s) => SourcePollOk::Ready(()),
-            }))
+            })),
         }
     }
 
-    fn max_channels(&self) -> Option<NonZeroUsize> {
-        None
+    fn max_channels(&self) -> NonZeroUsize {
+        unsafe { NonZeroUsize::new_unchecked(usize::MAX) }
     }
 }

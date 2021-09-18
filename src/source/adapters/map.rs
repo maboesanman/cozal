@@ -1,11 +1,11 @@
 use core::pin::Pin;
-use std::task::Poll;
 use pin_project::pin_project;
+use std::task::Poll;
 
-use crate::source::Source;
-use crate::source::SourcePoll;
 use crate::source::source_poll::SourcePollOk;
 use crate::source::traits::SourceContext;
+use crate::source::Source;
+use crate::source::SourcePoll;
 
 #[pin_project]
 pub struct Map<Src: Source, E, S> {
@@ -48,47 +48,55 @@ impl<Src: Source, E, S> Map<Src, E, S> {
         let e_fn = this.event_transform;
 
         loop {
-            break match poll_fn(this.source.as_mut(), time, cx.from_mut_borrow()) {
+            break match poll_fn(this.source.as_mut(), time, cx.re_borrow()) {
                 Poll::Pending => Poll::Pending,
                 Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
                 Poll::Ready(Ok(result)) => Poll::Ready(Ok(match result {
                     SourcePollOk::Rollback(t) => SourcePollOk::Rollback(t),
                     SourcePollOk::Event(e, t) => match e_fn(e) {
                         Some(e) => SourcePollOk::Event(e, t),
-                        None => continue
+                        None => continue,
                     },
                     SourcePollOk::Scheduled(s, t) => SourcePollOk::Scheduled(state_fn(s), t),
                     SourcePollOk::Ready(s) => SourcePollOk::Ready(state_fn(s)),
-                }))
-            }
+                })),
+            };
         }
     }
 }
 
-impl<
-    Src: Source,
-    E,
-    S
-> Source for Map<Src, E, S> {
+impl<Src: Source, E, S> Source for Map<Src, E, S> {
     type Time = Src::Time;
     type Event = E;
     type State = S;
 
-    fn poll(self: Pin<&mut Self>, time: Self::Time, cx: SourceContext<'_, '_>) -> SourcePoll<Src::Time, E, S> {
+    fn poll(
+        self: Pin<&mut Self>,
+        time: Self::Time,
+        cx: SourceContext<'_, '_>,
+    ) -> SourcePoll<Src::Time, E, S> {
         let state_transform = self.state_transform;
         self.poll_internal(time, cx, Src::poll, state_transform)
     }
 
-    fn poll_forget(self: Pin<&mut Self>, time: Self::Time, cx: SourceContext<'_, '_>) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+    fn poll_forget(
+        self: Pin<&mut Self>,
+        time: Self::Time,
+        cx: SourceContext<'_, '_>,
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
         let state_transform = self.state_transform;
         self.poll_internal(time, cx, Src::poll_forget, state_transform)
     }
 
-    fn poll_events(self: Pin<&mut Self>, time: Self::Time, cx: SourceContext<'_, '_>) -> SourcePoll<Self::Time, Self::Event, ()> {
+    fn poll_events(
+        self: Pin<&mut Self>,
+        time: Self::Time,
+        cx: SourceContext<'_, '_>,
+    ) -> SourcePoll<Self::Time, Self::Event, ()> {
         self.poll_internal(time, cx, Src::poll_events, |()| ())
     }
 
-    fn max_channels(&self) -> Option<std::num::NonZeroUsize> {
+    fn max_channels(&self) -> std::num::NonZeroUsize {
         self.source.max_channels()
     }
 }

@@ -1,33 +1,29 @@
-use std::{pin::Pin, task::{Context, Poll}};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use futures_core::Future;
 
-use crate::source::{Source, traits::SourceContext};
+use crate::source::{traits::SourceContext, Source};
 
 struct OffloadInner<Src: Source> {
-    source: Src
+    source: Src,
 }
 
 pub struct OffloadSource<Src: Source> {
-    inner: OffloadInner<Src>
+    inner: OffloadInner<Src>,
 }
 
 pub struct OffloadWork<Src: Source> {
-    inner: OffloadInner<Src>
+    inner: OffloadInner<Src>,
 }
 
-pub fn offload<
-        Src: Source,
->(source: Src) -> (
-    OffloadSource<Src>,
-    OffloadWork<Src>,
-) {
+pub fn offload<Src: Source>(source: Src) -> (OffloadSource<Src>, OffloadWork<Src>) {
     unimplemented!()
 }
 
-impl<
-        Src: Source,
-> Source for OffloadSource<Src> {
+impl<Src: Source> Source for OffloadSource<Src> {
     type Time = Src::Time;
 
     type Event = Src::Event;
@@ -43,9 +39,7 @@ impl<
     }
 }
 
-impl<
-        Src: Source,
-> Future for OffloadWork<Src> {
+impl<Src: Source> Future for OffloadWork<Src> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

@@ -3,7 +3,7 @@ use std::task::Poll;
 
 use pin_project::pin_project;
 
-use crate::source::{Source, SourcePoll, source_poll::SourcePollOk, traits::SourceContext};
+use crate::source::{source_poll::SourcePollOk, traits::SourceContext, Source, SourcePoll};
 
 #[pin_project]
 pub struct Shift<Src: Source, T: Ord + Copy> {
@@ -49,14 +49,12 @@ impl<Src: Source, T: Ord + Copy> Shift<Src, T> {
                 SourcePollOk::Event(e, t) => SourcePollOk::Event(e, into_new(t)),
                 SourcePollOk::Scheduled(s, t) => SourcePollOk::Scheduled(s, into_new(t)),
                 SourcePollOk::Ready(s) => SourcePollOk::Ready(s),
-            }))
+            })),
         }
     }
 }
 
-impl<Src: Source, T: Ord + Copy> Source
-    for Shift<Src, T>
-{
+impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
     type Time = T;
 
     type Event = Src::Event;
@@ -87,7 +85,7 @@ impl<Src: Source, T: Ord + Copy> Source
         self.poll_internal(time, cx, Src::poll_events)
     }
 
-    fn max_channels(&self) -> Option<std::num::NonZeroUsize> {
+    fn max_channels(&self) -> std::num::NonZeroUsize {
         self.source.max_channels()
     }
 }

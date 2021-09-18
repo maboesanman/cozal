@@ -30,7 +30,7 @@ where
 }
 
 pub enum SourcePollErr {
-    OutOfBoundsChannel
+    OutOfBoundsChannel,
 }
 
 pub type SourcePoll<T, E, S> = Poll<Result<SourcePollOk<T, E, S>, SourcePollErr>>;

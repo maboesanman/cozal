@@ -24,7 +24,7 @@ pub trait StatelessSource {
         cx: SourceContext<'_, '_>,
     ) -> SourcePoll<Self::Time, Self::Event, ()>;
 
-    fn max_channels(&self) -> Option<NonZeroUsize>;
+    fn max_channels(&self) -> NonZeroUsize;
 }
 
 impl<S> StatelessSource for S
@@ -43,7 +43,7 @@ where
         S::poll_events(self, time, cx)
     }
 
-    fn max_channels(&self) -> Option<NonZeroUsize> {
+    fn max_channels(&self) -> NonZeroUsize {
         S::max_channels(self)
     }
 }
