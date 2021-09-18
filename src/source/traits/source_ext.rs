@@ -1,13 +1,5 @@
-use std::time::Instant;
-
-use futures_core::Future;
-
-use crate::source::adapters::{
-    realtime, Duplicate, Join, Map, RealtimeEvents, RealtimeStates, Shift, Split, Transposer,
-    TransposerEngine,
-};
-
-use super::{Source, Timestamp};
+use super::Source;
+use crate::source::adapters::{offload, Map, Multiplex, OffloadFuture, OffloadSource, Shift};
 
 impl<S> SourceExt for S where S: Source {}
 
@@ -22,33 +14,33 @@ pub trait SourceExt: Source + Sized {
     /// are already realtime and need no reference.
     ///
     /// Additionally, a sleep_fn must be provided. This should be simply `tokio::time::sleep_until` if using tokio, but is left generic to avoid requiring a runtime.
-    fn realtime<SleepFut: Future, SleepFn: Fn(Instant) -> SleepFut>(
-        self,
-        reference: <Self::Time as Timestamp>::Reference,
-        sleep_fn: SleepFn,
-    ) -> (RealtimeEvents<Self>, RealtimeStates<Self>)
-    where
-        Self::Time: Timestamp,
-    {
-        realtime(self, reference, sleep_fn)
-    }
+    // fn realtime<SleepFut: Future, SleepFn: Fn(Instant) -> SleepFut>(
+    //     self,
+    //     reference: <Self::Time as Timestamp>::Reference,
+    //     sleep_fn: SleepFn,
+    // ) -> (RealtimeEvents<Self>, RealtimeStates<Self>)
+    // where
+    //     Self::Time: Timestamp,
+    // {
+    //     realtime(self, reference, sleep_fn)
+    // }
 
-    /// Adapter for converting a source into another via a transposer.
-    fn transpose<
-        'tr,
-        T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State> + 'tr,
-        const N: usize,
-    >(
-        self,
-        initial: T,
-        rng_seed: [u8; 32],
-    ) -> TransposerEngine<'tr, T, Self, N>
-    where
-        T: Clone,
-        T::Scheduled: Clone,
-    {
-        TransposerEngine::new(self, initial, rng_seed)
-    }
+    // Adapter for converting a source into another via a transposer.
+    // fn transpose<
+    //     'tr,
+    //     T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State> + 'tr,
+    //     const N: usize,
+    // >(
+    //     self,
+    //     initial: T,
+    //     rng_seed: [u8; 32],
+    // ) -> TransposerEngine<'tr, T, Self, N>
+    // where
+    //     T: Clone,
+    //     T::Scheduled: Clone,
+    // {
+    //     TransposerEngine::new(self, initial, rng_seed)
+    // }
 
     /// Adapter for converting the events and states of a source.
     fn map<E, S>(
@@ -68,30 +60,40 @@ pub trait SourceExt: Source + Sized {
         Shift::new(self, into_new, into_old)
     }
 
-    fn joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State> {
-        Join::new(self, self_key)
+    /// Adapter for offloading work to a future
+    fn offload(self) -> (OffloadSource<Self>, OffloadFuture<Self>) {
+        offload(self)
     }
 
-    fn stateless_joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State> {
-        Join::new_stateless(self, self_key)
+    /// Adapter for calling a limited-channel source on any number of channels
+    fn multiplex(self) -> Multiplex<Self> {
+        Multiplex::new(self)
     }
 
-    fn splittable<E, ConvertFn>(
-        self,
-        decide: fn(&Self::Event) -> bool,
-        convert: ConvertFn,
-    ) -> Split<Self, E, ConvertFn>
-    where
-        ConvertFn: Fn(Self::Event) -> E,
-    {
-        Split::new(self, decide, convert)
-    }
+    // fn joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State> {
+    //     Join::new(self, self_key)
+    // }
 
-    /// Wrap a source for duplication.
-    fn duplicate(self) -> Duplicate<Self>
-    where
-        Self::Event: Clone,
-    {
-        Duplicate::new(self)
-    }
+    // fn stateless_joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State> {
+    //     Join::new_stateless(self, self_key)
+    // }
+
+    // fn splittable<E, ConvertFn>(
+    //     self,
+    //     decide: fn(&Self::Event) -> bool,
+    //     convert: ConvertFn,
+    // ) -> Split<Self, E, ConvertFn>
+    // where
+    //     ConvertFn: Fn(Self::Event) -> E,
+    // {
+    //     Split::new(self, decide, convert)
+    // }
+
+    // Wrap a source for duplication.
+    // fn duplicate(self) -> Duplicate<Self>
+    // where
+    //     Self::Event: Clone,
+    // {
+    //     Duplicate::new(self)
+    // }
 }

@@ -8,14 +8,7 @@ mod shift;
 // mod transposer;
 mod multiplex;
 
-// pub use self::{
-//     duplicate::Duplicate,
-//     iter::Iter,
-//     join::Join,
-//     map::Map,
-//     offload::{offload, OffloadSource, OffloadWork},
-//     realtime::{realtime, RealtimeEvents, RealtimeStates},
-//     shift::Shift,
-//     split::Split,
-//     transposer::{context, ExpireHandle, Transposer, TransposerEngine},
-// };
+pub use self::map::Map;
+pub use self::multiplex::Multiplex;
+pub use self::offload::{offload, OffloadFuture, OffloadSource};
+pub use self::shift::Shift;
