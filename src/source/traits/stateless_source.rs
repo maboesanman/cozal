@@ -49,6 +49,6 @@ where
     }
 
     fn max_channels(&self) -> NonZeroUsize {
-        S::max_channels(self)
+        S::max_channel(self)
     }
 }

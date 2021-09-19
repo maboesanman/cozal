@@ -28,7 +28,7 @@ pub struct Multiplex<Src: Source> {
 
 impl<Src: Source> Multiplex<Src> {
     pub fn new(source: Src) -> Self {
-        let max_channels = source.max_channels();
+        let max_channels = source.max_channel();
         Self {
             source,
             assigned_channels: AssignmentMap::new(max_channels),

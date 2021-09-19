@@ -99,7 +99,7 @@ impl<Src: Source, E, S> Source for Map<Src, E, S> {
         self.poll_internal(time, cx, Src::poll_events, |()| ())
     }
 
-    fn max_channels(&self) -> NonZeroUsize {
-        self.source.max_channels()
+    fn max_channel(&self) -> NonZeroUsize {
+        self.source.max_channel()
     }
 }

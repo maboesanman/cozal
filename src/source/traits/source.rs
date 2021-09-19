@@ -2,7 +2,7 @@ use core::num::NonZeroUsize;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
-use crate::source::source_poll::SourcePollOk;
+use crate::source::source_poll::{AdvanceErr, SourceAdvance, SourcePollOk};
 use crate::source::SourcePoll;
 
 pub struct SourceContext<'a, 'context> {
@@ -107,7 +107,17 @@ pub trait Source {
         }
     }
 
-    fn max_channels(&self) -> NonZeroUsize {
+    /// Inform the source that you will never poll before `time` again.
+    ///
+    /// calling poll before this time should result in `SourcePollError::PollAfterAdvance`
+    fn advance(self: Pin<&mut Self>, _time: Self::Time) -> SourceAdvance {
+        Ok(())
+    }
+
+    /// The maximum value which can be used as the channel for a poll call.
+    ///
+    /// all channels between 0 and max_channel() inclusive can be used as a channel.
+    fn max_channel(&self) -> NonZeroUsize {
         unsafe { NonZeroUsize::new_unchecked(usize::MAX) }
     }
 }

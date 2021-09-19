@@ -4,7 +4,7 @@ use core::task::Poll;
 
 use pin_project::pin_project;
 
-use crate::source::source_poll::SourcePollOk;
+use crate::source::source_poll::{SourcePollErr, SourcePollOk};
 use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
 
@@ -48,7 +48,15 @@ impl<Src: Source, T: Ord + Copy> Shift<Src, T> {
 
         match poll_fn(source, into_old(time), cx) {
             Poll::Pending => Poll::Pending,
-            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
+            Poll::Ready(Err(err)) => Poll::Ready(Err(match err {
+                SourcePollErr::OutOfBoundsChannel => SourcePollErr::OutOfBoundsChannel,
+                SourcePollErr::PollAfterAdvance {
+                    advanced: t,
+                } => SourcePollErr::PollAfterAdvance {
+                    advanced: into_new(t),
+                },
+                SourcePollErr::SpecificError(e) => SourcePollErr::SpecificError(e),
+            })),
             Poll::Ready(Ok(result)) => Poll::Ready(Ok(match result {
                 SourcePollOk::Rollback(t) => SourcePollOk::Rollback(into_new(t)),
                 SourcePollOk::Event(e, t) => SourcePollOk::Event(e, into_new(t)),
@@ -93,7 +101,7 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
         self.poll_internal(time, cx, Src::poll_events)
     }
 
-    fn max_channels(&self) -> NonZeroUsize {
-        self.source.max_channels()
+    fn max_channel(&self) -> NonZeroUsize {
+        self.source.max_channel()
     }
 }
