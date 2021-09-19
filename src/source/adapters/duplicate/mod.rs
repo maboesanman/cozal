@@ -120,7 +120,7 @@ where
     ) -> SourcePoll<Src::Time, Src::Event, State, Src::Error> {
         // store waker right away
         let mut wakers_lock = self.inner.original.wakers.lock().unwrap();
-        wakers_lock.insert(self.inner.index, cx.waker().clone());
+        wakers_lock.insert(self.inner.index, cx.source_waker);
         core::mem::drop(wakers_lock);
 
         let events_lock = self.inner.events.read().unwrap();

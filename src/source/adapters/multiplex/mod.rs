@@ -59,109 +59,115 @@ impl<Src: Source> Multiplex<Src> {
 
         let out_channel = cx.poll_channel;
         // step one: check for existing assignment, use it or clear it.
+        match assigned_channels.get_assigned_source_channel(out_channel) {
+            Some(assignment) => {
+                // full match, use existing assignment
+                if assignment.poll_type == poll_type && assignment.time == poll_time {
+                    cx.change_channel(assignment.source_channel);
+                    let result = poll_fn(source, poll_time, cx);
 
-        'main: loop {
-            match assigned_channels.get_assigned_source_channel(out_channel) {
-                Some(assignment) => {
-                    break {
-                        // full match, use existing assignment
-                        if assignment.poll_type == poll_type && assignment.time == poll_time {
-                            let mut new_cx = cx.re_borrow();
-                            new_cx.change_channel(assignment.source_channel);
-                            let result = poll_fn(source, poll_time, new_cx);
-                            if result.is_ready() {
-                                if let Some(pending) = pending_channels.pop_front() {
-                                    assigned_channels.assign(pending.out_channel, Assignment {
-                                        poll_type:      pending.poll_type,
-                                        time:           pending.time,
-                                        source_channel: assignment.source_channel,
-                                    });
-                                    pending.waker.wake();
-                                } else {
-                                    assigned_channels.unassign(assignment.source_channel);
-                                }
-                            }
-                            result
-                        // partial match, only use existing assignment if nothing is queued
-                        } else {
-                            match pending_channels.pop_front() {
-                                Some(pending) => {
-                                    assigned_channels.assign(pending.out_channel, Assignment {
-                                        poll_type:      pending.poll_type,
-                                        time:           pending.time,
-                                        source_channel: assignment.source_channel,
-                                    });
-                                    pending.waker.wake();
-                                    Poll::Pending
-                                },
-                                None => {
-                                    let mut new_cx = cx.re_borrow();
-                                    new_cx.change_channel(assignment.source_channel);
-                                    let result = poll_fn(source, poll_time, new_cx);
-                                    if result.is_pending() {
-                                        assigned_channels.assign(out_channel, Assignment {
-                                            poll_type,
-                                            time: poll_time,
-                                            source_channel: assignment.source_channel,
-                                        })
-                                    }
-                                    result
-                                },
-                            }
-                        }
-                    }
-                },
-                None => {
-                    let mut channel = None;
-
-                    // use affiliated channel if open
-                    if let Some(affinity) =
-                        channel_affinity.get_affiliated_source_channel(out_channel)
-                    {
-                        if assigned_channels
-                            .get_assigned_output_channel(affinity)
-                            .is_none()
-                        {
-                            channel = Some(affinity);
-                        }
-                    }
-
-                    // use any open channel
-                    if channel.is_none() {
-                        channel = assigned_channels.get_unassigned_source_channel();
-                    }
-
-                    match channel {
-                        // assign channel and loop
-                        Some(source_channel) => {
-                            assigned_channels.assign(out_channel, Assignment {
-                                poll_type,
-                                time: poll_time,
-                                source_channel,
+                    // if we're done with the channel assign it to the next pending and wake it.
+                    if result.is_ready() {
+                        if let Some(pending) = pending_channels.pop_front() {
+                            assigned_channels.assign(pending.out_channel, Assignment {
+                                poll_type:      pending.poll_type,
+                                time:           pending.time,
+                                source_channel: assignment.source_channel,
                             });
-                            channel_affinity.set_affiliation(source_channel, out_channel);
-                            continue
-                        },
-                        // enqueue call and return pending
-                        None => {
+                            pending.waker.wake();
+                        } else {
+                            assigned_channels.unassign(assignment.source_channel);
+                        }
+                    }
+                    result
+                // partial match, only use existing assignment if nothing is queued
+                } else {
+                    match pending_channels.pop_front() {
+                        Some(pending) => {
+                            pending.assign_to_channel(assigned_channels, assignment.source_channel);
+
                             let new_pending = PendingPoll {
                                 poll_type,
                                 time: poll_time,
                                 out_channel,
                                 waker: cx.async_context.waker().clone(),
                             };
-                            for pending in pending_channels.iter_mut() {
-                                if pending.out_channel == out_channel {
-                                    *pending = new_pending;
-                                    break 'main Poll::Pending
-                                }
-                            }
                             pending_channels.push_back(new_pending);
-                            break Poll::Pending
+                            Poll::Pending
+                        },
+                        None => {
+                            cx.change_channel(assignment.source_channel);
+                            let result = poll_fn(source, poll_time, cx);
+                            if result.is_pending() {
+                                assigned_channels.assign(out_channel, Assignment {
+                                    poll_type,
+                                    time: poll_time,
+                                    source_channel: assignment.source_channel,
+                                })
+                            }
+                            result
                         },
                     }
-                },
-            }
+                }
+            },
+            None => {
+                let mut channel = None;
+                let mut already_affiliated = false;
+
+                // use affiliated channel if open
+                if let Some(affinity) =
+                    channel_affinity.get_affiliated_source_channel(out_channel)
+                {
+                    if assigned_channels
+                        .get_assigned_output_channel(affinity)
+                        .is_none()
+                    {
+                        channel = Some(affinity);
+                        already_affiliated = true;
+                    }
+                }
+
+                // use any open channel
+                if channel.is_none() {
+                    channel = assigned_channels.get_unassigned_source_channel();
+                }
+
+                match channel {
+                    // poll; affiliate; assign if pending
+                    Some(source_channel) => {
+                        if !already_affiliated {
+                            channel_affinity.set_affiliation(source_channel, out_channel);
+                        }
+                        cx.change_channel(source_channel);
+                        let result = poll_fn(source, poll_time, cx);
+                        if result.is_pending() {
+                            assigned_channels.assign(out_channel, Assignment {
+                                poll_type,
+                                time: poll_time,
+                                source_channel,
+                            });
+                        }
+                        result
+                    },
+                    // enqueue call and return pending
+                    None => {
+                        let new_pending = PendingPoll {
+                            poll_type,
+                            time: poll_time,
+                            out_channel,
+                            waker: cx.async_context.waker().clone(),
+                        };
+                        for pending in pending_channels.iter_mut() {
+                            if pending.out_channel == out_channel {
+                                *pending = new_pending;
+                                return Poll::Pending
+                            }
+                        }
+                        pending_channels.push_back(new_pending);
+                        Poll::Pending
+                    },
+                }
+            },
         }
     }
 }
@@ -171,6 +177,17 @@ struct PendingPoll<Time> {
     out_channel: OutChannelID,
     time:        Time,
     waker:       AsyncWaker,
+}
+
+impl<Time: Copy> PendingPoll<Time> {
+    pub fn assign_to_channel(self, assignments: &mut AssignmentMap<Time>, source_channel: SrcChannelID) {
+        assignments.assign(self.out_channel, Assignment {
+            poll_type:      self.poll_type,
+            time:           self.time,
+            source_channel,
+        });
+        self.waker.wake();
+    }
 }
 
 impl<Src: Source> Source for Multiplex<Src> {

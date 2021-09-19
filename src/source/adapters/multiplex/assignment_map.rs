@@ -3,14 +3,14 @@ use std::collections::BTreeMap;
 
 use super::{OutChannelID, SrcChannelID};
 
-pub struct AssignmentMap<Time: Ord + Copy> {
+pub struct AssignmentMap<Time: Copy> {
     max_src_channels: NonZeroUsize,
     source_channels:  BTreeMap<SrcChannelID, OutChannelID>,
     output_channels:  BTreeMap<OutChannelID, Assignment<Time>>,
 }
 
 #[derive(Clone, Copy)]
-pub struct Assignment<Time: Ord + Copy> {
+pub struct Assignment<Time: Copy> {
     pub poll_type:      PollType,
     pub time:           Time,
     pub source_channel: SrcChannelID,
@@ -23,7 +23,7 @@ pub enum PollType {
     PollEvents,
 }
 
-impl<Time: Ord + Copy> AssignmentMap<Time> {
+impl<Time: Copy> AssignmentMap<Time> {
     pub fn new(max_channels: NonZeroUsize) -> Self {
         Self {
             max_src_channels: max_channels,
