@@ -102,6 +102,7 @@ pub trait Source {
                 SourcePollOk::Event(e, t) => SourcePollOk::Event(e, t),
                 SourcePollOk::Scheduled(_s, t) => SourcePollOk::Scheduled((), t),
                 SourcePollOk::Ready(_s) => SourcePollOk::Ready(()),
+                SourcePollOk::Finalize(t) => SourcePollOk::Finalize(t),
             })),
         }
     }

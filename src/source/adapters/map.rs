@@ -60,6 +60,7 @@ impl<Src: Source, E, S> Map<Src, E, S> {
                     },
                     SourcePollOk::Scheduled(s, t) => SourcePollOk::Scheduled(state_fn(s), t),
                     SourcePollOk::Ready(s) => SourcePollOk::Ready(state_fn(s)),
+                    SourcePollOk::Finalize(t) => SourcePollOk::Finalize(t),
                 })),
             }
         }

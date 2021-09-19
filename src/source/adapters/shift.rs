@@ -17,6 +17,8 @@ pub struct Shift<Src: Source, T: Ord + Copy> {
     into_old: fn(T) -> Src::Time,
 }
 
+// TODO this is not correct. need to think about what happens when time funcs are not bijections
+
 impl<Src: Source, T: Ord + Copy> Shift<Src, T> {
     pub fn new(source: Src, into_new: fn(Src::Time) -> T, into_old: fn(T) -> Src::Time) -> Self {
         Self {
@@ -52,6 +54,7 @@ impl<Src: Source, T: Ord + Copy> Shift<Src, T> {
                 SourcePollOk::Event(e, t) => SourcePollOk::Event(e, into_new(t)),
                 SourcePollOk::Scheduled(s, t) => SourcePollOk::Scheduled(s, into_new(t)),
                 SourcePollOk::Ready(s) => SourcePollOk::Ready(s),
+                SourcePollOk::Finalize(t) => SourcePollOk::Finalize(into_new(t)),
             })),
         }
     }

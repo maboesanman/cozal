@@ -6,13 +6,16 @@ pub enum SourcePollOk<T, E, S>
 where
     T: Ord + Copy,
 {
-    /// An event was previously emitted which is now invalid
-    ///
+    /// Indicates all events at or after time T, and all states returned from poll (not poll_forget
+    /// should be discarded.
     ///
     Rollback(T),
 
-    /// Represents that a value is ready and does not occur after the time polled
+    /// Represents that a value is ready and does not occur after the time polled.
     Event(E, T),
+
+    /// Indicates no rollback will ever be returned before or at time T.
+    Finalize(T),
 
     /// Represents that a value is ready, but occurs in the future, so the stream should be polled after time t.
     ///
