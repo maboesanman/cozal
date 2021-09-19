@@ -115,8 +115,7 @@ impl<Src: Source> Multiplex<Src> {
                 let mut already_affiliated = false;
 
                 // use affiliated channel if open
-                if let Some(affinity) =
-                    channel_affinity.get_affiliated_source_channel(out_channel)
+                if let Some(affinity) = channel_affinity.get_affiliated_source_channel(out_channel)
                 {
                     if assigned_channels
                         .get_assigned_output_channel(affinity)
@@ -180,10 +179,14 @@ struct PendingPoll<Time> {
 }
 
 impl<Time: Copy> PendingPoll<Time> {
-    pub fn assign_to_channel(self, assignments: &mut AssignmentMap<Time>, source_channel: SrcChannelID) {
+    pub fn assign_to_channel(
+        self,
+        assignments: &mut AssignmentMap<Time>,
+        source_channel: SrcChannelID,
+    ) {
         assignments.assign(self.out_channel, Assignment {
-            poll_type:      self.poll_type,
-            time:           self.time,
+            poll_type: self.poll_type,
+            time: self.time,
             source_channel,
         });
         self.waker.wake();
