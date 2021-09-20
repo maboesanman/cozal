@@ -118,6 +118,7 @@ pub trait Source {
     ///
     /// all channels between 0 and max_channel() inclusive can be used as a channel.
     fn max_channel(&self) -> NonZeroUsize {
+        // SAFETY: usize::MAX is never 0.
         unsafe { NonZeroUsize::new_unchecked(usize::MAX) }
     }
 }

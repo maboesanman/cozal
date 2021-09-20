@@ -10,6 +10,7 @@ use pin_project::pin_project;
 use self::affinity_map::AffinityMap;
 use self::assignment_map::AssignmentMap;
 use crate::source::adapters::multiplex::assignment_map::{Assignment, PollType};
+use crate::source::source_poll::SourceAdvance;
 use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
 
@@ -224,5 +225,9 @@ impl<Src: Source> Source for Multiplex<Src> {
         cx: SourceContext<'_, '_>,
     ) -> SourcePoll<Self::Time, Self::Event, (), Src::Error> {
         self.poll_internal(time, cx, Src::poll_events, PollType::PollEvents)
+    }
+
+    fn advance(self: Pin<&mut Self>, time: Self::Time) -> SourceAdvance {
+        self.project().source.advance(time)
     }
 }

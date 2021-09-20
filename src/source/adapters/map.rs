@@ -4,7 +4,7 @@ use core::task::Poll;
 
 use pin_project::pin_project;
 
-use crate::source::source_poll::SourcePollOk;
+use crate::source::source_poll::{SourceAdvance, SourcePollOk};
 use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
 
@@ -97,6 +97,10 @@ impl<Src: Source, E, S> Source for Map<Src, E, S> {
         cx: SourceContext<'_, '_>,
     ) -> SourcePoll<Self::Time, Self::Event, (), Src::Error> {
         self.poll_internal(time, cx, Src::poll_events, |()| ())
+    }
+
+    fn advance(self: Pin<&mut Self>, time: Src::Time) -> SourceAdvance {
+        self.project().source.advance(time)
     }
 
     fn max_channel(&self) -> NonZeroUsize {
