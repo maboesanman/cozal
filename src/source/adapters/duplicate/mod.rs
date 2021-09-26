@@ -1,5 +1,6 @@
 use core::pin::Pin;
 use core::task::{Context, Waker};
+use std::num::NonZeroUsize;
 use std::{
     sync::{RwLock, Arc, Mutex, Weak},
     task::Wake,
@@ -69,7 +70,7 @@ where
 type PollFn<Src, State> = fn(
     Pin<&mut Src>,
     <Src as Source>::Time,
-    &mut Context,
+    SourceContext<'_, '_>,
 ) -> SourcePoll<<Src as Source>::Time, <Src as Source>::Event, State, <Src as Source>::Error>;
 
 pub struct Duplicate<Src: Source>
@@ -104,6 +105,23 @@ where
 
         Self { inner }
     }
+
+    fn get_original_channel(&self, duplicate_channel: usize) -> usize {
+        let i = self.inner.index;
+        let j = duplicate_channel;
+        let s = i + j;
+
+        // have to be careful not to overflow prematurely
+        if s % 2 == 0 {
+            (s / 2) * (s + 1) + j
+        } else {
+            s * ((s + 1) / 2) + j
+        }
+    }
+
+    // fn max_channels(&self) -> usize {
+
+    // }
 
     fn get_waker(&self) -> Waker {
         let wakers = Arc::downgrade(&self.inner.original.wakers);
