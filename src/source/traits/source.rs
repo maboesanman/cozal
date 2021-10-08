@@ -1,34 +1,20 @@
 use core::num::NonZeroUsize;
 use core::pin::Pin;
-use core::task::{Context, Poll, Waker};
+use core::task::{Poll, Waker};
 
-use crate::source::source_poll::{AdvanceErr, SourceAdvance, SourcePollOk};
+use crate::source::source_poll::{SourceAdvance, SourcePollOk};
 use crate::source::SourcePoll;
 
-pub struct SourceContext<'a, 'context> {
-    pub async_context: &'a mut Context<'context>,
-    pub poll_channel:  usize,
-    pub source_waker:  Waker,
+#[derive(Clone)]
+pub struct SourceContext {
+    pub channel:       usize,
+    pub channel_waker: Waker,
+    pub event_waker:   Waker,
 }
 
-impl<'a, 'context> SourceContext<'a, 'context> {
-    pub fn re_borrow<'b>(&'b mut self) -> SourceContext<'b, 'context>
-    where
-        'a: 'b,
-    {
-        let async_context = &mut self.async_context;
-        let poll_channel = self.poll_channel;
-        let source_waker = self.source_waker.clone();
-
-        SourceContext {
-            async_context,
-            poll_channel,
-            source_waker,
-        }
-    }
-
+impl SourceContext {
     pub fn change_channel(&mut self, new_channel: usize) {
-        self.poll_channel = new_channel;
+        self.channel = new_channel;
     }
 }
 
@@ -72,7 +58,7 @@ pub trait Source {
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error>;
 
     /// Attempt to retrieve the state of the source at `time`, registering the current task for wakeup in certain situations. Also inform the source that the state emitted from this call is exempt from the requirement to be informed of future invalidations (that the source can "forget" about this call to poll when determining how far to roll back).
@@ -81,18 +67,18 @@ pub trait Source {
     fn poll_forget(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         self.poll(time, cx)
     }
 
     /// Attempt to determine information about the set of events before `time` without generating a state. this function behaves the same as [`poll_forget`](Source::poll_forget) but returns `()` instead of [`State`](Source::State). This function should be used in all situations when the state is not actually needed, as the implementer of the trait may be able to do less work.
     ///
-    /// if you do not need to use the state, this should be preferred over poll. For example, if you are simply verifying the source does not have new events before a time t, poll_ignore_state could be faster than poll (with a custom implementation).
+    /// If you do not need to use the state, this should be preferred over poll. For example, if you are simply verifying the source does not have new events before a time t, poll_ignore_state could be faster than poll (with a custom implementation).
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error> {
         match self.poll_forget(time, cx) {
             Poll::Pending => Poll::Pending,
@@ -109,7 +95,7 @@ pub trait Source {
 
     /// Inform the source that you will never poll before `time` again.
     ///
-    /// calling poll before this time should result in `SourcePollError::PollAfterAdvance`
+    /// Calling poll before this time should result in `SourcePollError::PollAfterAdvance`
     fn advance(self: Pin<&mut Self>, _time: Self::Time) -> SourceAdvance {
         Ok(())
     }

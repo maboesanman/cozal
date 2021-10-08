@@ -31,14 +31,14 @@ impl<Src: Source, T: Ord + Copy> Shift<Src, T> {
     fn poll_internal<F, S>(
         self: Pin<&mut Self>,
         time: T,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
         poll_fn: F,
     ) -> SourcePoll<T, Src::Event, S, Src::Error>
     where
         F: Fn(
             Pin<&mut Src>,
             Src::Time,
-            SourceContext<'_, '_>,
+            SourceContext,
         ) -> SourcePoll<Src::Time, Src::Event, S, Src::Error>,
     {
         let proj = self.project();
@@ -80,7 +80,7 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         self.poll_internal(time, cx, Src::poll)
     }
@@ -88,7 +88,7 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
     fn poll_forget(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         self.poll_internal(time, cx, Src::poll_forget)
     }
@@ -96,7 +96,7 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, (), Src::Error> {
         self.poll_internal(time, cx, Src::poll_events)
     }

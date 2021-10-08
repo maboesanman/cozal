@@ -41,7 +41,7 @@ impl<Src: Source> Multiplex<Src> {
     fn poll_internal<F, S>(
         self: Pin<&mut Self>,
         poll_time: Src::Time,
-        mut cx: SourceContext<'_, '_>,
+        mut cx: SourceContext,
         poll_fn: F,
         poll_type: PollType,
     ) -> SourcePoll<Src::Time, Src::Event, S, Src::Error>
@@ -49,7 +49,7 @@ impl<Src: Source> Multiplex<Src> {
         F: Fn(
             Pin<&mut Src>,
             Src::Time,
-            SourceContext<'_, '_>,
+            SourceContext,
         ) -> SourcePoll<Src::Time, Src::Event, S, Src::Error>,
     {
         let this = self.project();
@@ -58,7 +58,7 @@ impl<Src: Source> Multiplex<Src> {
         let channel_affinity: &mut AffinityMap = this.channel_affinity;
         let pending_channels: &mut VecDeque<PendingPoll<Src::Time>> = this.pending_channels;
 
-        let out_channel = cx.poll_channel;
+        let out_channel = cx.channel;
         // step one: check for existing assignment, use it or clear it.
         match assigned_channels.get_assigned_source_channel(out_channel) {
             Some(assignment) => {
@@ -91,7 +91,7 @@ impl<Src: Source> Multiplex<Src> {
                                 poll_type,
                                 time: poll_time,
                                 out_channel,
-                                waker: cx.async_context.waker().clone(),
+                                waker: cx.channel_waker.clone(),
                             };
                             pending_channels.push_back(new_pending);
                             Poll::Pending
@@ -155,7 +155,7 @@ impl<Src: Source> Multiplex<Src> {
                             poll_type,
                             time: poll_time,
                             out_channel,
-                            waker: cx.async_context.waker().clone(),
+                            waker: cx.channel_waker.clone(),
                         };
                         for pending in pending_channels.iter_mut() {
                             if pending.out_channel == out_channel {
@@ -206,7 +206,7 @@ impl<Src: Source> Source for Multiplex<Src> {
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         self.poll_internal(time, cx, Src::poll, PollType::Poll)
     }
@@ -214,7 +214,7 @@ impl<Src: Source> Source for Multiplex<Src> {
     fn poll_forget(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         self.poll_internal(time, cx, Src::poll_forget, PollType::PollForget)
     }
@@ -222,7 +222,7 @@ impl<Src: Source> Source for Multiplex<Src> {
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, (), Src::Error> {
         self.poll_internal(time, cx, Src::poll_events, PollType::PollEvents)
     }

@@ -23,6 +23,7 @@ where
     Ready(S),
 }
 
+#[non_exhaustive]
 pub enum SourcePollErr<T, Err> {
     OutOfBoundsChannel,
     PollAfterAdvance { advanced: T },

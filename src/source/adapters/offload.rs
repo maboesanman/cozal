@@ -34,7 +34,7 @@ impl<Src: Source> Source for OffloadSource<Src> {
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         unimplemented!()
     }

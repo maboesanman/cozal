@@ -33,7 +33,7 @@ impl<Src: Source, E, S> Map<Src, E, S> {
     fn poll_internal<F, Sin, Sout, SFn>(
         self: Pin<&mut Self>,
         time: Src::Time,
-        mut cx: SourceContext<'_, '_>,
+        cx: SourceContext,
         poll_fn: F,
         state_fn: SFn,
     ) -> SourcePoll<Src::Time, E, Sout, Src::Error>
@@ -41,7 +41,7 @@ impl<Src: Source, E, S> Map<Src, E, S> {
         F: Fn(
             Pin<&mut Src>,
             Src::Time,
-            SourceContext<'_, '_>,
+            SourceContext,
         ) -> SourcePoll<Src::Time, Src::Event, Sin, Src::Error>,
         SFn: Fn(Sin) -> Sout,
     {
@@ -49,7 +49,7 @@ impl<Src: Source, E, S> Map<Src, E, S> {
         let e_fn = this.event_transform;
 
         loop {
-            break match poll_fn(this.source.as_mut(), time, cx.re_borrow()) {
+            break match poll_fn(this.source.as_mut(), time, cx.clone()) {
                 Poll::Pending => Poll::Pending,
                 Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
                 Poll::Ready(Ok(result)) => Poll::Ready(Ok(match result {
@@ -76,7 +76,7 @@ impl<Src: Source, E, S> Source for Map<Src, E, S> {
     fn poll(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> SourcePoll<Src::Time, E, S, Src::Error> {
         let state_transform = self.state_transform;
         self.poll_internal(time, cx, Src::poll, state_transform)
@@ -85,7 +85,7 @@ impl<Src: Source, E, S> Source for Map<Src, E, S> {
     fn poll_forget(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         let state_transform = self.state_transform;
         self.poll_internal(time, cx, Src::poll_forget, state_transform)
@@ -94,7 +94,7 @@ impl<Src: Source, E, S> Source for Map<Src, E, S> {
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext<'_, '_>,
+        cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, (), Src::Error> {
         self.poll_internal(time, cx, Src::poll_events, |()| ())
     }
