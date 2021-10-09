@@ -28,9 +28,9 @@ where
 {
     pub fn new(source: Src) -> Arc<Self> {
         let original = Original {
-            source:    Mutex::new(source),
-            children:  RwLock::new(BTreeMap::new()),
-            wakers:    EventWakers::new(),
+            source:   Mutex::new(source),
+            children: RwLock::new(BTreeMap::new()),
+            wakers:   EventWakers::new(),
         };
 
         Arc::new(original)
