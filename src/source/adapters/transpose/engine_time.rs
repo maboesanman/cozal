@@ -55,7 +55,7 @@ impl<T: Ord + Copy + Default> PartialEq for EngineTime<'_, T> {
             (Self::Input(s), Self::Input(o)) => s == o,
             (Self::Schedule(s), Self::Schedule(o)) => {
                 s.time == o.time && s.parent_index == o.parent_index && s.parent == o.parent
-            }
+            },
             _ => false,
         }
     }
@@ -69,8 +69,8 @@ impl<'a, T: Ord + Copy + Default> From<EngineTimeSchedule<'a, T>> for EngineTime
 
 #[derive(Clone)]
 pub struct EngineTimeSchedule<'a, T: Ord + Copy + Default> {
-    pub time: T,
-    pub parent: &'a EngineTime<'a, T>,
+    pub time:         T,
+    pub parent:       &'a EngineTime<'a, T>,
     pub parent_index: usize,
 }
 

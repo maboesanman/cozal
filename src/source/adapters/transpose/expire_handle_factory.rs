@@ -1,5 +1,7 @@
-use super::super::ExpireHandle;
-use core::sync::atomic::{AtomicU64, Ordering::SeqCst};
+use core::sync::atomic::AtomicU64;
+use core::sync::atomic::Ordering::SeqCst;
+
+use crate::transposer::ExpireHandle;
 
 #[derive(Debug)]
 pub struct ExpireHandleFactory(AtomicU64);

@@ -19,22 +19,18 @@ use core::cmp::Ordering;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
-
 use std::collections::BTreeMap;
 
 use futures_core::FusedFuture;
 use pin_project::pin_project;
 
-use self::{
-    buffered_item::BufferedItem,
-    engine_time::EngineTime,
-    input_buffer::InputBuffer,
-    sparse_buffer_stack::SparseBufferStack,
-    update_item::{DataEmitted, UpdateItem, UpdateItemData},
-};
-
-use super::super::Transposer;
+use self::buffered_item::BufferedItem;
+use self::engine_time::EngineTime;
+use self::input_buffer::InputBuffer;
+use self::sparse_buffer_stack::SparseBufferStack;
+use self::update_item::{DataEmitted, UpdateItem, UpdateItemData};
 use crate::source::{Source, SourcePoll};
+use crate::transposer::Transposer;
 
 type StateMap<'map, T, const N: usize> =
     SparseBufferStack<'map, UpdateItem<'map, T>, BufferedItem<'map, T>, N>;
@@ -60,7 +56,7 @@ pub struct TransposerEngine<
     #[pin]
     input_stream: S,
 
-    input_buffer: InputBuffer<T::Time, T::Input>,
+    input_buffer:  InputBuffer<T::Time, T::Input>,
     output_buffer: OutputBuffer<'map, T>,
 
     #[pin]
@@ -109,7 +105,7 @@ where
         let mut entry = output_buffer.first_entry()?;
         let time = entry.key().raw_time();
         if time > poll_time {
-            return None;
+            return None
         }
 
         let vec = entry.get_mut();
@@ -154,7 +150,7 @@ where
             let last_state_map_time = state_map.as_mut().peek().time.raw_time();
 
             if time > last_state_map_time {
-                break;
+                break
             }
 
             if state_map.as_ref().can_pop() {
@@ -173,7 +169,7 @@ where
                 }
                 state_map.as_mut().pop();
             } else {
-                break;
+                break
             }
         }
 
@@ -209,7 +205,7 @@ where
             let last_state_map_time = state_map.as_mut().peek().time.raw_time();
 
             if next_input_time > last_state_map_time {
-                break;
+                break
             }
 
             // SAFETY: the references in update_item.time are dropped before pop is called again, so they are never invalid.
@@ -229,10 +225,10 @@ where
                                 _ => unreachable!(),
                             };
                             input_buffer.extend_front(time, inputs);
-                        }
-                        UpdateItemData::Schedule => {}
+                        },
+                        UpdateItemData::Schedule => {},
                     }
-                }
+                },
                 None => break,
             }
         }
@@ -245,7 +241,7 @@ where
         poll_time: T::Time,
         cx: &mut Context<'_>,
         state_builder: F,
-    ) -> SourcePoll<T::Time, T::Output, Out>
+    ) -> SourcePoll<T::Time, T::Output, Out, <Self as Source>::Error>
     where
         F: Fn(
             Pin<&mut S>,
@@ -265,7 +261,7 @@ where
         'main: loop {
             // resolve events and rollbacks from previous iteration.
             match input_state_event_update {
-                InputStateEventUpdate::None => {}
+                InputStateEventUpdate::None => {},
                 InputStateEventUpdate::Event(time, input) => {
                     input_buffer.insert_back(time, input);
                     Self::resolve_state_map_and_input_buffer(
@@ -274,7 +270,7 @@ where
                         output_buffer,
                     );
                     input_state_event_update = InputStateEventUpdate::None;
-                }
+                },
                 InputStateEventUpdate::Rollback(time) => {
                     let rollback_time = Self::handle_input_rollback(
                         input_buffer,
@@ -283,7 +279,7 @@ where
                         time,
                     );
                     if let Some(rollback_time) = rollback_time {
-                        break 'main SourcePoll::Rollback(rollback_time);
+                        break 'main SourcePoll::Rollback(rollback_time)
                     }
                     Self::resolve_state_map_and_input_buffer(
                         input_buffer,
@@ -291,7 +287,7 @@ where
                         output_buffer,
                     );
                     input_state_event_update = InputStateEventUpdate::None;
-                }
+                },
             }
 
             let last_buffered_index_before_poll = state_map
@@ -324,20 +320,20 @@ where
                         SourcePoll::Pending => break 'main SourcePoll::Pending,
                         SourcePoll::Rollback(time) => {
                             input_state_event_update = InputStateEventUpdate::Rollback(time);
-                            continue 'main;
-                        }
+                            continue 'main
+                        },
                         SourcePoll::Event(input, time) => {
                             input_state_event_update = match T::can_handle(time, &input) {
                                 true => InputStateEventUpdate::Event(time, input),
                                 false => InputStateEventUpdate::None,
                             };
-                            continue 'main;
-                        }
-                        _ => {}
+                            continue 'main
+                        },
+                        _ => {},
                     }
 
                     let (time, input) = Self::pop_output_buffer(output_buffer, poll_time).unwrap();
-                    break 'main SourcePoll::Event(input, time);
+                    break 'main SourcePoll::Event(input, time)
                 }
             }
 
@@ -351,15 +347,15 @@ where
                             SourcePoll::Pending => break 'main SourcePoll::Pending,
                             SourcePoll::Rollback(time) => {
                                 input_state_event_update = InputStateEventUpdate::Rollback(time);
-                                continue 'main;
-                            }
+                                continue 'main
+                            },
                             SourcePoll::Event(input, time) => {
                                 input_state_event_update = match T::can_handle(time, &input) {
                                     true => InputStateEventUpdate::Event(time, input),
                                     false => InputStateEventUpdate::None,
                                 };
-                                continue 'main;
-                            }
+                                continue 'main
+                            },
                             SourcePoll::Scheduled(state, ..) => state,
                             SourcePoll::Ready(state) => state,
                         };
@@ -367,9 +363,9 @@ where
                         // pass in our new state.
                         match buffer.as_mut().project().input_state.set(state) {
                             Err(_) => unreachable!(),
-                            Ok(()) => {}
+                            Ok(()) => {},
                         }
-                    }
+                    },
                     false => {
                         match input_stream
                             .as_mut()
@@ -378,19 +374,19 @@ where
                             SourcePoll::Pending => break 'main SourcePoll::Pending,
                             SourcePoll::Rollback(time) => {
                                 input_state_event_update = InputStateEventUpdate::Rollback(time);
-                                continue 'main;
-                            }
+                                continue 'main
+                            },
                             SourcePoll::Event(input, time) => {
                                 input_state_event_update = match T::can_handle(time, &input) {
                                     true => InputStateEventUpdate::Event(time, input),
                                     false => InputStateEventUpdate::None,
                                 };
-                                continue 'main;
-                            }
-                            SourcePoll::Scheduled((), ..) => {}
-                            SourcePoll::Ready(()) => {}
+                                continue 'main
+                            },
+                            SourcePoll::Scheduled((), ..) => {},
+                            SourcePoll::Ready(()) => {},
                         }
-                    }
+                    },
                 };
 
                 // poll the actual update.
@@ -398,27 +394,27 @@ where
                     Poll::Ready(outputs) => {
                         // we do not want to do anything with events if they have already been emitted.
                         if update.events_emitted() {
-                            continue 'main;
+                            continue 'main
                         }
 
                         if outputs.is_empty() {
                             update.mark_none_emitted();
-                            continue 'main;
+                            continue 'main
                         }
 
                         update.mark_event_emitted();
                         Self::push_output_buffer(output_buffer, update.time.clone(), outputs);
                         let (time, input) =
                             Self::pop_output_buffer(output_buffer, poll_time).unwrap();
-                        break 'main SourcePoll::Event(input, time);
-                    }
+                        break 'main SourcePoll::Event(input, time)
+                    },
                     Poll::Pending => {
                         if buffer.input_state.requested() {
-                            continue 'main;
+                            continue 'main
                         } else {
-                            break 'main SourcePoll::Pending;
+                            break 'main SourcePoll::Pending
                         }
-                    }
+                    },
                 }
             }
 
@@ -447,7 +443,7 @@ where
                         BufferedItem::refurb,
                     )
                     .unwrap();
-                continue 'main;
+                continue 'main
             } else {
                 let next_possible_scheduled_event_time = state_map
                     .find(|update_item| !update_item.data_emitted().done())
@@ -464,8 +460,8 @@ where
                         input_state_event_update: new_update,
                     } => {
                         input_state_event_update = new_update;
-                        continue 'main;
-                    }
+                        continue 'main
+                    },
                     PollInternal::Ready {
                         interpolated,
                         scheduled_input_time,
@@ -481,7 +477,7 @@ where
                                 Ordering::Greater => SourcePoll::Scheduled(interpolated, t2),
                             },
                         }
-                    }
+                    },
                 }
             }
         }
@@ -491,7 +487,7 @@ where
         self: Pin<&mut Self>,
         poll_time: T::Time,
         cx: &mut Context<'_>,
-    ) -> SourcePoll<T::Time, T::Output, T::OutputState> {
+    ) -> SourcePoll<T::Time, T::Output, T::OutputState, ()> {
         self.poll_internal(
             poll_time,
             cx,
@@ -508,7 +504,7 @@ where
                         return PollInternal::Continue {
                             input_state_event_update: InputStateEventUpdate::Rollback(time),
                         }
-                    }
+                    },
                     SourcePoll::Event(input, time) => {
                         return PollInternal::Continue {
                             input_state_event_update: match T::can_handle(time, &input) {
@@ -516,7 +512,7 @@ where
                                 false => InputStateEventUpdate::None,
                             },
                         }
-                    }
+                    },
                     SourcePoll::Scheduled(state, time) => (state, Some(time)),
                     SourcePoll::Ready(state) => (state, None),
                 };
@@ -556,7 +552,7 @@ enum PollInternal<T: Transposer, Out> {
         input_state_event_update: InputStateEventUpdate<T>,
     },
     Ready {
-        interpolated: Out,
+        interpolated:         Out,
         scheduled_input_time: Option<T::Time>,
     },
 }
@@ -584,7 +580,7 @@ where
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         self.poll_forget_internal::<false>(poll_time, cx)
     }
 
@@ -592,7 +588,7 @@ where
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State> {
+    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         self.poll_forget_internal::<true>(poll_time, cx)
     }
 
@@ -600,7 +596,7 @@ where
         self: Pin<&mut Self>,
         poll_time: Self::Time,
         cx: &mut Context<'_>,
-    ) -> SourcePoll<Self::Time, Self::Event, ()> {
+    ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error> {
         self.poll_internal(
             poll_time,
             cx,
@@ -612,7 +608,7 @@ where
                         return PollInternal::Continue {
                             input_state_event_update: InputStateEventUpdate::Rollback(time),
                         }
-                    }
+                    },
                     SourcePoll::Event(input, time) => {
                         return PollInternal::Continue {
                             input_state_event_update: match T::can_handle(time, &input) {
@@ -620,7 +616,7 @@ where
                                 false => InputStateEventUpdate::None,
                             },
                         }
-                    }
+                    },
                     SourcePoll::Scheduled((), time) => Some(time),
                     SourcePoll::Ready(()) => None,
                 };

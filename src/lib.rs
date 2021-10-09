@@ -6,3 +6,4 @@
 mod test;
 
 pub mod source;
+pub mod transposer;

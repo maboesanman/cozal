@@ -1,9 +1,10 @@
+use core::future::Future;
 use core::pin::Pin;
 
-use core::future::Future;
 use rand::RngCore;
 
-use super::{expire_handle::ExpireHandle, Transposer};
+use super::expire_handle::ExpireHandle;
+use super::Transposer;
 
 pub trait InitContext<'a, T: Transposer>:
     InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext

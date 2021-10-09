@@ -1,13 +1,16 @@
-use core::{marker::PhantomData, mem::MaybeUninit, pin::Pin};
+use core::marker::PhantomData;
+use core::mem::MaybeUninit;
+use core::pin::Pin;
+
+use pin_project::pin_project;
 
 use super::pin_stack::PinStack;
-use pin_project::pin_project;
 
 #[pin_project]
 pub struct SparseBufferStack<'stack, I: 'stack, B: 'stack, const N: usize> {
     needs_init: Option<Box<dyn 'stack + FnOnce(&'stack I) -> B>>,
     // this always has at least one item in it. pop doesn't let you pop the first item.
-    stack: PinStack<StackItem<I>>,
+    stack:      PinStack<StackItem<I>>,
 
     #[pin]
     buffer: [BufferItem<'stack, I, B>; N],
@@ -24,7 +27,7 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, 
         let mut stack = PinStack::new();
         stack.push(StackItem {
             buffer_index: 0,
-            item: first_item,
+            item:         first_item,
         });
 
         let buffer: [BufferItem<'stack, I, B>; N] =
@@ -42,7 +45,7 @@ impl<'stack, I: 'stack, B: 'stack, const N: usize> SparseBufferStack<'stack, I, 
     fn ensure_init(self: Pin<&mut Self>) {
         let this = self.project();
         if this.needs_init.is_none() {
-            return;
+            return
         }
 
         let constructor = core::mem::take(this.needs_init).unwrap();
@@ -345,7 +348,7 @@ impl<'stack, I: 'stack, B: 'stack> BufferItem<'stack, I, B> {
     pub fn new_zeroed() -> Self {
         Self {
             stack_index: usize::MAX,
-            item: MaybeUninit::uninit(),
+            item:        MaybeUninit::uninit(),
 
             _marker: PhantomData,
         }

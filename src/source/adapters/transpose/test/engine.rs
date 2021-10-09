@@ -1,14 +1,12 @@
 use core::task::Context;
 
 use rand::{Rng, SeedableRng};
-use rand_chacha::{rand_core::block::BlockRng, ChaCha12Core};
+use rand_chacha::rand_core::block::BlockRng;
+use rand_chacha::ChaCha12Core;
 
-use crate::source::adapters::transposer::test::test_transposer::HandleRecord;
-use crate::source::adapters::transposer::test::test_transposer::TestTransposer;
+use crate::source::adapters::transposer::test::test_transposer::{HandleRecord, TestTransposer};
 use crate::source::adapters::Iter;
-use crate::source::Source;
-use crate::source::SourceExt;
-use crate::source::SourcePoll;
+use crate::source::{Source, SourceExt, SourcePoll};
 use crate::test::test_waker::DummyWaker;
 
 #[test]

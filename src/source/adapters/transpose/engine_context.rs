@@ -1,9 +1,10 @@
 use core::future::Future;
 use core::pin::Pin;
 
-use super::super::{context::*, ExpireHandle, Transposer};
-
-use super::{lazy_state::LazyState, transposer_frame::TransposerFrameInternal};
+use super::lazy_state::LazyState;
+use super::transposer_frame::TransposerFrameInternal;
+use crate::transposer::context::*;
+use crate::transposer::{ExpireHandle, Transposer};
 
 /// This is the interface through which you can do a variety of functions in your transposer.
 ///

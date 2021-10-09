@@ -1,20 +1,17 @@
 use core::future::Future;
-use core::{
-    marker::PhantomPinned,
-    mem::MaybeUninit,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use core::marker::PhantomPinned;
+use core::mem::MaybeUninit;
+use core::pin::Pin;
+use core::task::{Context, Poll};
 use std::mem::ManuallyDrop;
 
 use futures_core::FusedFuture;
 
-use super::super::Transposer;
-
-use super::{
-    engine_context::EngineContext, lazy_state::LazyState, transposer_frame::TransposerFrame,
-    update_result::UpdateResult,
-};
+use super::engine_context::EngineContext;
+use super::lazy_state::LazyState;
+use super::transposer_frame::TransposerFrame;
+use super::update_result::UpdateResult;
+use crate::transposer::Transposer;
 
 /// future to initialize a TransposerFrame
 ///
@@ -32,14 +29,14 @@ enum TransposerUpdateState<'f, T: Transposer> {
     UnpollableInput {
         frame_ref: &'f mut TransposerFrame<'f, T>,
         state_ref: &'f mut LazyState<T::InputState>,
-        time: T::Time,
-        inputs: &'f [T::Input],
+        time:      T::Time,
+        inputs:    &'f [T::Input],
     },
     UnpollableScheduled {
         frame_ref: &'f mut TransposerFrame<'f, T>,
         state_ref: &'f mut LazyState<T::InputState>,
-        time: T::Time,
-        payload: T::Scheduled,
+        time:      T::Time,
+        payload:   T::Scheduled,
     },
     // this can be split into separate PollableInit/Input/Scheduled someday if named existentials become a thing.
     Pollable(TransposerUpdatePollableState<'f, T>),
@@ -134,7 +131,9 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
         let inner = &mut this.0;
         'poll: loop {
             match inner {
-                TransposerUpdateState::UnpollableInit { .. } => {
+                TransposerUpdateState::UnpollableInit {
+                    ..
+                } => {
                     // get vars ready to take out of self.
                     let mut transposer_ref: MaybeUninit<&'f mut T> = MaybeUninit::uninit();
 
@@ -186,8 +185,10 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
                     } else {
                         unreachable!()
                     }
-                }
-                TransposerUpdateState::UnpollableInput { .. } => {
+                },
+                TransposerUpdateState::UnpollableInput {
+                    ..
+                } => {
                     // get vars ready to take out of self.
                     let mut transposer_ref: MaybeUninit<&'f mut T> = MaybeUninit::uninit();
                     let mut time_val: MaybeUninit<T::Time> = MaybeUninit::uninit();
@@ -251,8 +252,10 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
                     } else {
                         unreachable!()
                     }
-                }
-                TransposerUpdateState::UnpollableScheduled { .. } => {
+                },
+                TransposerUpdateState::UnpollableScheduled {
+                    ..
+                } => {
                     // get vars ready to take out of self.
                     let mut transposer_ref: MaybeUninit<&'f mut T> = MaybeUninit::uninit();
                     let mut time_val: MaybeUninit<T::Time> = MaybeUninit::uninit();
@@ -316,7 +319,7 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
                     } else {
                         unreachable!()
                     }
-                }
+                },
                 TransposerUpdateState::Pollable(TransposerUpdatePollableState {
                     future, ..
                 }) => {
@@ -335,10 +338,10 @@ impl<'f, T: Transposer> Future for TransposerUpdate<'f, T> {
                             } else {
                                 unreachable!()
                             }
-                        }
+                        },
                         Poll::Pending => Poll::Pending,
-                    };
-                }
+                    }
+                },
                 TransposerUpdateState::Terminated => break 'poll Poll::Pending,
                 TransposerUpdateState::Poisioned => todo!(),
             };

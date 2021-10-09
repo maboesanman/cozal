@@ -1,19 +1,16 @@
 use core::cmp::Ordering;
 
-use super::super::{
-    context::{ExpireEventError, ScheduleEventError},
-    ExpireHandle, Transposer,
-};
-
-use super::{engine_time::EngineTime, update_item::UpdateItem};
-use super::{
-    engine_time::EngineTimeSchedule, expire_handle_factory::ExpireHandleFactory,
-    input_buffer::InputBuffer,
-};
-
 use im::{HashMap, OrdMap};
 use rand::SeedableRng;
-use rand_chacha::{rand_core::block::BlockRng, ChaCha12Core};
+use rand_chacha::rand_core::block::BlockRng;
+use rand_chacha::ChaCha12Core;
+
+use super::engine_time::{EngineTime, EngineTimeSchedule};
+use super::expire_handle_factory::ExpireHandleFactory;
+use super::input_buffer::InputBuffer;
+use super::update_item::UpdateItem;
+use crate::transposer::context::{ExpireEventError, ScheduleEventError};
+use crate::transposer::{ExpireHandle, Transposer};
 
 #[derive(Clone)]
 pub struct TransposerFrame<'a, T: Transposer>
@@ -21,7 +18,7 @@ where
     T::Scheduled: Clone,
 {
     pub transposer: T,
-    pub internal: TransposerFrameInternal<'a, T>,
+    pub internal:   TransposerFrameInternal<'a, T>,
 }
 
 impl<'a, T: Transposer> TransposerFrame<'a, T>
@@ -76,11 +73,11 @@ pub struct TransposerFrameInternal<'a, T: Transposer>
 where
     T::Scheduled: Clone,
 {
-    pub current_time: &'a EngineTime<'a, T::Time>,
+    pub current_time:     &'a EngineTime<'a, T::Time>,
     pub scheduling_index: usize,
     // schedule and expire_handles
-    pub schedule: OrdMap<EngineTimeSchedule<'a, T::Time>, T::Scheduled>,
-    pub expire_handles: HashMap<ExpireHandle, EngineTimeSchedule<'a, T::Time>>,
+    pub schedule:         OrdMap<EngineTimeSchedule<'a, T::Time>, T::Scheduled>,
+    pub expire_handles:   HashMap<ExpireHandle, EngineTimeSchedule<'a, T::Time>>,
 
     pub expire_handle_factory: ExpireHandleFactory,
 
@@ -93,12 +90,12 @@ where
 {
     fn new(time: &'a EngineTime<'a, T::Time>, rng_seed: [u8; 32]) -> Self {
         Self {
-            current_time: time,
-            scheduling_index: 0,
-            schedule: OrdMap::new(),
-            expire_handles: HashMap::new(),
+            current_time:          time,
+            scheduling_index:      0,
+            schedule:              OrdMap::new(),
+            expire_handles:        HashMap::new(),
             expire_handle_factory: ExpireHandleFactory::new(),
-            rng: BlockRng::new(ChaCha12Core::from_seed(rng_seed)),
+            rng:                   BlockRng::new(ChaCha12Core::from_seed(rng_seed)),
         }
     }
 
@@ -108,7 +105,7 @@ where
         payload: T::Scheduled,
     ) -> Result<(), ScheduleEventError> {
         if time < self.current_time.raw_time() {
-            return Err(ScheduleEventError::NewEventBeforeCurrent);
+            return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
         let time = EngineTimeSchedule {
@@ -129,7 +126,7 @@ where
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, ScheduleEventError> {
         if time < self.current_time.raw_time() {
-            return Err(ScheduleEventError::NewEventBeforeCurrent);
+            return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
         let handle = self.expire_handle_factory.next();

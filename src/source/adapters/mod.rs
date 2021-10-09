@@ -1,9 +1,9 @@
 mod duplicate;
 mod map;
 // mod offload;
+mod multiplex;
 mod shift;
 // mod transpose;
-mod multiplex;
 
 pub use self::duplicate::Duplicate;
 pub use self::map::Map;

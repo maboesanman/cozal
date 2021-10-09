@@ -2,14 +2,13 @@ use std::sync::RwLock;
 
 use matches;
 
-use super::super::Transposer;
-
 use super::engine_time::EngineTime;
+use crate::transposer::Transposer;
 
 pub struct UpdateItem<'a, T: Transposer> {
-    pub time: EngineTime<'a, T::Time>,
+    pub time:     EngineTime<'a, T::Time>,
     // TODO: EngineTime and UpdateItemData both track the same thing. they probably should be merged.
-    pub data: UpdateItemData<T>,
+    pub data:     UpdateItemData<T>,
     data_emitted: RwLock<DataEmitted<T::Time>>,
 }
 
@@ -43,17 +42,17 @@ impl<'a, T: Transposer> UpdateItem<'a, T> {
         let data_emitted = self.data_emitted.read().unwrap();
 
         match *data_emitted {
-            DataEmitted::Event => {}
+            DataEmitted::Event => {},
             DataEmitted::State(t) => {
                 core::mem::drop(data_emitted);
                 if time < t {
                     *self.data_emitted.write().unwrap() = DataEmitted::State(time)
                 }
-            }
+            },
             _ => {
                 core::mem::drop(data_emitted);
                 *self.data_emitted.write().unwrap() = DataEmitted::State(time)
-            }
+            },
         }
     }
 

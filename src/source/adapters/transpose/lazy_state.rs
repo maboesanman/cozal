@@ -1,9 +1,6 @@
-use core::{
-    pin::Pin,
-    task::{Context, Poll},
-};
-
 use core::future::Future;
+use core::pin::Pin;
+use core::task::{Context, Poll};
 
 pub struct LazyState<S>(LazyStateInner<S>);
 pub enum LazyStateInner<S> {
@@ -27,7 +24,7 @@ impl<'a, S> Future for &'a mut LazyState<S> {
                 LazyStateInner::Ready(state) => {
                     result = Poll::Ready(state);
                     LazyStateInner::Pending
-                }
+                },
                 _ => LazyStateInner::Requested,
             },
         );

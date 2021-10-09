@@ -12,7 +12,7 @@ impl<Time: Ord + Copy, Input> InputBuffer<Time, Input> {
             Some(current) => current.push(input),
             None => {
                 self.0.insert(time, vec![input]);
-            }
+            },
         }
     }
 
@@ -22,10 +22,10 @@ impl<Time: Ord + Copy, Input> InputBuffer<Time, Input> {
                 let mut new_vec: Vec<_> = inputs.into();
                 new_vec.extend(current.drain(..));
                 *current = new_vec;
-            }
+            },
             None => {
                 self.0.insert(time, inputs.into());
-            }
+            },
         }
     }
 

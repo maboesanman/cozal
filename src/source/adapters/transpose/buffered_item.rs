@@ -1,19 +1,18 @@
 use core::future::Future;
-use core::{
-    marker::PhantomPinned,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use core::marker::PhantomPinned;
+use core::pin::Pin;
+use core::task::{Context, Poll};
+
 use futures_core::FusedFuture;
 use pin_project::pin_project;
 
-use super::super::Transposer;
-
-use super::{
-    engine_time::EngineTime, input_buffer::InputBuffer, lazy_state::LazyState,
-    transposer_frame::TransposerFrame, transposer_update::TransposerUpdate,
-    update_item::UpdateItem, update_item::UpdateItemData,
-};
+use super::engine_time::EngineTime;
+use super::input_buffer::InputBuffer;
+use super::lazy_state::LazyState;
+use super::transposer_frame::TransposerFrame;
+use super::transposer_update::TransposerUpdate;
+use super::update_item::{UpdateItem, UpdateItemData};
+use crate::transposer::Transposer;
 
 #[pin_project(project=BufferedItemProject)]
 pub struct BufferedItem<'a, T: Transposer> {
@@ -54,10 +53,12 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
         T: Clone,
     {
         BufferedItem {
-            state: BufferedItemState::Unpollable { update_item },
+            state:            BufferedItemState::Unpollable {
+                update_item,
+            },
             transposer_frame: TransposerFrame::new(transposer, &update_item.time, rng_seed),
-            input_state: LazyState::new(),
-            _marker: PhantomPinned,
+            input_state:      LazyState::new(),
+            _marker:          PhantomPinned,
         }
     }
 
@@ -70,10 +71,12 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
         debug_assert!(self.is_terminated());
 
         BufferedItem {
-            state: BufferedItemState::Unpollable { update_item },
+            state:            BufferedItemState::Unpollable {
+                update_item,
+            },
             transposer_frame: self.transposer_frame.clone(),
-            input_state: LazyState::new(),
-            _marker: PhantomPinned,
+            input_state:      LazyState::new(),
+            _marker:          PhantomPinned,
         }
     }
 
@@ -83,8 +86,9 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
         debug_assert!(self.is_terminated());
         let mut this = self.project();
 
-        this.state
-            .set(BufferedItemState::Unpollable { update_item });
+        this.state.set(BufferedItemState::Unpollable {
+            update_item,
+        });
         *this.input_state = LazyState::new();
     }
 
@@ -105,7 +109,7 @@ impl<'a, T: Transposer> BufferedItem<'a, T> {
                 let (new_time, inputs) = input_buffer.pop_first().unwrap();
                 debug_assert!(time.raw_time() == new_time);
                 UpdateItemData::Input(inputs.into_boxed_slice())
-            }
+            },
             EngineTime::Schedule(_) => UpdateItemData::Schedule,
         };
 
@@ -125,7 +129,9 @@ impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
                 ..
             } = self.as_mut().project();
             match state.as_mut().project() {
-                BufferedItemStateProject::Unpollable { update_item } => {
+                BufferedItemStateProject::Unpollable {
+                    update_item,
+                } => {
                     let update_item: &'a UpdateItem<'a, T> = update_item;
 
                     let transposer_frame: *mut _ = transposer_frame;
@@ -140,7 +146,7 @@ impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
                         (EngineTime::Init, UpdateItemData::Init(_)) => {
                             debug_assert!(transposer_frame.init_next(update_item).is_none());
                             TransposerUpdate::new_init(transposer_frame, input_state)
-                        }
+                        },
                         (EngineTime::Input(time), UpdateItemData::Input(data)) => {
                             debug_assert!(transposer_frame.init_next(update_item).is_none());
                             TransposerUpdate::new_input(
@@ -149,7 +155,7 @@ impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
                                 *time,
                                 data.as_ref(),
                             )
-                        }
+                        },
                         (EngineTime::Schedule(time), UpdateItemData::Schedule) => {
                             match transposer_frame.init_next(update_item) {
                                 Some((time_again, event_payload)) => {
@@ -160,22 +166,26 @@ impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
                                         time.time,
                                         event_payload,
                                     )
-                                }
+                                },
                                 None => unreachable!(),
                             }
-                        }
+                        },
                         _ => unreachable!(),
                     };
 
-                    state.set(BufferedItemState::Pollable { update_future });
-                }
-                BufferedItemStateProject::Pollable { update_future } => {
+                    state.set(BufferedItemState::Pollable {
+                        update_future,
+                    });
+                },
+                BufferedItemStateProject::Pollable {
+                    update_future,
+                } => {
                     let update_future: Pin<&mut TransposerUpdate<'a, T>> = update_future;
                     break match update_future.poll(cx) {
                         Poll::Ready(result) => Poll::Ready(result.outputs),
                         Poll::Pending => Poll::Pending,
-                    };
-                }
+                    }
+                },
             };
         }
     }
@@ -183,7 +193,10 @@ impl<'a, T: Transposer> Future for BufferedItem<'a, T> {
 
 impl<'a, T: Transposer> FusedFuture for BufferedItem<'a, T> {
     fn is_terminated(&self) -> bool {
-        if let BufferedItemState::Pollable { update_future } = &self.state {
+        if let BufferedItemState::Pollable {
+            update_future,
+        } = &self.state
+        {
             update_future.is_terminated()
         } else {
             false

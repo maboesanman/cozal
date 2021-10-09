@@ -1,4 +1,7 @@
-use core::{marker::PhantomData, mem::MaybeUninit, ops::RangeBounds, pin::Pin};
+use core::marker::PhantomData;
+use core::mem::MaybeUninit;
+use core::ops::RangeBounds;
+use core::pin::Pin;
 
 pub struct PinStack<T: Sized> {
     length: usize,
@@ -30,7 +33,7 @@ impl<T: Sized> PinStack<T> {
     pub fn reserve(&mut self, additional: usize) {
         let new_highest_i = self.length + additional;
         if new_highest_i == 0 {
-            return;
+            return
         }
         let new_highest_i = new_highest_i - 1;
 
@@ -116,7 +119,7 @@ impl<T: Sized> PinStack<T> {
 
     pub fn peek(&self) -> Option<&T> {
         if self.length == 0 {
-            return None;
+            return None
         }
 
         self.get(self.length - 1)
@@ -124,7 +127,7 @@ impl<T: Sized> PinStack<T> {
 
     pub fn peek_mut(&mut self) -> Option<Pin<&mut T>> {
         if self.length == 0 {
-            return None;
+            return None
         }
 
         self.get_mut(self.length - 1)
@@ -184,8 +187,8 @@ where
 
     // index in array
     front: usize,
-    back: usize,
-    done: bool,
+    back:  usize,
+    done:  bool,
 
     _marker: PhantomData<&'a mut (K, F)>,
 }
@@ -207,7 +210,7 @@ where
                 done: true,
 
                 _marker: PhantomData,
-            };
+            }
         }
         let mut low = 0;
         let mut high = pin_stack.length - 1;
@@ -220,18 +223,18 @@ where
                     match k.cmp(x) {
                         core::cmp::Ordering::Less => {
                             low = m + 1;
-                        }
+                        },
                         core::cmp::Ordering::Equal => {
                             high = m;
-                        }
+                        },
                         core::cmp::Ordering::Greater => {
                             high = m;
-                        }
+                        },
                     }
                 }
 
                 low
-            }
+            },
             core::ops::Bound::Excluded(x) => {
                 while low < high {
                     let m = (low + high) / 2;
@@ -240,18 +243,18 @@ where
                     match k.cmp(x) {
                         core::cmp::Ordering::Less => {
                             low = m + 1;
-                        }
+                        },
                         core::cmp::Ordering::Equal => {
                             low = m + 1;
-                        }
+                        },
                         core::cmp::Ordering::Greater => {
                             high = m;
-                        }
+                        },
                     }
                 }
 
                 low
-            }
+            },
             core::ops::Bound::Unbounded => low,
         };
 
@@ -266,18 +269,18 @@ where
                     match k.cmp(x) {
                         core::cmp::Ordering::Less => {
                             low = m;
-                        }
+                        },
                         core::cmp::Ordering::Equal => {
                             low = m;
-                        }
+                        },
                         core::cmp::Ordering::Greater => {
                             high = m - 1;
-                        }
+                        },
                     }
                 }
 
                 low
-            }
+            },
             core::ops::Bound::Excluded(x) => {
                 while low < high {
                     let m = (low + high + 1) / 2;
@@ -286,18 +289,18 @@ where
                     match k.cmp(x) {
                         core::cmp::Ordering::Less => {
                             low = m;
-                        }
+                        },
                         core::cmp::Ordering::Equal => {
                             high = m - 1;
-                        }
+                        },
                         core::cmp::Ordering::Greater => {
                             high = m - 1;
-                        }
+                        },
                     }
                 }
 
                 low
-            }
+            },
             core::ops::Bound::Unbounded => high,
         };
 
@@ -332,7 +335,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
-            return None;
+            return None
         }
         let index = self.front;
         self.front += 1;
@@ -353,7 +356,7 @@ where
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.done {
-            return None;
+            return None
         }
         let index = self.back;
         if self.back == 0 {
