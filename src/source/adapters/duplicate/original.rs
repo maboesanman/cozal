@@ -120,7 +120,7 @@ where
                 },
                 SourcePollOk::Finalize(t) => {
                     let rollback_event = RollbackEvent::Finalize {
-                        time:  t,
+                        time: t
                     };
                     self.distribute_event(rollback_event, from_index);
 

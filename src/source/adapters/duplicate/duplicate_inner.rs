@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 use std::num::NonZeroUsize;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::task::Poll;
 
 use super::original::Original;
@@ -64,7 +63,8 @@ where
         }
 
         // poll the underlying source for new info
-        let poll = self.original
+        let poll = self
+            .original
             .poll(poll_time, updated_cx, poll_fn, self.index);
 
         // adjust the scheduled/ready response to account for previously emitted events.
@@ -75,7 +75,7 @@ where
             Poll::Ready(Ok(SourcePollOk::Scheduled(s, t))) => {
                 todo!()
             },
-            other => other
+            other => other,
         }
     }
 
