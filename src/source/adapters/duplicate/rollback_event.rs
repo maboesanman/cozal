@@ -73,22 +73,22 @@ impl<Time: Ord + Copy, Event> PartialEq for RollbackEvent<Time, Event> {
     }
 }
 
-impl<Time: Ord + Copy, Event, State> Into<SourcePollOk<Time, Event, State>>
-    for RollbackEvent<Time, Event>
+impl<Time: Ord + Copy, Event, State> From<RollbackEvent<Time, Event>>
+    for SourcePollOk<Time, Event, State>
 {
-    fn into(self) -> SourcePollOk<Time, Event, State> {
-        match self {
-            Self::Event {
+    fn from(rollback_event: RollbackEvent<Time, Event>) -> Self {
+        match rollback_event {
+            RollbackEvent::Event {
                 time,
                 event,
             } => SourcePollOk::Event(event, time),
-            Self::Rollback {
+            RollbackEvent::Rollback {
                 time,
             } => SourcePollOk::Rollback(time),
-            Self::Finalize {
+            RollbackEvent::Finalize {
                 time,
             } => SourcePollOk::Finalize(time),
-            Self::Search {
+            RollbackEvent::Search {
                 ..
             } => unreachable!(),
         }

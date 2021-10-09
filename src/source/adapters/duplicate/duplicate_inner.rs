@@ -196,6 +196,6 @@ impl<Src: Source> Events<Src> {
             }
         }
 
-        return None
+        None
     }
 }

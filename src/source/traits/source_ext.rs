@@ -1,13 +1,5 @@
 use super::Source;
-use crate::source::adapters::{
-    offload,
-    Duplicate,
-    Map,
-    Multiplex,
-    OffloadFuture,
-    OffloadSource,
-    Shift,
-};
+use crate::source::adapters::{Duplicate, Map, Multiplex, Shift};
 
 impl<S> SourceExt for S where S: Source {}
 
@@ -69,9 +61,9 @@ pub trait SourceExt: Source + Sized {
     }
 
     /// Adapter for offloading work to a future
-    fn offload(self) -> (OffloadSource<Self>, OffloadFuture<Self>) {
-        offload(self)
-    }
+    // fn offload(self) -> (OffloadSource<Self>, OffloadFuture<Self>) {
+    //     offload(self)
+    // }
 
     /// Adapter for calling a limited-channel source on any number of channels
     fn multiplex(self) -> Multiplex<Self> {
