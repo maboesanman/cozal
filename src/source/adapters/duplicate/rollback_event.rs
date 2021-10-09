@@ -1,38 +1,32 @@
-use core::{cmp::Ordering, task::Poll};
+use core::cmp::Ordering;
 
-use crate::source::{SourcePoll, source_poll::SourcePollOk};
+use crate::source::source_poll::SourcePollOk;
 
-
+#[derive(Clone)]
 pub enum RollbackEvent<Time: Ord + Copy, Event> {
     Event { time: Time, event: Event },
     Rollback { time: Time },
+    Finalize { time: Time },
 
     // never stored; used for searching.
     Search { time: Time },
 }
 
-impl<Time: Ord + Copy, Event> Clone for RollbackEvent<Time, Event>
-where
-    Event: Clone,
-{
-    fn clone(&self) -> Self {
-        match self {
-            Self::Event { time, event } => Self::Event {
-                time: *time,
-                event: event.clone(),
-            },
-            Self::Rollback { time } => Self::Rollback { time: *time },
-            Self::Search { time } => Self::Search { time: *time },
-        }
-    }
-}
-
 impl<Time: Ord + Copy, Event> RollbackEvent<Time, Event> {
     fn time(&self) -> &Time {
         match self {
-            Self::Event { time, .. } => time,
-            Self::Rollback { time, .. } => time,
-            Self::Search { time, .. } => time,
+            Self::Event {
+                time, ..
+            } => time,
+            Self::Rollback {
+                time,
+            } => time,
+            Self::Search {
+                time,
+            } => time,
+            Self::Finalize {
+                time,
+            } => time,
         }
     }
 }
@@ -40,10 +34,26 @@ impl<Time: Ord + Copy, Event> RollbackEvent<Time, Event> {
 impl<Time: Ord + Copy, Event> Ord for RollbackEvent<Time, Event> {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (Self::Event { .. }, Self::Rollback { .. }) => Ordering::Greater,
-            (Self::Rollback { .. }, Self::Event { .. }) => Ordering::Less,
-            (Self::Rollback { .. }, Self::Search { .. }) => Ordering::Less,
-            (Self::Search { .. }, Self::Rollback { .. }) => Ordering::Greater,
+            (
+                Self::Rollback {
+                    time: s,
+                },
+                Self::Rollback {
+                    time: o,
+                },
+            ) => s.cmp(o),
+            (
+                _,
+                Self::Rollback {
+                    ..
+                },
+            ) => Ordering::Greater,
+            (
+                Self::Rollback {
+                    ..
+                },
+                _,
+            ) => Ordering::Less,
             (s, o) => s.time().cmp(o.time()),
         }
     }
@@ -63,14 +73,24 @@ impl<Time: Ord + Copy, Event> PartialEq for RollbackEvent<Time, Event> {
     }
 }
 
-impl<Time: Ord + Copy, Event, State, Error> Into<SourcePoll<Time, Event, State, Error>>
+impl<Time: Ord + Copy, Event, State> Into<SourcePollOk<Time, Event, State>>
     for RollbackEvent<Time, Event>
 {
-    fn into(self) -> SourcePoll<Time, Event, State, Error> {
-        Poll::Ready(Ok(match self {
-            Self::Event { time, event } => SourcePollOk::Event(event, time),
-            Self::Rollback { time } => SourcePollOk::Rollback(time),
-            Self::Search { .. } => unreachable!(),
-        }))
+    fn into(self) -> SourcePollOk<Time, Event, State> {
+        match self {
+            Self::Event {
+                time,
+                event,
+            } => SourcePollOk::Event(event, time),
+            Self::Rollback {
+                time,
+            } => SourcePollOk::Rollback(time),
+            Self::Finalize {
+                time,
+            } => SourcePollOk::Finalize(time),
+            Self::Search {
+                ..
+            } => unreachable!(),
+        }
     }
 }
