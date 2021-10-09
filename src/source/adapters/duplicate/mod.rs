@@ -2,6 +2,7 @@ use core::pin::Pin;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+mod advanced;
 mod channel_map;
 mod duplicate_inner;
 mod duplicate_waker;
@@ -9,7 +10,6 @@ mod original;
 mod rollback_event;
 
 use self::duplicate_inner::DuplicateInner;
-use crate::source::source_poll::SourceAdvance;
 use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
 
@@ -78,8 +78,8 @@ where
         self.inner.poll(poll_time, cx, Src::poll_events)
     }
 
-    fn advance(self: Pin<&mut Self>, _time: Src::Time) -> SourceAdvance {
-        todo!()
+    fn advance(self: Pin<&mut Self>, time: Src::Time) {
+        self.inner.advance(time)
     }
 
     fn max_channel(&self) -> NonZeroUsize {

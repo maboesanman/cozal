@@ -72,17 +72,21 @@ where
             Poll::Ready(Ok(SourcePollOk::Ready(s))) => Poll::Ready(Ok({
                 match self.events.read().unwrap().first_event_time(None) {
                     Some(t) => SourcePollOk::Scheduled(s, t),
-                    None => todo!(),
+                    None => SourcePollOk::Ready(s),
                 }
             })),
             Poll::Ready(Ok(SourcePollOk::Scheduled(s, t1))) => Poll::Ready(Ok({
                 match self.events.read().unwrap().first_event_time(Some(t1)) {
                     Some(t2) => SourcePollOk::Scheduled(s, t1.min(t2)),
-                    None => todo!(),
+                    None => SourcePollOk::Scheduled(s, t1),
                 }
             })),
             other => other,
         }
+    }
+
+    pub fn advance(&self, time: Src::Time) {
+        self.original.advance(time, self.index);
     }
 
     pub fn max_channel(&self) -> NonZeroUsize {

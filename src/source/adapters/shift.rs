@@ -4,7 +4,7 @@ use core::task::Poll;
 
 use pin_project::pin_project;
 
-use crate::source::source_poll::{SourceAdvance, SourcePollErr, SourcePollOk};
+use crate::source::source_poll::{SourcePollErr, SourcePollOk};
 use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
 
@@ -101,7 +101,7 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
         self.poll_internal(time, cx, Src::poll_events)
     }
 
-    fn advance(self: Pin<&mut Self>, time: T) -> SourceAdvance {
+    fn advance(self: Pin<&mut Self>, time: T) {
         let this = self.project();
         let time = (this.into_old)(time);
         this.source.advance(time)

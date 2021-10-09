@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::task::Poll;
 
+use super::advanced::Advanced;
 use super::duplicate_inner::DuplicateInner;
 use super::duplicate_waker::EventWakers;
 use super::PollFn;
@@ -20,6 +21,7 @@ where
     pub source: Mutex<Src>,
     children:   RwLock<BTreeMap<usize, Weak<DuplicateInner<Src>>>>,
     wakers:     EventWakers,
+    advanced:   Mutex<Advanced<Src::Time>>,
 }
 
 impl<Src: Source> Original<Src>
@@ -31,6 +33,7 @@ where
             source:   Mutex::new(source),
             children: RwLock::new(BTreeMap::new()),
             wakers:   EventWakers::new(),
+            advanced: Mutex::new(Advanced::new()),
         };
 
         Arc::new(original)
@@ -48,6 +51,7 @@ where
     pub fn register_child(&self, index: usize, child: &Arc<DuplicateInner<Src>>) {
         let weak_child = Arc::downgrade(child);
         self.children.write().unwrap().insert(index, weak_child);
+        self.advanced.lock().unwrap().register_new_duplicate(index);
     }
 
     pub fn max_channel(&self) -> NonZeroUsize {
@@ -56,6 +60,16 @@ where
 
     pub fn get_new_waker(&self, index: usize, event_waker: Waker) -> Waker {
         self.wakers.get_new_waker(index, event_waker)
+    }
+
+    pub fn advance(&self, time: Src::Time, index: usize) {
+        if let Some(t) = self.advanced.lock().unwrap().advance(time, index) {
+            let mut source_lock = self.source.lock().unwrap();
+
+            // SAFETY: our source is structurally pinned inside a mutex inside original, which is an Arc, therefore unmoving.
+            let source: Pin<&mut Src> = unsafe { Pin::new_unchecked(&mut source_lock) };
+            source.advance(t);
+        }
     }
 
     pub fn poll<State>(
