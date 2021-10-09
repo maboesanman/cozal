@@ -18,7 +18,6 @@ where
     Src::Event: Clone,
 {
     pub source: Mutex<Src>,
-    scheduled:  RwLock<Option<Src::Time>>,
     children:   RwLock<BTreeMap<usize, Weak<DuplicateInner<Src>>>>,
     wakers:     EventWakers,
 }
@@ -30,7 +29,6 @@ where
     pub fn new(source: Src) -> Arc<Self> {
         let original = Original {
             source:    Mutex::new(source),
-            scheduled: RwLock::new(None),
             children:  RwLock::new(BTreeMap::new()),
             wakers:    EventWakers::new(),
         };
@@ -73,7 +71,7 @@ where
         let source: Pin<&mut Src> = unsafe { Pin::new_unchecked(&mut source_lock) };
         let poll = poll_fn(source, poll_time, cx);
 
-        // immediately delete all stored events at or after t.
+        // Immediately delete all stored events at or after t.
         if let Poll::Ready(Ok(SourcePollOk::Rollback(t))) = &poll {
             let children_lock = self.children.read().unwrap();
             for (_, dup) in children_lock.iter() {
@@ -83,19 +81,8 @@ where
             }
         }
 
-        // now we can release the lock.
-        core::mem::drop(source_lock);
-
-        // keep track of the scheduling promises made to us by source.
-        match &poll {
-            Poll::Ready(Ok(SourcePollOk::Scheduled(_s, t))) => {
-                *self.scheduled.write().unwrap() = Some(*t);
-            },
-            Poll::Ready(Ok(_)) => {
-                *self.scheduled.write().unwrap() = None;
-            },
-            _ => {},
-        };
+        // Now we can release the lock. Don't move this up.
+        drop(source_lock);
 
         match poll {
             Poll::Pending => Poll::Pending,
@@ -140,6 +127,8 @@ where
         let rollback_event = Arc::new(rollback_event);
 
         let children_lock = self.children.read().unwrap();
+
+        // send it to all but the from_index
         for (i, dup) in children_lock.iter() {
             if *i != from_index {
                 if let Some(dup) = dup.upgrade() {

@@ -1,5 +1,13 @@
 use super::Source;
-use crate::source::adapters::{offload, Map, Multiplex, OffloadFuture, OffloadSource, Shift};
+use crate::source::adapters::{
+    offload,
+    Duplicate,
+    Map,
+    Multiplex,
+    OffloadFuture,
+    OffloadSource,
+    Shift,
+};
 
 impl<S> SourceExt for S where S: Source {}
 
@@ -89,11 +97,11 @@ pub trait SourceExt: Source + Sized {
     //     Split::new(self, decide, convert)
     // }
 
-    // Wrap a source for duplication.
-    // fn duplicate(self) -> Duplicate<Self>
-    // where
-    //     Self::Event: Clone,
-    // {
-    //     Duplicate::new(self)
-    // }
+    /// Adapter to make a source cloneable. Each clone gets all events, so events must be `Clone`
+    fn duplicate(self) -> Duplicate<Self>
+    where
+        Self::Event: Clone,
+    {
+        Duplicate::new(self)
+    }
 }

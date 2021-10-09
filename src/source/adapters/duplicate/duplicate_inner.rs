@@ -69,12 +69,18 @@ where
 
         // adjust the scheduled/ready response to account for previously emitted events.
         match poll {
-            Poll::Ready(Ok(SourcePollOk::Ready(s))) => {
-                todo!()
-            },
-            Poll::Ready(Ok(SourcePollOk::Scheduled(s, t))) => {
-                todo!()
-            },
+            Poll::Ready(Ok(SourcePollOk::Ready(s))) => Poll::Ready(Ok({
+                match self.events.read().unwrap().first_event_time(None) {
+                    Some(t) => SourcePollOk::Scheduled(s, t),
+                    None => todo!(),
+                }
+            })),
+            Poll::Ready(Ok(SourcePollOk::Scheduled(s, t1))) => Poll::Ready(Ok({
+                match self.events.read().unwrap().first_event_time(Some(t1)) {
+                    Some(t2) => SourcePollOk::Scheduled(s, t1.min(t2)),
+                    None => todo!(),
+                }
+            })),
             other => other,
         }
     }
@@ -173,5 +179,23 @@ impl<Src: Source> Events<Src> {
 
     pub fn insert(&mut self, rollback_event: Arc<RollbackEvent<Src::Time, Src::Event>>) -> bool {
         self.0.insert(rollback_event)
+    }
+
+    pub fn first_event_time(&self, cutoff: Option<Src::Time>) -> Option<Src::Time> {
+        for e in self.0.iter() {
+            if let RollbackEvent::Event {
+                time, ..
+            } = **e
+            {
+                if let Some(t) = cutoff {
+                    if time >= t {
+                        break
+                    }
+                    return Some(time)
+                }
+            }
+        }
+
+        return None
     }
 }
