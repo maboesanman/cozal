@@ -1,5 +1,3 @@
-use core::cmp::Ordering;
-
 use im::{HashMap, OrdMap};
 use rand::SeedableRng;
 use rand_chacha::rand_core::block::BlockRng;
@@ -7,88 +5,65 @@ use rand_chacha::ChaCha12Core;
 
 use super::engine_time::{EngineTime, EngineTimeSchedule};
 use super::expire_handle_factory::ExpireHandleFactory;
-use super::input_buffer::InputBuffer;
-use super::update_item::UpdateItem;
 use crate::transposer::context::{ExpireEventError, ScheduleEventError};
 use crate::transposer::{ExpireHandle, Transposer};
 
 #[derive(Clone)]
-pub struct TransposerFrame<'a, T: Transposer>
+pub struct TransposerFrame<T: Transposer>
 where
     T::Scheduled: Clone,
 {
     pub transposer: T,
-    pub internal:   TransposerFrameInternal<'a, T>,
+    pub internal:   TransposerFrameInternal<T>,
 }
 
-impl<'a, T: Transposer> TransposerFrame<'a, T>
+impl<T: Transposer> TransposerFrame<T>
 where
     T::Scheduled: Clone,
 {
-    pub fn new(transposer: T, init_time: &'a EngineTime<'a, T::Time>, rng_seed: [u8; 32]) -> Self {
+    pub fn new(transposer: T, rng_seed: [u8; 32]) -> Self {
         Self {
             transposer,
-            internal: TransposerFrameInternal::new(init_time, rng_seed),
+            internal: TransposerFrameInternal::new(EngineTime::new_init(), rng_seed),
         }
     }
 
-    pub fn init_next(
-        &mut self,
-        update_item: &'a UpdateItem<'a, T>,
-    ) -> Option<(EngineTimeSchedule<'a, T::Time>, T::Scheduled)> {
-        self.internal.current_time = &update_item.time;
-        match &update_item.time {
-            EngineTime::Init => None,
-            EngineTime::Input(_time) => None,
-            // unwrap and rewrap to assert it is not None.
-            EngineTime::Schedule(_time) => Some(self.internal.pop_schedule_event().unwrap()),
-        }
+    pub fn get_next_scheduled_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
+        self.internal.schedule.get_min().map(|(k, _)| k)
     }
 
-    pub fn get_next_time(
-        &self,
-        input_buffer: &InputBuffer<T::Time, T::Input>,
-    ) -> Option<EngineTime<'a, T::Time>> {
-        let next_input_time = input_buffer.first_time();
-        let next_input_time = next_input_time.map(EngineTime::Input);
+    pub fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
+        if let (Some((k, v)), new) = self.internal.schedule.without_min_with_key() {
+            self.internal.schedule = new;
 
-        let next_schedule_time = self.internal.schedule.get_min().map(|(k, _)| k);
-        let next_schedule_time = next_schedule_time.map(|time| EngineTime::Schedule(time.clone()));
-
-        match (next_input_time, next_schedule_time) {
-            (None, None) => None,
-            (None, Some(time)) => Some(time),
-            (Some(time), None) => Some(time),
-            (Some(input), Some(schedule)) => match input.cmp(&schedule) {
-                Ordering::Less => Some(input),
-                Ordering::Greater => Some(schedule),
-                Ordering::Equal => unreachable!(),
-            },
+            Some((k, v))
+        } else {
+            None
         }
     }
 }
 
 #[derive(Clone)]
-pub struct TransposerFrameInternal<'a, T: Transposer>
+pub struct TransposerFrameInternal<T: Transposer>
 where
     T::Scheduled: Clone,
 {
-    pub current_time:     &'a EngineTime<'a, T::Time>,
+    pub current_time:     EngineTime<T::Time>,
     pub scheduling_index: usize,
-    // schedule and expire_handles
-    pub schedule:         OrdMap<EngineTimeSchedule<'a, T::Time>, T::Scheduled>,
-    pub expire_handles:   HashMap<ExpireHandle, EngineTimeSchedule<'a, T::Time>>,
+
+    pub schedule:       OrdMap<EngineTimeSchedule<T::Time>, T::Scheduled>,
+    pub expire_handles: HashMap<ExpireHandle, EngineTimeSchedule<T::Time>>,
 
     pub expire_handle_factory: ExpireHandleFactory,
 
     pub rng: BlockRng<ChaCha12Core>,
 }
 
-impl<'a, T: Transposer> TransposerFrameInternal<'a, T>
+impl<T: Transposer> TransposerFrameInternal<T>
 where
     T::Scheduled: Clone,
 {
-    fn new(time: &'a EngineTime<'a, T::Time>, rng_seed: [u8; 32]) -> Self {
+    fn new(time: EngineTime<T::Time>, rng_seed: [u8; 32]) -> Self {
         Self {
             current_time:          time,
             scheduling_index:      0,
@@ -104,13 +79,13 @@ where
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<(), ScheduleEventError> {
-        if time < self.current_time.raw_time() {
+        if time < self.current_time.raw_time().unwrap() {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
         let time = EngineTimeSchedule {
             time,
-            parent: self.current_time,
+            parent: self.current_time.clone(),
             parent_index: self.scheduling_index,
         };
 
@@ -125,14 +100,14 @@ where
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, ScheduleEventError> {
-        if time < self.current_time.raw_time() {
+        if time < self.current_time.raw_time().unwrap() {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
         let handle = self.expire_handle_factory.next();
         let time = EngineTimeSchedule {
             time,
-            parent: self.current_time,
+            parent: self.current_time.clone(),
             parent_index: self.scheduling_index,
         };
 
@@ -156,7 +131,7 @@ where
         }
     }
 
-    fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<'a, T::Time>, T::Scheduled)> {
+    fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
         let (result, new_schedule) = self.schedule.without_min_with_key();
         self.schedule = new_schedule;
 

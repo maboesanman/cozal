@@ -1,19 +1,8 @@
-use super::engine_context::EngineContext;
+use super::transposer_frame::TransposerFrame;
 use crate::transposer::Transposer;
 
 pub struct UpdateResult<T: Transposer> {
+    pub frame:   TransposerFrame<T>,
     pub outputs: Vec<T::Output>,
     pub exit:    bool,
-}
-
-impl<T: Transposer> From<EngineContext<'_, T>> for UpdateResult<T> {
-    fn from(used_context: EngineContext<T>) -> Self {
-        let EngineContext {
-            outputs, ..
-        } = used_context;
-        UpdateResult {
-            outputs,
-            exit: false,
-        }
-    }
 }
