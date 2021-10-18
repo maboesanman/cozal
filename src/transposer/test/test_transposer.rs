@@ -1,10 +1,8 @@
 use async_trait::async_trait;
 use rand::Rng;
 
-use crate::source::adapters::transposer::{
-    context::{HandleInputContext, HandleScheduleContext, InitContext},
-    Transposer,
-};
+use crate::transposer::{Transposer, context::{HandleInputContext, HandleScheduleContext, InitContext}};
+
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum HandleRecord {
@@ -43,7 +41,7 @@ impl Transposer for TestTransposer {
 
     type Output = usize;
 
-    async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>) {
+    async fn init(&mut self, cx: &mut dyn InitContext<Self>) {
         for (time, payload) in self.init_events.drain(..) {
             let _ = cx.schedule_event(time, payload);
         }
@@ -53,7 +51,7 @@ impl Transposer for TestTransposer {
         &mut self,
         time: Self::Time,
         inputs: &[Self::Input],
-        cx: &mut dyn HandleInputContext<'_, Self>,
+        cx: &mut dyn HandleInputContext<Self>,
     ) {
         let mut vec = Vec::new();
         for payload in inputs {
@@ -70,7 +68,7 @@ impl Transposer for TestTransposer {
         &mut self,
         time: Self::Time,
         payload: Self::Scheduled,
-        cx: &mut dyn HandleScheduleContext<'_, Self>,
+        cx: &mut dyn HandleScheduleContext<Self>,
     ) {
         let record = HandleRecord::Scheduled(time, payload);
         self.handle_record.push_back((record, cx.get_rng().gen()));

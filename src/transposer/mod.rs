@@ -3,6 +3,7 @@ use context::{HandleInputContext, HandleScheduleContext, InitContext};
 
 pub mod context;
 mod expire_handle;
+mod test;
 
 pub use expire_handle::ExpireHandle;
 
@@ -23,7 +24,7 @@ pub trait Transposer {
     /// by the init function.
     type Time: Copy + Ord + Default;
 
-    type InputState;
+    type InputState: Unpin;
 
     type OutputState;
 
@@ -57,7 +58,7 @@ pub trait Transposer {
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`InitContext`] documentation.
-    async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>);
+    async fn init(&mut self, cx: &mut dyn InitContext<Self>);
 
     /// The function to respond to input.
     ///
@@ -72,7 +73,7 @@ pub trait Transposer {
         &mut self,
         time: Self::Time,
         inputs: &[Self::Input],
-        cx: &mut dyn HandleInputContext<'_, Self>,
+        cx: &mut dyn HandleInputContext<Self>,
     );
 
     /// The function to respond to internally scheduled events.
@@ -85,7 +86,7 @@ pub trait Transposer {
         &mut self,
         time: Self::Time,
         payload: Self::Scheduled,
-        cx: &mut dyn HandleScheduleContext<'_, Self>,
+        cx: &mut dyn HandleScheduleContext<Self>,
     );
 
     /// The function to interpolate between states

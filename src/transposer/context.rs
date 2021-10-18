@@ -6,13 +6,13 @@ use rand::RngCore;
 use super::expire_handle::ExpireHandle;
 use super::Transposer;
 
-pub trait InitContext<'a, T: Transposer>:
-    InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
+pub trait InitContext<T: Transposer>:
+    InputStateContext<T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
 {
 }
 
-pub trait HandleInputContext<'a, T: Transposer>:
-    InputStateContext<'a, T>
+pub trait HandleInputContext<T: Transposer>:
+    InputStateContext<T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
@@ -20,8 +20,8 @@ pub trait HandleInputContext<'a, T: Transposer>:
 {
 }
 
-pub trait HandleScheduleContext<'a, T: Transposer>:
-    InputStateContext<'a, T>
+pub trait HandleScheduleContext<T: Transposer>:
+    InputStateContext<T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
@@ -29,7 +29,7 @@ pub trait HandleScheduleContext<'a, T: Transposer>:
 {
 }
 
-pub trait InputStateContext<'a, T: Transposer> {
+pub trait InputStateContext<T: Transposer> {
     fn get_input_state(&mut self) -> Pin<&mut dyn Future<Output = T::InputState>>;
 }
 

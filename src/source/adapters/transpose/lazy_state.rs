@@ -10,13 +10,14 @@ pub enum LazyStateInner<S> {
     Pending,
 }
 
-impl<'a, S> Future for &'a mut LazyState<S> {
+impl<S> Future for LazyState<S> {
     type Output = S;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<S> {
+        let this = unsafe { self.get_unchecked_mut() };
         let mut result = Poll::Pending;
         take_mut::take_or_recover(
-            &mut self.get_mut().0,
+            &mut this.0,
             || LazyStateInner::Pending,
             |inner| match inner {
                 LazyStateInner::Ready(state) => {
