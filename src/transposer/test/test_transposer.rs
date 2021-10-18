@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use rand::Rng;
 
-use crate::transposer::{Transposer, context::{HandleInputContext, HandleScheduleContext, InitContext}};
-
+use crate::transposer::context::{HandleInputContext, HandleScheduleContext, InitContext};
+use crate::transposer::Transposer;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum HandleRecord {

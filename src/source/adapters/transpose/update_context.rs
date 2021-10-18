@@ -16,7 +16,7 @@ where
 {
     // these are pointers because this is stored next to the targets.
     frame_internal: *mut TransposerFrameInternal<T>,
-    input_state: *mut LazyState<T::InputState>,
+    input_state:    *mut LazyState<T::InputState>,
 
     // values to output
     outputs: Vec<T::Output>,
@@ -71,7 +71,8 @@ impl<T: Transposer> ScheduleEventContext<T> for UpdateContext<T> {
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, ScheduleEventError> {
-        self.get_frame_internal_mut().schedule_event_expireable(time, payload)
+        self.get_frame_internal_mut()
+            .schedule_event_expireable(time, payload)
     }
 }
 

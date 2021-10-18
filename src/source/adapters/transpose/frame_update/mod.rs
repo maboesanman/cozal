@@ -6,7 +6,6 @@ use core::task::{Context, Poll};
 use futures_core::FusedFuture;
 
 use self::frame_update_pollable::FrameUpdatePollable;
-
 // use self::frame_update_pollable::FrameUpdatePollable;
 use super::engine_time::{EngineTime, EngineTimeSchedule};
 use super::transposer_frame::TransposerFrame;
@@ -41,21 +40,21 @@ enum UpdateType<T: Transposer> {
 
 struct FrameUpdateUnpollable<T: Transposer> {
     frame: TransposerFrame<T>,
-    args: UpdateType<T>,
+    args:  UpdateType<T>,
 }
 
 pub enum NextFrameUpdate<T: Transposer> {
     None {
-        frame: TransposerFrame<T>
+        frame: TransposerFrame<T>,
     },
     Input {
         frame_update: FrameUpdate<T>,
     },
     Scheduled {
-        frame_update: FrameUpdate<T>,
-        time: EngineTimeSchedule<T::Time>,
+        frame_update:  FrameUpdate<T>,
+        time:          EngineTimeSchedule<T::Time>,
         unused_inputs: Option<Vec<T::Input>>,
-    }
+    },
 }
 
 impl<T: Transposer> FrameUpdate<T>
@@ -63,9 +62,7 @@ where
     T::Scheduled: Clone,
 {
     #[allow(unused)]
-    pub fn new_init(
-        frame: TransposerFrame<T>,
-    ) -> Self {
+    pub fn new_init(frame: TransposerFrame<T>) -> Self {
         Self(FrameUpdateInner::Unpollable(FrameUpdateUnpollable {
             frame,
             args: UpdateType::Init,
@@ -96,9 +93,11 @@ where
         }
 
         match (&inputs, next_scheduled_time) {
-            (None, None) => NextFrameUpdate::None { frame },
+            (None, None) => NextFrameUpdate::None {
+                frame,
+            },
             (Some(_), None) => NextFrameUpdate::Input {
-                frame_update: Self::new_input(frame, time, inputs.unwrap())
+                frame_update: Self::new_input(frame, time, inputs.unwrap()),
             },
             (_, Some(_)) => {
                 if let Some((time, payload)) = frame.pop_schedule_event() {
@@ -117,7 +116,9 @@ where
     pub fn reclaim(self) -> Result<Option<Vec<T::Input>>, ()> {
         match self.0 {
             FrameUpdateInner::Unpollable(u) => Ok(match u.args {
-                UpdateType::Input { inputs, .. } => Some(inputs),
+                UpdateType::Input {
+                    inputs, ..
+                } => Some(inputs),
                 _ => None,
             }),
             FrameUpdateInner::Pollable(p) => Ok(p.reclaim_pending()),
@@ -133,7 +134,10 @@ where
         }
     }
 
-    pub fn set_input_state(self: Pin<&mut Self>, state: T::InputState) -> Result<(), T::InputState> {
+    pub fn set_input_state(
+        self: Pin<&mut Self>,
+        state: T::InputState,
+    ) -> Result<(), T::InputState> {
         let this = unsafe { self.get_unchecked_mut() };
         match &mut this.0 {
             FrameUpdateInner::Pollable(p) => {
@@ -150,11 +154,7 @@ where
         todo!()
     }
 
-    fn new_input(
-        frame: TransposerFrame<T>,
-        time: T::Time,
-        inputs: Vec<T::Input>,
-    ) -> Self {
+    fn new_input(frame: TransposerFrame<T>, time: T::Time, inputs: Vec<T::Input>) -> Self {
         Self(FrameUpdateInner::Unpollable(FrameUpdateUnpollable {
             frame,
             args: UpdateType::Input {
@@ -193,23 +193,20 @@ impl<T: Transposer> Future for FrameUpdate<T> {
                     let mut args: MaybeUninit<UpdateType<T>> = MaybeUninit::uninit();
 
                     // take out of self and replace with a Pollable with uninit future.
-                    take_mut::take(
-                        inner,
-                        |inner_owned| {
-                            if let FrameUpdateInner::Unpollable(FrameUpdateUnpollable {
-                                frame,
-                                args: args_temp,
-                            }) = inner_owned
-                            {
-                                args = MaybeUninit::new(args_temp);
+                    take_mut::take(inner, |inner_owned| {
+                        if let FrameUpdateInner::Unpollable(FrameUpdateUnpollable {
+                            frame,
+                            args: args_temp,
+                        }) = inner_owned
+                        {
+                            args = MaybeUninit::new(args_temp);
 
-                                // SAFETY: we are calling init in just a few lines
-                                FrameUpdateInner::Pollable(unsafe { FrameUpdatePollable::new(frame) })
-                            } else {
-                                unreachable!()
-                            }
-                        },
-                    );
+                            // SAFETY: we are calling init in just a few lines
+                            FrameUpdateInner::Pollable(unsafe { FrameUpdatePollable::new(frame) })
+                        } else {
+                            unreachable!()
+                        }
+                    });
 
                     // init out uninit context and future.
                     if let FrameUpdateInner::Pollable(pollable) = inner {
@@ -230,7 +227,9 @@ impl<T: Transposer> Future for FrameUpdate<T> {
                     // pass through the poll
                     break 'poll match pollable.poll(cx) {
                         Poll::Ready(()) => {
-                            if let FrameUpdateInner::Pollable(pollable) = core::mem::replace(inner, FrameUpdateInner::Terminated) {
+                            if let FrameUpdateInner::Pollable(pollable) =
+                                core::mem::replace(inner, FrameUpdateInner::Terminated)
+                            {
                                 let (frame, outputs, inputs) = pollable.reclaim_ready();
 
                                 Poll::Ready(UpdateResult {
