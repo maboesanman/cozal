@@ -80,7 +80,11 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         this.future = MaybeUninit::new(unsafe { std::mem::transmute(fut) });
     }
 
-    pub fn reclaim(self) -> (TransposerFrame<T>, Vec<T::Output>) {
+    pub fn reclaim_pending(mut self) -> Option<Vec<T::Input>> {
+        core::mem::take(&mut self.inputs)
+    }
+
+    pub fn reclaim_ready(self) -> (TransposerFrame<T>, Vec<T::Output>, Option<Vec<T::Input>>) {
         let mut this = ManuallyDrop::new(self);
 
         // SAFETY: future is always initialized.
@@ -95,7 +99,9 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         // SAFETY: this is initialized cause it's from a non maybeuninit value and transmuted
         let frame = unsafe { frame.assume_init_read() };
 
-        (frame, outputs)
+        let inputs = core::mem::take(&mut this.inputs);
+
+        (frame, outputs, inputs)
     }
 
     pub fn needs_input_state(&self) -> bool {

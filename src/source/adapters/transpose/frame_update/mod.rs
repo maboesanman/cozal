@@ -79,10 +79,12 @@ where
     /// Some(t) if the new update is a scheduled update occurring at time t, where t < time
     ///
     /// None if the new update is an input update using the inputs.
+
+    #[allow(unused)]
     pub fn next_update(
-        frame: TransposerFrame<T>,
+        mut frame: TransposerFrame<T>,
         time: T::Time,
-        mut inputs: Option<Vec<T::Input>>,
+        inputs: Option<Vec<T::Input>>,
     ) -> NextFrameUpdate<T> {
         let mut next_scheduled_time = frame.get_next_scheduled_time();
         if let Some(nst) = next_scheduled_time {
@@ -93,34 +95,60 @@ where
             }
         }
 
-        match (inputs, next_scheduled_time) {
+        match (&inputs, next_scheduled_time) {
             (None, None) => NextFrameUpdate::None { frame },
-            (Some(inputs), None) => NextFrameUpdate::Input {
-                frame_update: Self::new_input(frame, time, inputs)
+            (Some(_), None) => NextFrameUpdate::Input {
+                frame_update: Self::new_input(frame, time, inputs.unwrap())
             },
             (_, Some(_)) => {
-                todo!()
-                // frame.pop_schedule_event();
-                // NextFrameUpdate::Scheduled {
-                //     frame_update: Self::new_scheduled(frame, time, payload),
-                //     time: ets
-                //     unused_inputs: inputs,
-                // }
+                if let Some((time, payload)) = frame.pop_schedule_event() {
+                    NextFrameUpdate::Scheduled {
+                        frame_update: Self::new_scheduled(frame, time.clone(), payload),
+                        time,
+                        unused_inputs: inputs,
+                    }
+                } else {
+                    unreachable!()
+                }
             },
         }
     }
 
-    // pub fn time(&self) -> Result<EngineTime<T::Time>, ()> {
-    //     match self.0 {
-    //         FrameUpdateInner::Unpollable(unpollable) => Ok(match unpollable.args {
-    //             UpdateType::Init => EngineTime::Init,
-    //             UpdateType::Input { time, .. } => EngineTime::Input(time),
-    //             UpdateType::Scheduled { time, .. } => EngineTime::Schedule(time),
-    //         }),
-    //         FrameUpdateInner::Pollable(_) => todo!(),
-    //         FrameUpdateInner::Terminated => todo!(),
-    //     }
-    // }
+    pub fn reclaim(self) -> Result<Option<Vec<T::Input>>, ()> {
+        match self.0 {
+            FrameUpdateInner::Unpollable(u) => Ok(match u.args {
+                UpdateType::Input { inputs, .. } => Some(inputs),
+                _ => None,
+            }),
+            FrameUpdateInner::Pollable(p) => Ok(p.reclaim_pending()),
+            FrameUpdateInner::Terminated => Err(()),
+        }
+    }
+
+    pub fn needs_input_state(&self) -> Result<bool, ()> {
+        match &self.0 {
+            FrameUpdateInner::Unpollable(_) => Ok(false),
+            FrameUpdateInner::Pollable(p) => Ok(p.needs_input_state()),
+            FrameUpdateInner::Terminated => Err(()),
+        }
+    }
+
+    pub fn set_input_state(self: Pin<&mut Self>, state: T::InputState) -> Result<(), T::InputState> {
+        let this = unsafe { self.get_unchecked_mut() };
+        match &mut this.0 {
+            FrameUpdateInner::Pollable(p) => {
+                let p = unsafe { Pin::new_unchecked(p) };
+                p.set_input_state(state)
+            },
+            _ => Err(state),
+        }
+    }
+
+    pub fn get_time(&self) -> EngineTime<T::Time> {
+        // this is weird, cause the behavior for reupdating and updating isn't exactly the same.
+        // we need to use the original time always.
+        todo!()
+    }
 
     fn new_input(
         frame: TransposerFrame<T>,
@@ -203,11 +231,12 @@ impl<T: Transposer> Future for FrameUpdate<T> {
                     break 'poll match pollable.poll(cx) {
                         Poll::Ready(()) => {
                             if let FrameUpdateInner::Pollable(pollable) = core::mem::replace(inner, FrameUpdateInner::Terminated) {
-                                let (frame, outputs) = pollable.reclaim();
+                                let (frame, outputs, inputs) = pollable.reclaim_ready();
 
                                 Poll::Ready(UpdateResult {
                                     frame,
                                     outputs,
+                                    inputs,
                                     exit: false,
                                 })
                             } else {
