@@ -1,8 +1,8 @@
 use core::future::Future;
 use core::pin::Pin;
 
+use super::super::transposer_frame::TransposerFrameInternal;
 use super::lazy_state::LazyState;
-use super::transposer_frame::TransposerFrameInternal;
 use crate::transposer::context::*;
 use crate::transposer::{ExpireHandle, Transposer};
 

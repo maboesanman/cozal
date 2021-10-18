@@ -6,11 +6,8 @@ pub(self) mod input_buffer;
 pub(self) mod pin_stack;
 pub(self) mod sparse_buffer_stack;
 pub(self) mod transposer_frame;
-pub(self) mod update_context;
-// pub(self) mod update_item;
-pub(self) mod update_result;
 
-pub mod lazy_state;
+// pub mod lazy_state;
 
 #[cfg(test)]
 pub mod test;

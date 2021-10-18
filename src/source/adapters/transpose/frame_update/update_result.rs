@@ -1,4 +1,4 @@
-use super::transposer_frame::TransposerFrame;
+use super::super::transposer_frame::TransposerFrame;
 use crate::transposer::Transposer;
 
 pub struct UpdateResult<T: Transposer> {

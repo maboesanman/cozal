@@ -5,10 +5,10 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 use std::mem::ManuallyDrop;
 
+use super::super::transposer_frame::TransposerFrame;
+use super::lazy_state::LazyState;
+use super::update_context::UpdateContext;
 use super::UpdateType;
-use crate::source::adapters::transpose::lazy_state::LazyState;
-use crate::source::adapters::transpose::transposer_frame::TransposerFrame;
-use crate::source::adapters::transpose::update_context::UpdateContext;
 use crate::transposer::Transposer;
 
 pub(super) struct FrameUpdatePollable<T: Transposer> {

@@ -6,13 +6,15 @@ use core::task::{Context, Poll};
 use futures_core::FusedFuture;
 
 use self::frame_update_pollable::FrameUpdatePollable;
-// use self::frame_update_pollable::FrameUpdatePollable;
+use self::update_result::UpdateResult;
 use super::engine_time::{EngineTime, EngineTimeSchedule};
 use super::transposer_frame::TransposerFrame;
-use super::update_result::UpdateResult;
 use crate::transposer::Transposer;
 
 mod frame_update_pollable;
+mod lazy_state;
+mod update_context;
+mod update_result;
 
 /// future to initialize a TransposerFrame
 ///
@@ -146,12 +148,6 @@ where
             },
             _ => Err(state),
         }
-    }
-
-    pub fn get_time(&self) -> EngineTime<T::Time> {
-        // this is weird, cause the behavior for reupdating and updating isn't exactly the same.
-        // we need to use the original time always.
-        todo!()
     }
 
     fn new_input(frame: TransposerFrame<T>, time: T::Time, inputs: Vec<T::Input>) -> Self {
