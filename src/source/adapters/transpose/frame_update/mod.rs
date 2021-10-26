@@ -104,7 +104,7 @@ where
                     inputs,
                 };
 
-                let frame_update = Self::new_unpollable(frame, &time, args);
+                let frame_update = Self::new_unpollable(frame, time.clone(), args);
 
                 NextFrameUpdate::Input {
                     frame_update,
@@ -118,7 +118,7 @@ where
                         payload,
                     };
 
-                    let frame_update = Self::new_unpollable(frame, &time, args);
+                    let frame_update = Self::new_unpollable(frame, time.clone(), args);
 
                     NextFrameUpdate::Scheduled {
                         frame_update,
@@ -162,7 +162,7 @@ where
         let args = UpdateArgs::Input {
             inputs,
         };
-        Ok(Self::new_unpollable(frame, &time, args))
+        Ok(Self::new_unpollable(frame, time, args))
     }
 
     #[allow(unused)]
@@ -177,7 +177,7 @@ where
                 let args = UpdateArgs::Scheduled {
                     payload,
                 };
-                Ok(Self::new_unpollable(frame, &time, args))
+                Ok(Self::new_unpollable(frame, time, args))
             }
         } else {
             Err(time)
@@ -222,11 +222,11 @@ where
         }
     }
 
-    fn new_unpollable(frame: Frame<T>, time: &EngineTime<T::Time>, args: UpdateArgs<T>) -> Self {
+    fn new_unpollable(frame: Frame<T>, time: EngineTime<T::Time>, args: UpdateArgs<T>) -> Self {
         Self {
             inner: FrameUpdateInner::Unpollable(FrameUpdateUnpollable {
                 frame,
-                time: time.clone(),
+                time,
                 args,
             }),
         }
