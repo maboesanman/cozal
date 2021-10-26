@@ -1,7 +1,12 @@
 use async_trait::async_trait;
 use rand::Rng;
 
-use crate::transposer::context::{HandleInputContext, HandleScheduleContext, InitContext};
+use crate::transposer::context::{
+    HandleInputContext,
+    HandleScheduleContext,
+    InitContext,
+    InterpolateContext,
+};
 use crate::transposer::Transposer;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -77,11 +82,12 @@ impl Transposer for TestTransposer {
         cx.emit_event(state);
     }
 
-    fn interpolate(
+    async fn interpolate(
         &self,
         _base_time: Self::Time,
         _interpolated_time: Self::Time,
         _state: Self::InputState,
+        _cx: &mut dyn InterpolateContext<Self>,
     ) -> Self::OutputState {
         self.handle_record.clone().into_iter().collect()
     }

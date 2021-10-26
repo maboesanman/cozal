@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use context::{HandleInputContext, HandleScheduleContext, InitContext};
+use context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext};
 
 pub mod context;
 mod expire_handle;
@@ -97,11 +97,12 @@ pub trait Transposer {
     /// `base_time` is the time of the `self` parameter
     /// `interpolated_time` is the time being requested `self`
     /// `cx is a context object for performing additional operations like requesting state.
-    fn interpolate(
+    async fn interpolate(
         &self,
         base_time: Self::Time,
         interpolated_time: Self::Time,
         input_state: Self::InputState,
+        cx: &mut dyn InterpolateContext<Self>,
     ) -> Self::OutputState;
 
     /// Filter out events you know you can't do anything with.

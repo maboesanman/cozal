@@ -29,6 +29,8 @@ pub trait HandleScheduleContext<T: Transposer>:
 {
 }
 
+pub trait InterpolateContext<T: Transposer>: InputStateContext<T> {}
+
 pub trait InputStateContext<T: Transposer> {
     fn get_input_state(&mut self) -> Pin<&mut dyn Future<Output = T::InputState>>;
 }
