@@ -44,7 +44,7 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         }
     }
 
-    pub fn init<'s>(self: Pin<&'s mut Self>, args: UpdateArgs<T>) {
+    pub fn init<'s>(self: Pin<&'s mut Self>, args: UpdateArgs<T>) -> Result<(), usize> {
         let this = unsafe { self.get_unchecked_mut() };
 
         // SAFETY: we're storing this in context which is always dropped before frame.
@@ -65,7 +65,6 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         let fut = match args {
             UpdateArgs::Init => transposer_ref.init(context_ref),
             UpdateArgs::Input {
-                time,
                 inputs,
             } => {
                 this.inputs = Some(inputs);
@@ -73,14 +72,15 @@ impl<T: Transposer> FrameUpdatePollable<T> {
                 let inputs_ptr: *const _ = this.inputs.as_ref().unwrap();
                 let inputs_ref = unsafe { inputs_ptr.as_ref().unwrap() };
 
-                transposer_ref.handle_input(time, inputs_ref, context_ref)
+                transposer_ref.handle_input(this.time.raw_time()?, inputs_ref, context_ref)
             },
             UpdateArgs::Scheduled {
-                time,
                 payload,
-            } => transposer_ref.handle_scheduled(time.time, payload, context_ref),
+            } => transposer_ref.handle_scheduled(this.time.raw_time()?, payload, context_ref),
         };
         this.future = MaybeUninit::new(unsafe { std::mem::transmute(fut) });
+
+        Ok(())
     }
 
     pub fn reclaim_pending(mut self) -> Option<Vec<T::Input>> {

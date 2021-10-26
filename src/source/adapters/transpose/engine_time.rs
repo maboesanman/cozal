@@ -16,10 +16,28 @@ enum EngineTimeInner<T: Ord + Copy + Default> {
 }
 
 impl<T: Ord + Copy + Default> EngineTime<T> {
-    pub fn new_init() -> Self {
+    fn new(inner: EngineTimeInner<T>) -> Self {
         EngineTime {
-            inner: Arc::new(RwLock::new(EngineTimeInner::Init)),
+            inner: Arc::new(RwLock::new(inner)),
         }
+    }
+
+    pub fn new_init() -> Self {
+        Self::new(EngineTimeInner::Init)
+    }
+
+    pub fn new_input(time: T) -> Self {
+        Self::new(EngineTimeInner::Input(time))
+    }
+
+    pub fn new_scheduled(time: EngineTimeSchedule<T>) -> Self {
+        Self::new(EngineTimeInner::Schedule(time))
+    }
+
+    pub fn finalize(&self, sequence: usize) {
+        let mut lock = self.inner.write().unwrap();
+
+        *lock = EngineTimeInner::Dead(sequence);
     }
 
     pub fn raw_time(&self) -> Result<T, usize> {
@@ -29,6 +47,14 @@ impl<T: Ord + Copy + Default> EngineTime<T> {
             EngineTimeInner::Init => Ok(T::default()),
             EngineTimeInner::Input(time) => Ok(*time),
             EngineTimeInner::Schedule(inner) => Ok(inner.time),
+        }
+    }
+
+    pub fn equals_scheduled(&self, other: &EngineTimeSchedule<T>) -> bool {
+        if let EngineTimeInner::Schedule(inner) = &*self.inner.read().unwrap() {
+            inner == other
+        } else {
+            false
         }
     }
 }
