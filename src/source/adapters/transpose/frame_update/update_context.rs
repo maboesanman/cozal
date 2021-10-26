@@ -1,8 +1,9 @@
 use core::future::Future;
 use core::pin::Pin;
 
-use super::super::transposer_frame::TransposerFrameInternal;
+use super::super::frame::TransposerFrameInternal;
 use super::lazy_state::LazyState;
+use crate::source::adapters::transpose::engine_time::{EngineTime, EngineTimeSchedule};
 use crate::transposer::context::*;
 use crate::transposer::{ExpireHandle, Transposer};
 
@@ -18,6 +19,9 @@ where
     frame_internal: *mut TransposerFrameInternal<T>,
     input_state:    *mut LazyState<T::InputState>,
 
+    time: EngineTime<T::Time>,
+    schedule_index: usize,
+
     // values to output
     outputs: Vec<T::Output>,
 }
@@ -28,12 +32,15 @@ impl<T: Transposer> HandleScheduleContext<T> for UpdateContext<T> {}
 
 impl<T: Transposer> UpdateContext<T> {
     pub(super) unsafe fn new(
+        time: EngineTime<T::Time>,
         frame_internal: *mut TransposerFrameInternal<T>,
         input_state: *mut LazyState<T::InputState>,
     ) -> Self {
         Self {
             frame_internal,
             input_state,
+            time,
+            schedule_index: 0,
             outputs: Vec::new(),
         }
     }
@@ -63,7 +70,19 @@ impl<T: Transposer> ScheduleEventContext<T> for UpdateContext<T> {
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<(), ScheduleEventError> {
-        self.get_frame_internal_mut().schedule_event(time, payload)
+        if time < self.time.raw_time().unwrap() {
+            return Err(ScheduleEventError::NewEventBeforeCurrent)
+        }
+
+        let schedule_time = EngineTimeSchedule {
+            time,
+            parent: self.time.clone(),
+            parent_index: self.schedule_index,
+        };
+        self.get_frame_internal_mut().schedule_event(schedule_time, payload);
+        self.schedule_index += 1;
+
+        Ok(())
     }
 
     fn schedule_event_expireable(
@@ -71,8 +90,20 @@ impl<T: Transposer> ScheduleEventContext<T> for UpdateContext<T> {
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, ScheduleEventError> {
-        self.get_frame_internal_mut()
-            .schedule_event_expireable(time, payload)
+        if time < self.time.raw_time().unwrap() {
+            return Err(ScheduleEventError::NewEventBeforeCurrent)
+        }
+
+        let time = EngineTimeSchedule {
+            time,
+            parent: self.time.clone(),
+            parent_index: self.schedule_index,
+        };
+
+        let handle = self.get_frame_internal_mut().schedule_event_expireable(time, payload);
+        self.schedule_index += 1;
+
+        Ok(handle)
     }
 }
 

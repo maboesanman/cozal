@@ -9,7 +9,7 @@ use crate::transposer::context::{ExpireEventError, ScheduleEventError};
 use crate::transposer::{ExpireHandle, Transposer};
 
 #[derive(Clone)]
-pub struct TransposerFrame<T: Transposer>
+pub struct Frame<T: Transposer>
 where
     T::Scheduled: Clone,
 {
@@ -17,14 +17,14 @@ where
     pub internal:   TransposerFrameInternal<T>,
 }
 
-impl<T: Transposer> TransposerFrame<T>
+impl<T: Transposer> Frame<T>
 where
     T::Scheduled: Clone,
 {
     pub fn new(transposer: T, rng_seed: [u8; 32]) -> Self {
         Self {
             transposer,
-            internal: TransposerFrameInternal::new(EngineTime::new_init(), rng_seed),
+            internal: TransposerFrameInternal::new(rng_seed),
         }
     }
 
@@ -48,9 +48,6 @@ pub struct TransposerFrameInternal<T: Transposer>
 where
     T::Scheduled: Clone,
 {
-    pub current_time:     EngineTime<T::Time>,
-    pub scheduling_index: usize,
-
     pub schedule:       OrdMap<EngineTimeSchedule<T::Time>, T::Scheduled>,
     pub expire_handles: HashMap<ExpireHandle, EngineTimeSchedule<T::Time>>,
 
@@ -63,10 +60,8 @@ impl<T: Transposer> TransposerFrameInternal<T>
 where
     T::Scheduled: Clone,
 {
-    fn new(time: EngineTime<T::Time>, rng_seed: [u8; 32]) -> Self {
+    fn new(rng_seed: [u8; 32]) -> Self {
         Self {
-            current_time:          time,
-            scheduling_index:      0,
             schedule:              OrdMap::new(),
             expire_handles:        HashMap::new(),
             expire_handle_factory: ExpireHandleFactory::new(),
@@ -76,46 +71,22 @@ where
 
     pub fn schedule_event(
         &mut self,
-        time: T::Time,
+        time: EngineTimeSchedule<T::Time>,
         payload: T::Scheduled,
-    ) -> Result<(), ScheduleEventError> {
-        if time < self.current_time.raw_time().unwrap() {
-            return Err(ScheduleEventError::NewEventBeforeCurrent)
-        }
-
-        let time = EngineTimeSchedule {
-            time,
-            parent: self.current_time.clone(),
-            parent_index: self.scheduling_index,
-        };
-
+    ) {
         self.schedule.insert(time, payload);
-        self.scheduling_index += 1;
-
-        Ok(())
     }
 
     pub fn schedule_event_expireable(
         &mut self,
-        time: T::Time,
+        time: EngineTimeSchedule<T::Time>,
         payload: T::Scheduled,
-    ) -> Result<ExpireHandle, ScheduleEventError> {
-        if time < self.current_time.raw_time().unwrap() {
-            return Err(ScheduleEventError::NewEventBeforeCurrent)
-        }
-
+    ) -> ExpireHandle {
         let handle = self.expire_handle_factory.next();
-        let time = EngineTimeSchedule {
-            time,
-            parent: self.current_time.clone(),
-            parent_index: self.scheduling_index,
-        };
-
         self.expire_handles.insert(handle, time.clone());
         self.schedule.insert(time, payload);
-        self.scheduling_index += 1;
 
-        Ok(handle)
+        handle
     }
 
     pub fn expire_event(

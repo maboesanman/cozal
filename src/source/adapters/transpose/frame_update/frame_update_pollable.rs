@@ -5,10 +5,11 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 use std::mem::ManuallyDrop;
 
-use super::super::transposer_frame::TransposerFrame;
+use super::super::frame::Frame;
 use super::lazy_state::LazyState;
 use super::update_context::UpdateContext;
-use super::UpdateType;
+use super::UpdateArgs;
+use crate::source::adapters::transpose::engine_time::EngineTime;
 use crate::transposer::Transposer;
 
 pub(super) struct FrameUpdatePollable<T: Transposer> {
@@ -18,9 +19,10 @@ pub(super) struct FrameUpdatePollable<T: Transposer> {
     // references state and frame.internal
     context: MaybeUninit<UpdateContext<T>>,
 
-    frame:  TransposerFrame<T>,
+    frame:  Frame<T>,
     state:  LazyState<T::InputState>,
     inputs: Option<Vec<T::Input>>,
+    time: EngineTime<T::Time>,
 
     // lots of self references. very dangerous.
     _pin: PhantomPinned,
@@ -28,7 +30,7 @@ pub(super) struct FrameUpdatePollable<T: Transposer> {
 
 impl<T: Transposer> FrameUpdatePollable<T> {
     // SAFETY: make sure to call init before doing anything with the new value.
-    pub unsafe fn new(frame: TransposerFrame<T>) -> Self {
+    pub unsafe fn new(frame: Frame<T>, time: EngineTime<T::Time>) -> Self {
         Self {
             future: MaybeUninit::uninit(),
             context: MaybeUninit::uninit(),
@@ -37,11 +39,12 @@ impl<T: Transposer> FrameUpdatePollable<T> {
 
             // this may change during init, if the args are for an input.
             inputs: None,
+            time,
             _pin: PhantomPinned,
         }
     }
 
-    pub fn init<'s>(self: Pin<&'s mut Self>, args: UpdateType<T>) {
+    pub fn init<'s>(self: Pin<&'s mut Self>, args: UpdateArgs<T>) {
         let this = unsafe { self.get_unchecked_mut() };
 
         // SAFETY: we're storing this in context which is always dropped before frame.
@@ -50,7 +53,11 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         let state_ptr: *mut _ = &mut this.state;
 
         // SAFETY: we're storing this in context which is always dropped before state.
-        let context = unsafe { UpdateContext::new(internal_ptr, state_ptr) };
+        let context = unsafe { UpdateContext::new(
+            this.time.clone(),
+            internal_ptr,
+            state_ptr
+        ) };
         this.context = MaybeUninit::new(context);
 
         // SAFETY: we're storing this in future, which is always dropped before context.
@@ -60,8 +67,8 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         let transposer_ref: &'s mut _ = unsafe { transposer_ptr.as_mut().unwrap() };
         // create our future
         let fut = match args {
-            UpdateType::Init => transposer_ref.init(context_ref),
-            UpdateType::Input {
+            UpdateArgs::Init => transposer_ref.init(context_ref),
+            UpdateArgs::Input {
                 time,
                 inputs,
             } => {
@@ -72,7 +79,7 @@ impl<T: Transposer> FrameUpdatePollable<T> {
 
                 transposer_ref.handle_input(time, inputs_ref, context_ref)
             },
-            UpdateType::Scheduled {
+            UpdateArgs::Scheduled {
                 time,
                 payload,
             } => transposer_ref.handle_scheduled(time.time, payload, context_ref),
@@ -84,7 +91,7 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         core::mem::take(&mut self.inputs)
     }
 
-    pub fn reclaim_ready(self) -> (TransposerFrame<T>, Vec<T::Output>, Option<Vec<T::Input>>) {
+    pub fn reclaim_ready(self) -> (Frame<T>, Vec<T::Output>, Option<Vec<T::Input>>) {
         let mut this = ManuallyDrop::new(self);
 
         // SAFETY: future is always initialized.
@@ -95,7 +102,7 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         let outputs = context.recover_outputs();
 
         // SAFETY: because we're forgetting about self we can just sorta go for it.
-        let frame: &mut MaybeUninit<TransposerFrame<T>> =
+        let frame: &mut MaybeUninit<Frame<T>> =
             unsafe { core::mem::transmute(&mut this.frame) };
         // SAFETY: this is initialized cause it's from a non maybeuninit value and transmuted
         let frame = unsafe { frame.assume_init_read() };

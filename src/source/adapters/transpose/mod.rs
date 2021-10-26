@@ -5,7 +5,7 @@ pub(self) mod frame_update;
 pub(self) mod input_buffer;
 pub(self) mod pin_stack;
 pub(self) mod sparse_buffer_stack;
-pub(self) mod transposer_frame;
+pub(self) mod frame;
 
 // pub mod lazy_state;
 
