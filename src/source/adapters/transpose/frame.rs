@@ -69,11 +69,7 @@ where
         }
     }
 
-    pub fn schedule_event(
-        &mut self,
-        time: EngineTimeSchedule<T::Time>,
-        payload: T::Scheduled,
-    ) {
+    pub fn schedule_event(&mut self, time: EngineTimeSchedule<T::Time>, payload: T::Scheduled) {
         self.schedule.insert(time, payload);
     }
 

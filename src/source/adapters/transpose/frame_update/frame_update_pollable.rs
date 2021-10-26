@@ -22,7 +22,7 @@ pub(super) struct FrameUpdatePollable<T: Transposer> {
     frame:  Frame<T>,
     state:  LazyState<T::InputState>,
     inputs: Option<Vec<T::Input>>,
-    time: EngineTime<T::Time>,
+    time:   EngineTime<T::Time>,
 
     // lots of self references. very dangerous.
     _pin: PhantomPinned,
@@ -53,11 +53,7 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         let state_ptr: *mut _ = &mut this.state;
 
         // SAFETY: we're storing this in context which is always dropped before state.
-        let context = unsafe { UpdateContext::new(
-            this.time.clone(),
-            internal_ptr,
-            state_ptr
-        ) };
+        let context = unsafe { UpdateContext::new(this.time.clone(), internal_ptr, state_ptr) };
         this.context = MaybeUninit::new(context);
 
         // SAFETY: we're storing this in future, which is always dropped before context.
@@ -102,8 +98,7 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         let outputs = context.recover_outputs();
 
         // SAFETY: because we're forgetting about self we can just sorta go for it.
-        let frame: &mut MaybeUninit<Frame<T>> =
-            unsafe { core::mem::transmute(&mut this.frame) };
+        let frame: &mut MaybeUninit<Frame<T>> = unsafe { core::mem::transmute(&mut this.frame) };
         // SAFETY: this is initialized cause it's from a non maybeuninit value and transmuted
         let frame = unsafe { frame.assume_init_read() };
 

@@ -19,8 +19,8 @@ mod update_result;
 /// future to initialize a TransposerFrame
 ///
 /// this type owns a frame, and has many self references.
-pub struct FrameUpdate<T: Transposer>{
-    time: EngineTime<T::Time>,
+pub struct FrameUpdate<T: Transposer> {
+    time:  EngineTime<T::Time>,
     inner: FrameUpdateInner<T>,
 }
 
@@ -207,7 +207,9 @@ impl<T: Transposer> Future for FrameUpdate<T> {
                             args = MaybeUninit::new(args_temp);
 
                             // SAFETY: we are calling init in just a few lines
-                            FrameUpdateInner::Pollable(unsafe { FrameUpdatePollable::new(frame, time.clone()) })
+                            FrameUpdateInner::Pollable(unsafe {
+                                FrameUpdatePollable::new(frame, time.clone())
+                            })
                         } else {
                             unreachable!()
                         }

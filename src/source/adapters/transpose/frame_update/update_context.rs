@@ -19,7 +19,7 @@ where
     frame_internal: *mut TransposerFrameInternal<T>,
     input_state:    *mut LazyState<T::InputState>,
 
-    time: EngineTime<T::Time>,
+    time:           EngineTime<T::Time>,
     schedule_index: usize,
 
     // values to output
@@ -79,7 +79,8 @@ impl<T: Transposer> ScheduleEventContext<T> for UpdateContext<T> {
             parent: self.time.clone(),
             parent_index: self.schedule_index,
         };
-        self.get_frame_internal_mut().schedule_event(schedule_time, payload);
+        self.get_frame_internal_mut()
+            .schedule_event(schedule_time, payload);
         self.schedule_index += 1;
 
         Ok(())
@@ -100,7 +101,9 @@ impl<T: Transposer> ScheduleEventContext<T> for UpdateContext<T> {
             parent_index: self.schedule_index,
         };
 
-        let handle = self.get_frame_internal_mut().schedule_event_expireable(time, payload);
+        let handle = self
+            .get_frame_internal_mut()
+            .schedule_event_expireable(time, payload);
         self.schedule_index += 1;
 
         Ok(handle)
