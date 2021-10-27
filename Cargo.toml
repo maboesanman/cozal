@@ -2,7 +2,7 @@
 name = "cozal"
 version = "0.0.2"
 authors = ["Mason Boeman <masonboeman@gmail.com>"]
-edition = "2018"
+edition = "2021"
 repository = "https://github.com/maboesanman/cozal.git"
 description = "deterministic game event pipeline with isolated configurable components"
 license = "MIT"
