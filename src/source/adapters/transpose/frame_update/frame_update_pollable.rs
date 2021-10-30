@@ -19,7 +19,7 @@ pub(super) struct FrameUpdatePollable<T: Transposer> {
     // references state and frame.internal
     context: MaybeUninit<UpdateContext<T>>,
 
-    frame:  Frame<T>,
+    frame:  Box<Frame<T>>,
     state:  LazyState<T::InputState>,
     inputs: Option<Vec<T::Input>>,
     time:   EngineTime<T::Time>,
@@ -30,7 +30,7 @@ pub(super) struct FrameUpdatePollable<T: Transposer> {
 
 impl<T: Transposer> FrameUpdatePollable<T> {
     // SAFETY: make sure to call init before doing anything with the new value.
-    pub unsafe fn new(frame: Frame<T>, time: EngineTime<T::Time>) -> Self {
+    pub unsafe fn new(frame: Box<Frame<T>>, time: EngineTime<T::Time>) -> Self {
         Self {
             future: MaybeUninit::uninit(),
             context: MaybeUninit::uninit(),

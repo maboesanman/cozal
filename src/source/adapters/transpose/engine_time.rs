@@ -57,6 +57,19 @@ impl<T: Ord + Copy + Default> EngineTime<T> {
             false
         }
     }
+
+    pub fn is_dead(&self) -> bool {
+        matches!(*self.inner.read().unwrap(), EngineTimeInner::Dead(_))
+    }
+    pub fn is_init(&self) -> bool {
+        matches!(*self.inner.read().unwrap(), EngineTimeInner::Init)
+    }
+    pub fn is_input(&self) -> bool {
+        matches!(*self.inner.read().unwrap(), EngineTimeInner::Input(_))
+    }
+    pub fn is_scheduled(&self) -> bool {
+        matches!(*self.inner.read().unwrap(), EngineTimeInner::Schedule(_))
+    }
 }
 
 impl<T: Ord + Copy + Default> Ord for EngineTime<T> {

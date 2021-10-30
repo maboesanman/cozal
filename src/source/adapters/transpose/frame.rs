@@ -97,11 +97,4 @@ where
             None => Err(ExpireEventError::InvalidHandle),
         }
     }
-
-    fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
-        let (result, new_schedule) = self.schedule.without_min_with_key();
-        self.schedule = new_schedule;
-
-        result
-    }
 }
