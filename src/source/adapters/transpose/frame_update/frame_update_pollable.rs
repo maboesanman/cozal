@@ -87,7 +87,7 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         core::mem::take(&mut self.inputs)
     }
 
-    pub fn reclaim_ready(self) -> (Frame<T>, Vec<T::Output>, Option<Vec<T::Input>>) {
+    pub fn reclaim_ready(self) -> (Box<Frame<T>>, Vec<T::Output>, Option<Vec<T::Input>>) {
         let mut this = ManuallyDrop::new(self);
 
         // SAFETY: future is always initialized.
@@ -98,7 +98,8 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         let outputs = context.recover_outputs();
 
         // SAFETY: because we're forgetting about self we can just sorta go for it.
-        let frame: &mut MaybeUninit<Frame<T>> = unsafe { core::mem::transmute(&mut this.frame) };
+        let frame: &mut MaybeUninit<Box<Frame<T>>> =
+            unsafe { core::mem::transmute(&mut this.frame) };
         // SAFETY: this is initialized cause it's from a non maybeuninit value and transmuted
         let frame = unsafe { frame.assume_init_read() };
 

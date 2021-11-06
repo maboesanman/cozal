@@ -6,11 +6,10 @@ use core::task::{Context, Poll};
 use futures_core::FusedFuture;
 
 use self::frame_update_pollable::FrameUpdatePollable;
-use self::update_result::UpdateResult;
-use super::engine_time::{EngineTime, EngineTimeSchedule};
+pub use self::update_result::UpdateResult;
+use super::engine_time::EngineTime;
 use super::frame::Frame;
 use crate::transposer::Transposer;
-
 mod frame_update_pollable;
 mod lazy_state;
 mod update_context;

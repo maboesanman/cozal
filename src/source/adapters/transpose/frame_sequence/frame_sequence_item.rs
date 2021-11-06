@@ -1,10 +1,13 @@
 use core::pin::Pin;
 use std::cmp::Ordering;
 use std::mem::MaybeUninit;
+use std::task::{Context, Poll, Waker};
+
+use futures_core::Future;
 
 use super::super::engine_time::EngineTime;
 use super::super::frame::Frame;
-use super::super::frame_update::FrameUpdate;
+use super::super::frame_update::{FrameUpdate, UpdateResult};
 use crate::source::adapters::transpose::input_buffer::InputBuffer;
 use crate::transposer::Transposer;
 
@@ -51,7 +54,7 @@ impl<T: Transposer> FrameSequenceItem<T> {
     pub fn next_unsaturated(
         &self,
         input_buffer: &mut InputBuffer<T::Time, T::Input>,
-    ) -> Result<Option<FrameSequenceItem<T>>, ()> {
+    ) -> Result<Option<Self>, ()> {
         let frame = match &self.inner {
             FrameSequenceItemInner::SaturatedInput {
                 frame, ..
@@ -184,6 +187,52 @@ impl<T: Transposer> FrameSequenceItem<T> {
         result
     }
 
+    #[allow(unused)]
+    pub fn poll(&mut self, waker: Waker) -> Result<FrameSequenceItemInnerPoll<T>, ()> {
+        if let FrameSequenceItemInner::Saturating {
+            update,
+        } = &mut self.inner
+        {
+            let mut context = Context::from_waker(&waker);
+
+            match update.as_mut().poll(&mut context) {
+                Poll::Ready(UpdateResult {
+                    frame,
+                    outputs,
+                    inputs,
+                    exit,
+                }) => {
+                    self.inner = match inputs {
+                        Some(inputs) => FrameSequenceItemInner::SaturatedInput {
+                            inputs,
+                            frame,
+                        },
+                        None => FrameSequenceItemInner::SaturatedScheduled {
+                            frame,
+                        },
+                    };
+
+                    drop(exit);
+
+                    Ok(FrameSequenceItemInnerPoll::Ready(outputs))
+                },
+                Poll::Pending => Ok({
+                    if update.needs_input_state()? {
+                        FrameSequenceItemInnerPoll::NeedsState
+                    } else {
+                        FrameSequenceItemInnerPoll::Pending
+                    }
+                }),
+            }
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn time(&self) -> &EngineTime<T::Time> {
+        &self.time
+    }
+
     fn saturate_check(&self, previous: &Self) -> Result<(), ()> {
         match (&previous.inner, &self.inner) {
             (
@@ -237,4 +286,10 @@ impl<T: Transposer> FrameSequenceItem<T> {
             }
         });
     }
+}
+
+pub enum FrameSequenceItemInnerPoll<T: Transposer> {
+    Pending,
+    NeedsState,
+    Ready(Vec<T::Output>),
 }
