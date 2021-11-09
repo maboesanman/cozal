@@ -8,6 +8,9 @@ use super::expire_handle_factory::ExpireHandleFactory;
 use crate::transposer::context::ExpireEventError;
 use crate::transposer::{ExpireHandle, Transposer};
 
+#[cfg(test)]
+mod test;
+
 #[derive(Clone)]
 pub struct Frame<T: Transposer>
 where
@@ -91,8 +94,12 @@ where
     ) -> Result<(T::Time, T::Scheduled), ExpireEventError> {
         match self.expire_handles.get(&handle) {
             Some(time) => match self.schedule.remove(&time) {
-                Some(payload) => Ok((time.time, payload)),
-                None => Err(ExpireEventError::ExpiredEvent),
+                Some(payload) => {
+                    let t = time.time;
+                    self.expire_handles.remove(&handle);
+                    Ok((t, payload))
+                },
+                None => unreachable!(),
             },
             None => Err(ExpireEventError::InvalidHandle),
         }
