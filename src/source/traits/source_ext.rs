@@ -70,25 +70,6 @@ pub trait SourceExt: Source + Sized {
         Multiplex::new(self)
     }
 
-    // fn joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State> {
-    //     Join::new(self, self_key)
-    // }
-
-    // fn stateless_joinable<K>(self, self_key: K) -> Join<K, Self::Time, Self::Event, Self::State> {
-    //     Join::new_stateless(self, self_key)
-    // }
-
-    // fn splittable<E, ConvertFn>(
-    //     self,
-    //     decide: fn(&Self::Event) -> bool,
-    //     convert: ConvertFn,
-    // ) -> Split<Self, E, ConvertFn>
-    // where
-    //     ConvertFn: Fn(Self::Event) -> E,
-    // {
-    //     Split::new(self, decide, convert)
-    // }
-
     /// Adapter to make a source cloneable. Each clone gets all events, so events must be `Clone`
     fn duplicate(self) -> Duplicate<Self>
     where

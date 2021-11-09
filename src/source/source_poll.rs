@@ -6,7 +6,7 @@ pub enum SourcePollOk<T, E, S>
 where
     T: Ord + Copy,
 {
-    /// Indicates all events at or after time T, and all states returned from poll (not poll_forget) should be discarded.
+    /// Indicates all events at or after time T, and all states returned on any channel at or after time T from poll (not poll_forget) should be discarded.
     Rollback(T),
 
     /// Indicates an unprocessed event is available at or before poll_time.

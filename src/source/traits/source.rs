@@ -7,9 +7,9 @@ use crate::source::SourcePoll;
 
 #[derive(Clone)]
 pub struct SourceContext {
-    pub channel:       usize,
-    pub channel_waker: Waker,
-    pub event_waker:   Waker,
+    pub channel:           usize,
+    pub one_channel_waker: Waker,
+    pub all_channel_waker: Waker,
 }
 
 impl SourceContext {
@@ -93,7 +93,7 @@ pub trait Source {
         }
     }
 
-    /// Inform the source that you will never poll before `time` again.
+    /// Inform the source that you will never poll before `time` again on any channel.
     ///
     /// Calling poll before this time should result in `SourcePollError::PollAfterAdvance`
     fn advance(self: Pin<&mut Self>, time: Self::Time);

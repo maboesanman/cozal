@@ -114,20 +114,20 @@ where
     fn get_new_context(&self, cx: SourceContext) -> SourceContext {
         let SourceContext {
             channel,
-            channel_waker,
-            event_waker,
+            one_channel_waker,
+            all_channel_waker,
         } = cx;
 
         // register our waker and get the waker we can use to poll the original source.
-        let event_waker = self.original.get_new_waker(self.index, event_waker);
+        let all_channel_waker = self.original.get_new_waker(self.index, all_channel_waker);
 
         // map the channel via the channel_map math.
         let channel = channel_map::map(self.index, channel);
 
         SourceContext {
             channel,
-            channel_waker,
-            event_waker,
+            one_channel_waker,
+            all_channel_waker,
         }
     }
 

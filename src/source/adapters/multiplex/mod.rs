@@ -91,7 +91,7 @@ impl<Src: Source> Multiplex<Src> {
                                 poll_type,
                                 time: poll_time,
                                 out_channel,
-                                waker: cx.channel_waker.clone(),
+                                waker: cx.one_channel_waker.clone(),
                             };
                             pending_channels.push_back(new_pending);
                             Poll::Pending
@@ -155,7 +155,7 @@ impl<Src: Source> Multiplex<Src> {
                             poll_type,
                             time: poll_time,
                             out_channel,
-                            waker: cx.channel_waker.clone(),
+                            waker: cx.one_channel_waker.clone(),
                         };
                         for pending in pending_channels.iter_mut() {
                             if pending.out_channel == out_channel {
