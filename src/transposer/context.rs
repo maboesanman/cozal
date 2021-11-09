@@ -63,7 +63,7 @@ pub trait ExpireEventContext<T: Transposer> {
 
 #[non_exhaustive]
 pub enum ExpireEventError {
-    InvalidHandle,
+    InvalidOrUsedHandle,
 }
 
 pub trait EmitEventContext<T: Transposer> {

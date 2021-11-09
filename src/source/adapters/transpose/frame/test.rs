@@ -63,7 +63,8 @@ fn frame_internal() {
     let mut internal = TransposerFrameInternal::<TestTransposer>::new(seed);
 
     assert_eq!(internal.schedule.len(), 0);
-    assert_eq!(internal.expire_handles.len(), 0);
+    assert_eq!(internal.expire_handles_forward.len(), 0);
+    assert_eq!(internal.expire_handles_backward.len(), 0);
 
     for i in 0..100 {
         internal.schedule_event(
@@ -77,7 +78,8 @@ fn frame_internal() {
     }
 
     assert_eq!(internal.schedule.len(), 100);
-    assert_eq!(internal.expire_handles.len(), 0);
+    assert_eq!(internal.expire_handles_forward.len(), 0);
+    assert_eq!(internal.expire_handles_backward.len(), 0);
 
     let mut exp_handles = Vec::new();
 
@@ -96,7 +98,8 @@ fn frame_internal() {
     }
 
     assert_eq!(internal.schedule.len(), 200);
-    assert_eq!(internal.expire_handles.len(), 100);
+    assert_eq!(internal.expire_handles_forward.len(), 100);
+    assert_eq!(internal.expire_handles_backward.len(), 100);
 
     for i in 0..100 {
         internal.schedule_event(
@@ -110,7 +113,8 @@ fn frame_internal() {
     }
 
     assert_eq!(internal.schedule.len(), 300);
-    assert_eq!(internal.expire_handles.len(), 100);
+    assert_eq!(internal.expire_handles_forward.len(), 100);
+    assert_eq!(internal.expire_handles_backward.len(), 100);
 
     for (handle, payload) in exp_handles {
         let r = internal.expire_event(handle);
@@ -123,5 +127,60 @@ fn frame_internal() {
     }
 
     assert_eq!(internal.schedule.len(), 200);
-    assert_eq!(internal.expire_handles.len(), 0);
+    assert_eq!(internal.expire_handles_forward.len(), 0);
+    assert_eq!(internal.expire_handles_backward.len(), 0);
+}
+
+#[test]
+fn frame_internal_pop() {
+    let init_time = EngineTime::<usize>::new_init();
+    let seed = rand::thread_rng().gen();
+    let mut internal = TransposerFrameInternal::<TestTransposer>::new(seed);
+
+    assert_eq!(internal.schedule.len(), 0);
+    assert_eq!(internal.expire_handles_forward.len(), 0);
+    assert_eq!(internal.expire_handles_backward.len(), 0);
+
+    internal.schedule_event(
+        EngineTimeSchedule {
+            time:         10,
+            parent:       init_time.clone(),
+            parent_index: 0,
+        },
+        17,
+    );
+
+    assert_eq!(internal.schedule.len(), 1);
+    assert_eq!(internal.expire_handles_forward.len(), 0);
+    assert_eq!(internal.expire_handles_backward.len(), 0);
+
+    internal.schedule_event_expireable(
+        EngineTimeSchedule {
+            time:         20,
+            parent:       init_time.clone(),
+            parent_index: 1,
+        },
+        23,
+    );
+
+    assert_eq!(internal.schedule.len(), 2);
+    assert_eq!(internal.expire_handles_forward.len(), 1);
+    assert_eq!(internal.expire_handles_backward.len(), 1);
+
+    assert_eq!(internal.get_next_scheduled_time().unwrap().time, 10);
+    assert_eq!(internal.pop_first_event().unwrap().1, 17);
+
+    assert_eq!(internal.schedule.len(), 1);
+    assert_eq!(internal.expire_handles_forward.len(), 1);
+    assert_eq!(internal.expire_handles_backward.len(), 1);
+
+    assert_eq!(internal.get_next_scheduled_time().unwrap().time, 20);
+    assert_eq!(internal.pop_first_event().unwrap().1, 23);
+
+    assert_eq!(internal.schedule.len(), 0);
+    assert_eq!(internal.expire_handles_forward.len(), 0);
+    assert_eq!(internal.expire_handles_backward.len(), 0);
+
+    assert!(internal.get_next_scheduled_time().is_none());
+    assert!(internal.pop_first_event().is_none());
 }

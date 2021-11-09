@@ -32,17 +32,11 @@ where
     }
 
     pub fn get_next_scheduled_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
-        self.internal.schedule.get_min().map(|(k, _)| k)
+        self.internal.get_next_scheduled_time()
     }
 
     pub fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
-        if let (Some((k, v)), new) = self.internal.schedule.without_min_with_key() {
-            self.internal.schedule = new;
-
-            Some((k, v))
-        } else {
-            None
-        }
+        self.internal.pop_first_event()
     }
 }
 
@@ -51,8 +45,10 @@ pub struct TransposerFrameInternal<T: Transposer>
 where
     T::Scheduled: Clone,
 {
-    pub schedule:       OrdMap<EngineTimeSchedule<T::Time>, T::Scheduled>,
-    pub expire_handles: HashMap<ExpireHandle, EngineTimeSchedule<T::Time>>,
+    pub schedule: OrdMap<EngineTimeSchedule<T::Time>, T::Scheduled>,
+
+    pub expire_handles_forward:  HashMap<ExpireHandle, EngineTimeSchedule<T::Time>>,
+    pub expire_handles_backward: OrdMap<EngineTimeSchedule<T::Time>, ExpireHandle>,
 
     pub expire_handle_factory: ExpireHandleFactory,
 
@@ -65,10 +61,11 @@ where
 {
     fn new(rng_seed: [u8; 32]) -> Self {
         Self {
-            schedule:              OrdMap::new(),
-            expire_handles:        HashMap::new(),
-            expire_handle_factory: ExpireHandleFactory::new(),
-            rng:                   BlockRng::new(ChaCha12Core::from_seed(rng_seed)),
+            schedule:                OrdMap::new(),
+            expire_handles_forward:  HashMap::new(),
+            expire_handles_backward: OrdMap::new(),
+            expire_handle_factory:   ExpireHandleFactory::new(),
+            rng:                     BlockRng::new(ChaCha12Core::from_seed(rng_seed)),
         }
     }
 
@@ -81,9 +78,11 @@ where
         time: EngineTimeSchedule<T::Time>,
         payload: T::Scheduled,
     ) -> ExpireHandle {
+        self.schedule_event(time.clone(), payload);
+
         let handle = self.expire_handle_factory.next();
-        self.expire_handles.insert(handle, time.clone());
-        self.schedule.insert(time, payload);
+        self.expire_handles_forward.insert(handle, time.clone());
+        self.expire_handles_backward.insert(time, handle);
 
         handle
     }
@@ -92,16 +91,35 @@ where
         &mut self,
         handle: ExpireHandle,
     ) -> Result<(T::Time, T::Scheduled), ExpireEventError> {
-        match self.expire_handles.get(&handle) {
+        match self.expire_handles_forward.get(&handle) {
             Some(time) => match self.schedule.remove(&time) {
                 Some(payload) => {
                     let t = time.time;
-                    self.expire_handles.remove(&handle);
+                    self.expire_handles_backward.remove(&time);
+                    self.expire_handles_forward.remove(&handle);
                     Ok((t, payload))
                 },
                 None => unreachable!(),
             },
-            None => Err(ExpireEventError::InvalidHandle),
+            None => Err(ExpireEventError::InvalidOrUsedHandle),
+        }
+    }
+
+    pub fn get_next_scheduled_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
+        self.schedule.get_min().map(|(k, _)| k)
+    }
+
+    pub fn pop_first_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
+        if let (Some((k, v)), new) = self.schedule.without_min_with_key() {
+            self.schedule = new;
+
+            if let Some(h) = self.expire_handles_backward.remove(&k) {
+                self.expire_handles_forward.remove(&h);
+            }
+
+            Some((k, v))
+        } else {
+            None
         }
     }
 }
