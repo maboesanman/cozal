@@ -286,7 +286,6 @@ impl<T: Transposer> Future for FrameUpdate<T> {
                                     frame,
                                     outputs,
                                     inputs,
-                                    exit: false,
                                 })
                             } else {
                                 unreachable!()

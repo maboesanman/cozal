@@ -3,9 +3,9 @@ use rand::SeedableRng;
 use rand_chacha::rand_core::block::BlockRng;
 use rand_chacha::ChaCha12Core;
 
-use super::engine_time::{EngineTime, EngineTimeSchedule};
+use super::engine_time::EngineTimeSchedule;
 use super::expire_handle_factory::ExpireHandleFactory;
-use crate::transposer::context::{ExpireEventError, ScheduleEventError};
+use crate::transposer::context::ExpireEventError;
 use crate::transposer::{ExpireHandle, Transposer};
 
 #[derive(Clone)]

@@ -200,7 +200,6 @@ impl<T: Transposer> FrameSequenceItem<T> {
                     frame,
                     outputs,
                     inputs,
-                    exit,
                 }) => {
                     self.inner = match inputs {
                         Some(inputs) => FrameSequenceItemInner::SaturatedInput {
@@ -211,8 +210,6 @@ impl<T: Transposer> FrameSequenceItem<T> {
                             frame,
                         },
                     };
-
-                    drop(exit);
 
                     Ok(FrameSequenceItemInnerPoll::Ready(outputs))
                 },
