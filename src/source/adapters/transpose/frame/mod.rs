@@ -93,9 +93,9 @@ where
     ) -> Result<(T::Time, T::Scheduled), ExpireEventError> {
         match self.expire_handles_forward.get(&handle) {
             Some(time) => {
-                // SAFETY: maps are kept in sync
                 let t = time.time;
 
+                // SAFETY: maps are kept in sync
                 let payload = self.schedule.remove(&time).unwrap();
                 self.expire_handles_backward.remove(&time);
                 self.expire_handles_forward.remove(&handle);
