@@ -1,13 +1,13 @@
 use core::cmp::Ordering;
 use std::sync::{Arc, RwLock};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EngineTime<T: Ord + Copy + Default> {
     inner: Arc<RwLock<EngineTimeInner<T>>>,
 }
 
 // this is the time that the internal engine can take on.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum EngineTimeInner<T: Ord + Copy + Default> {
     Dead(usize),
     Init,
@@ -134,7 +134,7 @@ impl<T: Ord + Copy + Default> PartialEq for EngineTime<T> {
 //     }
 // }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EngineTimeSchedule<T: Ord + Copy + Default> {
     pub time:         T,
     pub parent:       EngineTime<T>,

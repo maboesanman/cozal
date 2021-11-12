@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rand::Rng;
 
-use super::TransposerFrameInternal;
+use super::{Frame, FrameMetaData};
 use crate::source::adapters::transpose::engine_time::{EngineTime, EngineTimeSchedule};
 use crate::transposer::context::{
     HandleInputContext,
@@ -11,6 +11,7 @@ use crate::transposer::context::{
 };
 use crate::transposer::Transposer;
 
+#[derive(Clone)]
 struct TestTransposer {}
 
 #[async_trait(?Send)]
@@ -60,7 +61,7 @@ impl Transposer for TestTransposer {
 fn frame_internal() {
     let init_time = EngineTime::<usize>::new_init();
     let seed = rand::thread_rng().gen();
-    let mut internal = TransposerFrameInternal::<TestTransposer>::new(seed);
+    let mut internal = FrameMetaData::<TestTransposer>::new(seed);
 
     assert_eq!(internal.schedule.len(), 0);
     assert_eq!(internal.expire_handles_forward.len(), 0);
@@ -135,7 +136,7 @@ fn frame_internal() {
 fn frame_internal_pop() {
     let init_time = EngineTime::<usize>::new_init();
     let seed = rand::thread_rng().gen();
-    let mut internal = TransposerFrameInternal::<TestTransposer>::new(seed);
+    let mut internal = FrameMetaData::<TestTransposer>::new(seed);
 
     assert_eq!(internal.schedule.len(), 0);
     assert_eq!(internal.expire_handles_forward.len(), 0);
@@ -183,4 +184,65 @@ fn frame_internal_pop() {
 
     assert!(internal.get_next_scheduled_time().is_none());
     assert!(internal.pop_first_event().is_none());
+}
+
+#[test]
+fn frame() {
+    let init_time = EngineTime::<usize>::new_init();
+    let transposer = TestTransposer {};
+    let seed = rand::thread_rng().gen();
+    let mut frame = Frame::new(transposer, seed);
+
+    assert!(frame.get_next_scheduled_time().is_none());
+    assert!(frame.pop_schedule_event().is_none());
+
+    for i in 3..10 {
+        frame.metadata.schedule_event(
+            EngineTimeSchedule {
+                time:         5 + i,
+                parent:       init_time.clone(),
+                parent_index: i,
+            },
+            i,
+        )
+    }
+
+    assert_eq!(frame.get_next_scheduled_time().unwrap().time, 8);
+    let (t, p) = frame.pop_schedule_event().unwrap();
+    assert_eq!(t.time, 8);
+    assert_eq!(p, 3);
+}
+
+#[test]
+fn frame_clone() {
+    let init_time = EngineTime::<usize>::new_init();
+    let transposer = TestTransposer {};
+    let seed = rand::thread_rng().gen();
+    let mut frame = Frame::new(transposer, seed);
+
+    assert!(frame.get_next_scheduled_time().is_none());
+    assert!(frame.pop_schedule_event().is_none());
+
+    for i in 3..10 {
+        frame.metadata.schedule_event(
+            EngineTimeSchedule {
+                time:         5 + i,
+                parent:       init_time.clone(),
+                parent_index: i,
+            },
+            i,
+        )
+    }
+
+    let mut frame_clone = frame.clone();
+
+    assert_eq!(frame.get_next_scheduled_time().unwrap().time, 8);
+    let (t, p) = frame.pop_schedule_event().unwrap();
+    assert_eq!(t.time, 8);
+    assert_eq!(p, 3);
+
+    assert_eq!(frame_clone.get_next_scheduled_time().unwrap().time, 8);
+    let (t, p) = frame_clone.pop_schedule_event().unwrap();
+    assert_eq!(t.time, 8);
+    assert_eq!(p, 3);
 }

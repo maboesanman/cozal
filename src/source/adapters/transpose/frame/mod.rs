@@ -17,7 +17,7 @@ where
     T::Scheduled: Clone,
 {
     pub transposer: T,
-    pub internal:   TransposerFrameInternal<T>,
+    pub metadata:   FrameMetaData<T>,
 }
 
 impl<T: Transposer> Frame<T>
@@ -27,21 +27,21 @@ where
     pub fn new(transposer: T, rng_seed: [u8; 32]) -> Self {
         Self {
             transposer,
-            internal: TransposerFrameInternal::new(rng_seed),
+            metadata: FrameMetaData::new(rng_seed),
         }
     }
 
     pub fn get_next_scheduled_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
-        self.internal.get_next_scheduled_time()
+        self.metadata.get_next_scheduled_time()
     }
 
     pub fn pop_schedule_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
-        self.internal.pop_first_event()
+        self.metadata.pop_first_event()
     }
 }
 
 #[derive(Clone)]
-pub struct TransposerFrameInternal<T: Transposer>
+pub struct FrameMetaData<T: Transposer>
 where
     T::Scheduled: Clone,
 {
@@ -55,7 +55,7 @@ where
     pub rng: BlockRng<ChaCha12Core>,
 }
 
-impl<T: Transposer> TransposerFrameInternal<T>
+impl<T: Transposer> FrameMetaData<T>
 where
     T::Scheduled: Clone,
 {

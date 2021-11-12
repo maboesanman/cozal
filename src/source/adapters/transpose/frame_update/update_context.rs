@@ -1,7 +1,7 @@
 use core::future::Future;
 use core::pin::Pin;
 
-use super::super::frame::TransposerFrameInternal;
+use super::super::frame::FrameMetaData;
 use super::lazy_state::LazyState;
 use crate::source::adapters::transpose::engine_time::{EngineTime, EngineTimeSchedule};
 use crate::transposer::context::*;
@@ -16,7 +16,7 @@ where
     T::Scheduled: Clone,
 {
     // these are pointers because this is stored next to the targets.
-    frame_internal: *mut TransposerFrameInternal<T>,
+    frame_internal: *mut FrameMetaData<T>,
     input_state:    *mut LazyState<T::InputState>,
 
     time:           EngineTime<T::Time>,
@@ -33,7 +33,7 @@ impl<T: Transposer> HandleScheduleContext<T> for UpdateContext<T> {}
 impl<T: Transposer> UpdateContext<T> {
     pub(super) unsafe fn new(
         time: EngineTime<T::Time>,
-        frame_internal: *mut TransposerFrameInternal<T>,
+        frame_internal: *mut FrameMetaData<T>,
         input_state: *mut LazyState<T::InputState>,
     ) -> Self {
         Self {
@@ -49,7 +49,7 @@ impl<T: Transposer> UpdateContext<T> {
         self.outputs
     }
 
-    fn get_frame_internal_mut(&mut self) -> &mut TransposerFrameInternal<T> {
+    fn get_frame_internal_mut(&mut self) -> &mut FrameMetaData<T> {
         unsafe { self.frame_internal.as_mut().unwrap() }
     }
 

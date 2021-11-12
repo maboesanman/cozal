@@ -48,7 +48,7 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         let this = unsafe { self.get_unchecked_mut() };
 
         // SAFETY: we're storing this in context which is always dropped before frame.
-        let internal_ptr: *mut _ = &mut this.frame.internal;
+        let internal_ptr: *mut _ = &mut this.frame.metadata;
         let transposer_ptr: *mut _ = &mut this.frame.transposer;
         let state_ptr: *mut _ = &mut this.state;
 
