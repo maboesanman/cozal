@@ -266,3 +266,27 @@ fn frame_clone() {
     assert_eq!(t.time, 8);
     assert_eq!(p, 3);
 }
+
+#[test]
+#[should_panic]
+fn frame_internal_expire_illegal() {
+    let init_time = EngineTime::<usize>::new_init();
+    let seed = rand::thread_rng().gen();
+    let mut internal = FrameMetaData::<TestTransposer>::new(seed);
+
+    let handle = internal.schedule_event_expireable(
+        EngineTimeSchedule {
+            time:         20,
+            parent:       init_time.clone(),
+            parent_index: 1,
+        },
+        23,
+    );
+
+    let time = internal.expire_handles_forward.get(&handle).unwrap();
+
+    // breaks invariants. very illegal
+    internal.schedule.remove(&time);
+
+    let _ = internal.expire_event(handle);
+}
