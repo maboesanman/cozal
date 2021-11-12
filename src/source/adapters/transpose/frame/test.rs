@@ -187,6 +187,26 @@ fn frame_internal_pop() {
 }
 
 #[test]
+fn frame_internal_failed_expire() {
+    let init_time = EngineTime::<usize>::new_init();
+    let seed = rand::thread_rng().gen();
+    let mut internal = FrameMetaData::<TestTransposer>::new(seed);
+
+    let handle = internal.schedule_event_expireable(
+        EngineTimeSchedule {
+            time:         10,
+            parent:       init_time.clone(),
+            parent_index: 0,
+        },
+        17,
+    );
+
+    assert!(internal.pop_first_event().is_some());
+
+    assert!(internal.expire_event(handle).is_err());
+}
+
+#[test]
 fn frame() {
     let init_time = EngineTime::<usize>::new_init();
     let transposer = TestTransposer {};
