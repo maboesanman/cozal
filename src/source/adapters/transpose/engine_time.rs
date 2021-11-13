@@ -78,7 +78,7 @@ impl<T: Ord + Copy + Default> Ord for EngineTime<T> {
         let inner_other: &EngineTimeInner<T> = &other.inner.read().unwrap();
         match (inner_self, inner_other) {
             // dead always sorts first, then by id.
-            (EngineTimeInner::Dead(s), EngineTimeInner::Dead(o)) => s.cmp(&o),
+            (EngineTimeInner::Dead(s), EngineTimeInner::Dead(o)) => s.cmp(o),
             (EngineTimeInner::Dead(_), _) => Ordering::Less,
             (_, EngineTimeInner::Dead(_)) => Ordering::Greater,
 
@@ -88,15 +88,15 @@ impl<T: Ord + Copy + Default> Ord for EngineTime<T> {
             (_, EngineTimeInner::Init) => Ordering::Greater,
 
             // direct comparisons just pass through.
-            (EngineTimeInner::Input(s), EngineTimeInner::Input(o)) => s.cmp(&o),
-            (EngineTimeInner::Schedule(s), EngineTimeInner::Schedule(o)) => s.cmp(&o),
+            (EngineTimeInner::Input(s), EngineTimeInner::Input(o)) => s.cmp(o),
+            (EngineTimeInner::Schedule(s), EngineTimeInner::Schedule(o)) => s.cmp(o),
 
             // cross comparisons sort by time, then input before schedule.
             (EngineTimeInner::Input(s), EngineTimeInner::Schedule(o)) => match s.cmp(&o.time) {
                 Ordering::Equal => Ordering::Less,
                 ord => ord,
             },
-            (EngineTimeInner::Schedule(s), EngineTimeInner::Input(o)) => match s.time.cmp(&o) {
+            (EngineTimeInner::Schedule(s), EngineTimeInner::Input(o)) => match s.time.cmp(o) {
                 Ordering::Equal => Ordering::Greater,
                 ord => ord,
             },

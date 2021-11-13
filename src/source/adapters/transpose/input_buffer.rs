@@ -44,18 +44,18 @@ impl<Input> From<Box<[Input]>> for InputContainer<Input> {
     }
 }
 
-impl<Input> Into<Box<[Input]>> for InputContainer<Input> {
-    fn into(self) -> Box<[Input]> {
-        match self {
+impl<Input> From<InputContainer<Input>> for Box<[Input]> {
+    fn from(from: InputContainer<Input>) -> Self {
+        match from {
             InputContainer::Hot(vec) => vec.into_boxed_slice(),
             InputContainer::Cold(slice) => slice,
         }
     }
 }
 
-impl<Input> Into<Vec<Input>> for InputContainer<Input> {
-    fn into(self) -> Vec<Input> {
-        match self {
+impl<Input> From<InputContainer<Input>> for Vec<Input> {
+    fn from(val: InputContainer<Input>) -> Self {
+        match val {
             InputContainer::Hot(vec) => vec,
             InputContainer::Cold(slice) => slice.into(),
         }

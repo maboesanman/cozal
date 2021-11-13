@@ -40,8 +40,8 @@ impl<T: Transposer> Arg<T> for InitArg<T> {
     fn get_fut<'a>(
         transposer: &'a mut T,
         context: &'a mut UpdateContext<T>,
-        time: T::Time,
-        value: Self::Passed,
+        _time: T::Time,
+        _value: Self::Passed,
         storage_slot: &'a mut MaybeUninit<Self::Stored>,
     ) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
         *storage_slot = MaybeUninit::new(());
@@ -57,9 +57,7 @@ impl<T: Transposer> Arg<T> for InitArg<T> {
         debug_assert!(time.is_init());
     }
 
-    fn get_stored(_: Self::Passed) -> Self::Stored {
-        ()
-    }
+    fn get_stored(_: Self::Passed) -> Self::Stored {}
 }
 
 pub struct InputArg<T: Transposer>(PhantomData<T>);
@@ -91,15 +89,7 @@ impl<T: Transposer> Arg<T> for InputArg<T> {
 
         debug_assert!(if let Some(nst) = frame.get_next_scheduled_time() {
             match time.raw_time() {
-                Ok(time) => {
-                    if time < nst.time {
-                        true
-                    } else if time == nst.time {
-                        true
-                    } else {
-                        false
-                    }
-                },
+                Ok(time) => time > nst.time,
                 Err(_) => false,
             }
         } else {
@@ -149,7 +139,5 @@ impl<T: Transposer> Arg<T> for ScheduledArg<T> {
         payload
     }
 
-    fn get_stored(_: Self::Passed) -> Self::Stored {
-        ()
-    }
+    fn get_stored(_: Self::Passed) -> Self::Stored {}
 }

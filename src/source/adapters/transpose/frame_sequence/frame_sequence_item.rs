@@ -45,58 +45,39 @@ enum FrameSequenceItemInner<T: Transposer> {
 
 impl<T: Transposer> FrameSequenceItemInner<T> {
     pub fn is_unsaturated(&self) -> bool {
-        match self {
-            FrameSequenceItemInner::UnsaturatedInput {
-                ..
-            } => true,
-            FrameSequenceItemInner::UnsaturatedScheduled => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            FrameSequenceItemInner::UnsaturatedInput { .. }
+                | FrameSequenceItemInner::UnsaturatedScheduled
+        )
     }
     pub fn is_saturating(&self) -> bool {
-        match self {
-            FrameSequenceItemInner::SaturatingInit {
-                ..
-            } => true,
-            FrameSequenceItemInner::SaturatingInput {
-                ..
-            } => true,
-            FrameSequenceItemInner::SaturatingScheduled {
-                ..
-            } => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            FrameSequenceItemInner::SaturatingInit { .. }
+                | FrameSequenceItemInner::SaturatingInput { .. }
+                | FrameSequenceItemInner::SaturatingScheduled { .. }
+        )
     }
     pub fn is_saturated(&self) -> bool {
-        match self {
-            FrameSequenceItemInner::SaturatedInit {
-                ..
-            } => true,
-            FrameSequenceItemInner::SaturatedInput {
-                ..
-            } => true,
-            FrameSequenceItemInner::SaturatedScheduled {
-                ..
-            } => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            FrameSequenceItemInner::SaturatedInit { .. }
+                | FrameSequenceItemInner::SaturatedInput { .. }
+                | FrameSequenceItemInner::SaturatedScheduled { .. }
+        )
     }
 
     pub fn can_be_desaturated(&self) -> bool {
-        match self {
-            FrameSequenceItemInner::SaturatedInput {
-                ..
-            } => true,
-            FrameSequenceItemInner::SaturatedScheduled {
-                ..
-            } => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            FrameSequenceItemInner::SaturatedInput { .. }
+                | FrameSequenceItemInner::SaturatedScheduled { .. }
+        )
     }
 }
 
 impl<T: Transposer> FrameSequenceItem<T> {
-    #[allow(unused)]
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         let time = EngineTime::new_init();
         let frame = Frame::new(transposer, rng_seed);
@@ -112,7 +93,6 @@ impl<T: Transposer> FrameSequenceItem<T> {
         }
     }
 
-    #[allow(unused)]
     pub fn next_unsaturated(
         &self,
         input_buffer: &mut InputBuffer<T::Time, T::Input>,
@@ -156,7 +136,6 @@ impl<T: Transposer> FrameSequenceItem<T> {
         Ok(Some(item))
     }
 
-    #[allow(unused)]
     pub fn saturate_take(&mut self, previous: &mut Self) -> Result<(), ()> {
         if !(previous.inner.can_be_desaturated() && self.inner.is_unsaturated()) {
             return Err(())
@@ -190,7 +169,6 @@ impl<T: Transposer> FrameSequenceItem<T> {
         Ok(())
     }
 
-    #[allow(unused)]
     pub fn saturate_clone(&mut self, previous: &Self) -> Result<(), ()>
     where
         T: Clone,
@@ -213,7 +191,6 @@ impl<T: Transposer> FrameSequenceItem<T> {
         Ok(())
     }
 
-    #[allow(unused)]
     pub fn desaturate(&mut self) -> Result<(), ()> {
         let mut result = Err(());
         take_mut::take(&mut self.inner, |original| match original {
@@ -279,7 +256,6 @@ impl<T: Transposer> FrameSequenceItem<T> {
         todo!() // need to keep track of what has beem emitted
     }
 
-    #[allow(unused)]
     pub fn poll(&mut self, waker: Waker) -> Result<FrameSequenceItemInnerPoll<T>, ()> {
         let mut cx = Context::from_waker(&waker);
         match &mut self.inner {
@@ -360,7 +336,6 @@ impl<T: Transposer> FrameSequenceItem<T> {
         }
     }
 
-    #[allow(unused)]
     pub fn time(&self) -> &EngineTime<T::Time> {
         &self.time
     }

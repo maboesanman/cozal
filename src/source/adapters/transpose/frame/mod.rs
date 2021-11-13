@@ -96,8 +96,8 @@ where
                 let t = time.time;
 
                 // SAFETY: maps are kept in sync
-                let payload = self.schedule.remove(&time).unwrap();
-                self.expire_handles_backward.remove(&time);
+                let payload = self.schedule.remove(time).unwrap();
+                self.expire_handles_backward.remove(time);
                 self.expire_handles_forward.remove(&handle);
 
                 Ok((t, payload))

@@ -96,9 +96,7 @@ impl<T: Transposer, A: Arg<T>> FrameUpdatePollable<T, A> {
         unsafe { time.assume_init_drop() };
 
         // SAFETY: args is always initialized, and future is the only thing with a reference to it.
-        let args = unsafe { this.args.assume_init_read() };
-
-        args
+        unsafe { this.args.assume_init_read() }
     }
 
     pub fn reclaim_ready(self) -> (Box<Frame<T>>, Vec<T::Output>, A::Stored) {

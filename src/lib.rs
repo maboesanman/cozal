@@ -4,6 +4,9 @@
 #![feature(new_uninit)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(single_use_lifetimes)]
+#![allow(clippy::or_fun_call)]
+// TODO: remove this allow
+#![allow(unused)]
 
 #[cfg(test)]
 mod test;
