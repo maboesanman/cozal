@@ -1,9 +1,8 @@
 use core::future::Future;
 use core::marker::PhantomPinned;
-use core::mem::MaybeUninit;
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::pin::Pin;
 use core::task::{Context, Poll};
-use std::mem::ManuallyDrop;
 
 use super::super::frame::Frame;
 use super::arg::Arg;

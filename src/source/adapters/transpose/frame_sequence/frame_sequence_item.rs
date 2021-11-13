@@ -1,7 +1,7 @@
+use core::cmp::Ordering;
+use core::mem::MaybeUninit;
 use core::pin::Pin;
-use std::cmp::Ordering;
-use std::mem::MaybeUninit;
-use std::task::{Context, Poll, Waker};
+use core::task::{Context, Poll, Waker};
 
 use futures_core::Future;
 
@@ -225,7 +225,7 @@ impl<T: Transposer> FrameSequenceItem<T> {
                     result = Ok(())
                 };
                 FrameSequenceItemInner::UnsaturatedInput {
-                    inputs: inputs.unwrap_or(Vec::new().into_boxed_slice()),
+                    inputs: inputs.unwrap_or(Box::new([])),
                 }
             },
             FrameSequenceItemInner::SaturatingScheduled {
@@ -254,39 +254,29 @@ impl<T: Transposer> FrameSequenceItem<T> {
         result
     }
 
-    pub fn rollback(self, input_buffer: &mut InputBuffer<T::Time, T::Input>) -> Option<T::Time> {
-        let time = self.time.raw_time();
+    pub fn rollback(
+        self,
+        input_buffer: &mut InputBuffer<T::Time, T::Input>,
+    ) -> Result<Option<T::Time>, ()> {
+        let time = self.time.raw_time().map_err(|_| ())?;
         let inputs = match self.inner {
             FrameSequenceItemInner::UnsaturatedInput {
                 inputs,
             } => Some(inputs),
-            FrameSequenceItemInner::UnsaturatedScheduled => todo!(),
-            FrameSequenceItemInner::SaturatingInit {
-                update,
-            } => todo!(),
             FrameSequenceItemInner::SaturatingInput {
-                update,
-            } => todo!(),
-            FrameSequenceItemInner::SaturatingScheduled {
-                update,
-            } => todo!(),
-            FrameSequenceItemInner::SaturatedInit {
-                frame,
-            } => todo!(),
+                mut update,
+            } => Some(update.as_mut().reclaim()?),
             FrameSequenceItemInner::SaturatedInput {
-                inputs,
-                frame,
+                inputs, ..
             } => Some(inputs),
-            FrameSequenceItemInner::SaturatedScheduled {
-                frame,
-            } => todo!(),
+            _ => None,
         };
 
-        // for inputs in inputs.into_iter() {
-        //     input_buffer.extend_front(time, inputs)
-        // }
+        for inputs in inputs.into_iter() {
+            input_buffer.extend_front(time, inputs)
+        }
 
-        None
+        todo!() // need to keep track of what has beem emitted
     }
 
     #[allow(unused)]

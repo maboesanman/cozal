@@ -1,7 +1,6 @@
 use core::future::Future;
 use core::pin::Pin;
-use core::task::{Context, Poll};
-use std::task::Waker;
+use core::task::{Context, Poll, Waker};
 
 pub struct LazyState<S>(LazyStateInner<S>);
 pub enum LazyStateInner<S> {

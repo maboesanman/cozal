@@ -1,6 +1,6 @@
-use std::marker::PhantomData;
-use std::mem::MaybeUninit;
-use std::pin::Pin;
+use core::marker::PhantomData;
+use core::mem::MaybeUninit;
+use core::pin::Pin;
 
 use futures_core::Future;
 
@@ -68,7 +68,6 @@ impl<T: Transposer> Arg<T> for InputArg<T> {
 
     type Stored = Box<[T::Input]>;
 
-    #[warn(unsafe_op_in_unsafe_fn)]
     fn get_fut<'a>(
         transposer: &'a mut T,
         context: &'a mut UpdateContext<T>,
@@ -120,7 +119,6 @@ impl<T: Transposer> Arg<T> for ScheduledArg<T> {
 
     type Stored = ();
 
-    #[warn(unsafe_op_in_unsafe_fn)]
     fn get_fut<'a>(
         transposer: &'a mut T,
         context: &'a mut UpdateContext<T>,
