@@ -5,19 +5,13 @@ use core::task::{Context, Poll};
 
 use futures_core::FusedFuture;
 
-use self::arg::Arg;
-use self::frame_update_pollable::FrameUpdatePollable;
-use self::update_context::UpdateContext;
-pub use self::update_result::UpdateResult;
+use super::arg::Arg;
 use super::engine_time::EngineTime;
 use super::frame::Frame;
+use super::frame_update_pollable::FrameUpdatePollable;
+use super::update_context::UpdateContext;
+use super::update_result::UpdateResult;
 use crate::transposer::Transposer;
-mod arg;
-mod frame_update_pollable;
-mod lazy_state;
-mod sequence_frame_update;
-mod update_context;
-mod update_result;
 
 /// future to initialize a TransposerFrame
 ///

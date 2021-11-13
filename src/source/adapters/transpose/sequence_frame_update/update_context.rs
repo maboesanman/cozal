@@ -2,8 +2,8 @@ use core::future::Future;
 use core::pin::Pin;
 
 use super::super::frame::FrameMetaData;
+use super::engine_time::{EngineTime, EngineTimeSchedule};
 use super::lazy_state::LazyState;
-use crate::source::adapters::transpose::engine_time::{EngineTime, EngineTimeSchedule};
 use crate::transposer::context::*;
 use crate::transposer::{ExpireHandle, Transposer};
 

@@ -4,16 +4,25 @@ use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 use std::process::Output;
 
+use arg::{Arg, InitArg, InputArg, ScheduledArg};
 use futures_core::Future;
+use update_context::UpdateContext;
+use update_result::UpdateResult;
 
-use super::super::engine_time::EngineTime;
-use super::super::frame::Frame;
-use super::super::frame_update::{FrameUpdate, UpdateResult};
-use super::update_context::{OriginalUpdateContext, RepeatUpdateContext};
-use crate::source::adapters::transpose::frame_update::arg::{Arg, InitArg, InputArg, ScheduledArg};
-use crate::source::adapters::transpose::frame_update::update_context::UpdateContext;
-use crate::source::adapters::transpose::input_buffer::InputBuffer;
+use super::input_buffer::InputBuffer;
 use crate::transposer::Transposer;
+
+mod arg;
+mod frame_update;
+mod frame_update_pollable;
+mod lazy_state;
+mod update_context;
+mod update_result;
+use self::engine_time::EngineTime;
+use self::frame::Frame;
+use self::frame_update::FrameUpdate;
+use self::update_context::{OriginalUpdateContext, RepeatUpdateContext};
+pub(self) use super::*;
 
 pub struct SequenceFrameUpdate<T: Transposer> {
     time:            EngineTime<T::Time>,

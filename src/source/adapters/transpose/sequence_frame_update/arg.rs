@@ -4,9 +4,9 @@ use core::pin::Pin;
 
 use futures_core::Future;
 
+use super::engine_time::EngineTime;
+use super::frame::Frame;
 use super::update_context::UpdateContext;
-use crate::source::adapters::transpose::engine_time::EngineTime;
-use crate::source::adapters::transpose::frame::Frame;
 use crate::transposer::Transposer;
 
 pub trait Arg<T: Transposer> {
