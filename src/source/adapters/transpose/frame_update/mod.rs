@@ -13,9 +13,9 @@ use super::engine_time::EngineTime;
 use super::frame::Frame;
 use crate::transposer::Transposer;
 mod arg;
-mod frame_sequence_item;
 mod frame_update_pollable;
 mod lazy_state;
+mod sequence_frame_update;
 mod update_context;
 mod update_result;
 
