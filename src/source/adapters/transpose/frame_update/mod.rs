@@ -2,13 +2,11 @@ use core::future::Future;
 use core::mem::MaybeUninit;
 use core::pin::Pin;
 use core::task::{Context, Poll};
-use std::marker::PhantomData;
 
 use futures_core::FusedFuture;
 
 use self::arg::Arg;
 use self::frame_update_pollable::FrameUpdatePollable;
-use self::update_context::UpdateContext;
 pub use self::update_result::UpdateResult;
 use super::engine_time::EngineTime;
 use super::frame::Frame;

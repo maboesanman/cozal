@@ -185,9 +185,7 @@ impl<T: Transposer> FrameSequenceItem<T> {
 
         let frame = unsafe { frame_dest.assume_init() };
 
-        unsafe {
-            self.saturate_from_frame(frame);
-        }
+        self.saturate_from_frame(frame)?;
 
         Ok(())
     }
@@ -197,26 +195,20 @@ impl<T: Transposer> FrameSequenceItem<T> {
     where
         T: Clone,
     {
-        if !(previous.inner.is_saturated() && self.inner.is_unsaturated()) {
-            return Err(())
-        }
-
         let frame = match &previous.inner {
             FrameSequenceItemInner::SaturatedInit {
                 frame, ..
-            } => frame.clone(),
+            } => Ok(frame.clone()),
             FrameSequenceItemInner::SaturatedInput {
                 frame, ..
-            } => frame.clone(),
+            } => Ok(frame.clone()),
             FrameSequenceItemInner::SaturatedScheduled {
                 frame,
-            } => frame.clone(),
-            _ => unreachable!(),
-        };
+            } => Ok(frame.clone()),
+            _ => Err(()),
+        }?;
 
-        unsafe {
-            self.saturate_from_frame(frame);
-        }
+        self.saturate_from_frame(frame)?;
 
         Ok(())
     }
@@ -340,12 +332,16 @@ impl<T: Transposer> FrameSequenceItem<T> {
         }
     }
 
+    #[allow(unused)]
     pub fn time(&self) -> &EngineTime<T::Time> {
         &self.time
     }
 
-    // SAFETY: self must be unsaturated
-    unsafe fn saturate_from_frame(&mut self, frame: Box<Frame<T>>) {
+    fn saturate_from_frame(&mut self, frame: Box<Frame<T>>) -> Result<(), ()> {
+        if !self.inner.is_unsaturated() {
+            return Err(())
+        }
+
         take_mut::take(&mut self.inner, |next| match next {
             FrameSequenceItemInner::UnsaturatedInput {
                 inputs,
@@ -363,6 +359,8 @@ impl<T: Transposer> FrameSequenceItem<T> {
             },
             _ => unreachable!(),
         });
+
+        Ok(())
     }
 }
 

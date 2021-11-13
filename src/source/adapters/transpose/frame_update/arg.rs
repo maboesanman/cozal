@@ -51,8 +51,8 @@ impl<T: Transposer> Arg<T> for InitArg<T> {
     }
 
     fn get_arg(
-        frame: &mut Frame<T>,
-        in_arg: Self::Stored,
+        _frame: &mut Frame<T>,
+        _in_arg: Self::Stored,
         time: &EngineTime<T::Time>,
     ) -> Self::Passed {
         debug_assert!(time.is_init());
@@ -137,7 +137,7 @@ impl<T: Transposer> Arg<T> for ScheduledArg<T> {
 
     fn get_arg(
         frame: &mut Frame<T>,
-        in_arg: Self::Stored,
+        _in_arg: Self::Stored,
         time: &EngineTime<T::Time>,
     ) -> Self::Passed {
         debug_assert!(time.is_scheduled());
