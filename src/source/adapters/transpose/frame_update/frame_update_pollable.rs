@@ -61,15 +61,16 @@ impl<T: Transposer, A: Arg<T>> FrameUpdatePollable<T, A> {
         let transposer_ref: &'s mut _ = unsafe { transposer_ptr.as_mut().unwrap() };
 
         // create our future
-        let fut = unsafe {
-            A::get_fut(
-                transposer_ref,
-                context_ref,
-                this.time.raw_time()?,
-                args,
-                &mut this.args,
-            )
-        };
+        let fut = A::get_fut(
+            transposer_ref,
+            context_ref,
+            this.time.raw_time()?,
+            args,
+            &mut this.args,
+        );
+
+        // SAFETY: transmute the lifetime, because fut will be valid until it is dropped.
+        let fut = unsafe { core::mem::transmute(fut) };
 
         this.future = MaybeUninit::new(fut);
 

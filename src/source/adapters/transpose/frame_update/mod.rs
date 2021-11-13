@@ -53,24 +53,24 @@ where
         }
     }
 
-    pub fn reclaim(self: Pin<&mut Self>) -> A::Stored {
-        let mut result = None;
+    pub fn reclaim(self: Pin<&mut Self>) -> Result<A::Stored, ()> {
+        let mut result = Err(());
 
         let this = unsafe { self.get_unchecked_mut() };
 
         take_mut::take(&mut this.inner, |inner| match inner {
             FrameUpdateInner::Unpollable(u) => {
-                result = Some(A::get_stored(u.args));
+                result = Ok(A::get_stored(u.args));
                 FrameUpdateInner::Terminated
             },
             FrameUpdateInner::Pollable(p) => {
-                result = Some(p.reclaim_pending());
+                result = Ok(p.reclaim_pending());
                 FrameUpdateInner::Terminated
             },
             other => other,
         });
 
-        result.unwrap()
+        result
     }
 
     pub fn needs_input_state(&self) -> Result<bool, ()> {

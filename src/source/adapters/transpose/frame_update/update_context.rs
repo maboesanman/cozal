@@ -31,6 +31,7 @@ impl<T: Transposer> HandleInputContext<T> for UpdateContext<T> {}
 impl<T: Transposer> HandleScheduleContext<T> for UpdateContext<T> {}
 
 impl<T: Transposer> UpdateContext<T> {
+    // SAFETY: ensure this UpdateContext is dropped before frame_internal and input_state.
     pub(super) unsafe fn new(
         time: EngineTime<T::Time>,
         frame_internal: *mut FrameMetaData<T>,

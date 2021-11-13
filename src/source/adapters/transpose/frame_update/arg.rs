@@ -14,13 +14,13 @@ pub trait Arg<T: Transposer> {
     type Stored;
 
     // STORAGE MUST BE VALID AFTER THIS
-    unsafe fn get_fut(
-        transposer: &mut T,
-        context: &mut UpdateContext<T>,
+    fn get_fut<'a>(
+        transposer: &'a mut T,
+        context: &'a mut UpdateContext<T>,
         time: T::Time,
         value: Self::Passed,
-        storage_slot: &mut MaybeUninit<Self::Stored>,
-    ) -> Pin<Box<dyn Future<Output = ()>>>;
+        storage_slot: &'a mut MaybeUninit<Self::Stored>,
+    ) -> Pin<Box<dyn Future<Output = ()> + 'a>>;
 
     fn get_arg(
         frame: &mut Frame<T>,
@@ -37,17 +37,16 @@ impl<T: Transposer> Arg<T> for InitArg<T> {
 
     type Stored = ();
 
-    unsafe fn get_fut(
-        transposer: &mut T,
-        context: &mut UpdateContext<T>,
-        _time: T::Time,
-        _value: Self::Passed,
-        storage_slot: &mut MaybeUninit<Self::Stored>,
-    ) -> Pin<Box<dyn Future<Output = ()>>> {
+    fn get_fut<'a>(
+        transposer: &'a mut T,
+        context: &'a mut UpdateContext<T>,
+        time: T::Time,
+        value: Self::Passed,
+        storage_slot: &'a mut MaybeUninit<Self::Stored>,
+    ) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
         *storage_slot = MaybeUninit::new(());
 
-        let fut = transposer.init(context);
-        core::mem::transmute(fut)
+        transposer.init(context)
     }
 
     fn get_arg(
@@ -65,24 +64,23 @@ impl<T: Transposer> Arg<T> for InitArg<T> {
 
 pub struct InputArg<T: Transposer>(PhantomData<T>);
 impl<T: Transposer> Arg<T> for InputArg<T> {
-    type Passed = Vec<T::Input>;
+    type Passed = Box<[T::Input]>;
 
-    type Stored = Vec<T::Input>;
+    type Stored = Box<[T::Input]>;
 
-    unsafe fn get_fut(
-        transposer: &mut T,
-        context: &mut UpdateContext<T>,
+    #[warn(unsafe_op_in_unsafe_fn)]
+    fn get_fut<'a>(
+        transposer: &'a mut T,
+        context: &'a mut UpdateContext<T>,
         time: T::Time,
         value: Self::Passed,
-        storage_slot: &mut MaybeUninit<Self::Stored>,
-    ) -> Pin<Box<dyn Future<Output = ()>>> {
+        storage_slot: &'a mut MaybeUninit<Self::Stored>,
+    ) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
         *storage_slot = MaybeUninit::new(value);
 
-        let inputs_ptr: *const _ = storage_slot.assume_init_ref();
-        let inputs_ref = inputs_ptr.as_ref().unwrap();
-
-        let fut = transposer.handle_input(time, inputs_ref, context);
-        core::mem::transmute(fut)
+        // SAFETY: we just assigned this
+        let storage_slot = unsafe { storage_slot.assume_init_mut() };
+        transposer.handle_input(time, storage_slot, context)
     }
 
     fn get_arg(
@@ -122,17 +120,17 @@ impl<T: Transposer> Arg<T> for ScheduledArg<T> {
 
     type Stored = ();
 
-    unsafe fn get_fut(
-        transposer: &mut T,
-        context: &mut UpdateContext<T>,
+    #[warn(unsafe_op_in_unsafe_fn)]
+    fn get_fut<'a>(
+        transposer: &'a mut T,
+        context: &'a mut UpdateContext<T>,
         time: T::Time,
         value: Self::Passed,
-        storage_slot: &mut MaybeUninit<Self::Stored>,
-    ) -> Pin<Box<dyn Future<Output = ()>>> {
+        storage_slot: &'a mut MaybeUninit<Self::Stored>,
+    ) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
         *storage_slot = MaybeUninit::new(());
 
-        let fut = transposer.handle_scheduled(time, value, context);
-        core::mem::transmute(fut)
+        transposer.handle_scheduled(time, value, context)
     }
 
     fn get_arg(

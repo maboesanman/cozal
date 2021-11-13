@@ -8,7 +8,7 @@ use futures_core::Future;
 use super::super::engine_time::EngineTime;
 use super::super::frame::Frame;
 use super::super::frame_update::{FrameUpdate, UpdateResult};
-use crate::source::adapters::transpose::frame_update::arg::{InitArg, InputArg, ScheduledArg};
+use crate::source::adapters::transpose::frame_update::arg::{Arg, InitArg, InputArg, ScheduledArg};
 use crate::source::adapters::transpose::input_buffer::InputBuffer;
 use crate::transposer::Transposer;
 
@@ -19,7 +19,7 @@ pub struct FrameSequenceItem<T: Transposer> {
 
 enum FrameSequenceItemInner<T: Transposer> {
     UnsaturatedInput {
-        inputs: Vec<T::Input>,
+        inputs: <InputArg<T> as Arg<T>>::Stored,
     },
     UnsaturatedScheduled,
     SaturatingInit {
@@ -35,7 +35,7 @@ enum FrameSequenceItemInner<T: Transposer> {
         frame: Box<Frame<T>>,
     },
     SaturatedInput {
-        inputs: Vec<T::Input>,
+        inputs: <InputArg<T> as Arg<T>>::Stored,
         frame:  Box<Frame<T>>,
     },
     SaturatedScheduled {
@@ -220,9 +220,12 @@ impl<T: Transposer> FrameSequenceItem<T> {
             FrameSequenceItemInner::SaturatingInput {
                 mut update,
             } => {
-                result = Ok(());
+                let inputs = update.as_mut().reclaim();
+                if inputs.is_ok() {
+                    result = Ok(())
+                };
                 FrameSequenceItemInner::UnsaturatedInput {
-                    inputs: update.as_mut().reclaim(),
+                    inputs: inputs.unwrap_or(Vec::new().into_boxed_slice()),
                 }
             },
             FrameSequenceItemInner::SaturatingScheduled {
@@ -249,6 +252,41 @@ impl<T: Transposer> FrameSequenceItem<T> {
         });
 
         result
+    }
+
+    pub fn rollback(self, input_buffer: &mut InputBuffer<T::Time, T::Input>) -> Option<T::Time> {
+        let time = self.time.raw_time();
+        let inputs = match self.inner {
+            FrameSequenceItemInner::UnsaturatedInput {
+                inputs,
+            } => Some(inputs),
+            FrameSequenceItemInner::UnsaturatedScheduled => todo!(),
+            FrameSequenceItemInner::SaturatingInit {
+                update,
+            } => todo!(),
+            FrameSequenceItemInner::SaturatingInput {
+                update,
+            } => todo!(),
+            FrameSequenceItemInner::SaturatingScheduled {
+                update,
+            } => todo!(),
+            FrameSequenceItemInner::SaturatedInit {
+                frame,
+            } => todo!(),
+            FrameSequenceItemInner::SaturatedInput {
+                inputs,
+                frame,
+            } => Some(inputs),
+            FrameSequenceItemInner::SaturatedScheduled {
+                frame,
+            } => todo!(),
+        };
+
+        // for inputs in inputs.into_iter() {
+        //     input_buffer.extend_front(time, inputs)
+        // }
+
+        None
     }
 
     #[allow(unused)]
