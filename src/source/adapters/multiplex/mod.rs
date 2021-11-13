@@ -208,7 +208,7 @@ impl<Src: Source> Source for Multiplex<Src> {
         time: Self::Time,
         cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
-        self.poll_internal(time, cx, Src::poll, PollType::Poll)
+        self.poll_internal(time, cx, Src::poll, PollType::Normal)
     }
 
     fn poll_forget(
@@ -216,7 +216,7 @@ impl<Src: Source> Source for Multiplex<Src> {
         time: Self::Time,
         cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
-        self.poll_internal(time, cx, Src::poll_forget, PollType::PollForget)
+        self.poll_internal(time, cx, Src::poll_forget, PollType::Forget)
     }
 
     fn poll_events(
@@ -224,7 +224,7 @@ impl<Src: Source> Source for Multiplex<Src> {
         time: Self::Time,
         cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, (), Src::Error> {
-        self.poll_internal(time, cx, Src::poll_events, PollType::PollEvents)
+        self.poll_internal(time, cx, Src::poll_events, PollType::Events)
     }
 
     fn advance(self: Pin<&mut Self>, time: Self::Time) {

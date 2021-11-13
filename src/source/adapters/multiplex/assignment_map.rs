@@ -18,9 +18,9 @@ pub struct Assignment<Time: Copy> {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PollType {
-    Poll,
-    PollForget,
-    PollEvents,
+    Normal,
+    Forget,
+    Events,
 }
 
 impl<Time: Copy> AssignmentMap<Time> {

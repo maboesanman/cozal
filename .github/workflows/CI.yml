@@ -84,10 +84,10 @@ jobs:
         toolchain: nightly
         override: true
 
-    - name: Install rustfmt
+    - name: Install clippy
       run: rustup component add clippy
       shell: bash
 
-    - name: Check formatting
+    - name: Check clippy lints
       run: cargo clippy -- -D warnings
       shell: bash
