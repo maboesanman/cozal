@@ -6,29 +6,29 @@ use core::task::{Context, Poll};
 use std::mem::ManuallyDrop;
 
 use super::super::frame::Frame;
+use super::arg::Arg;
 use super::lazy_state::LazyState;
 use super::update_context::UpdateContext;
-use super::UpdateArgs;
 use crate::source::adapters::transpose::engine_time::EngineTime;
 use crate::transposer::Transposer;
 
-pub(super) struct FrameUpdatePollable<T: Transposer> {
-    // references context and frame.transposer
-    future: MaybeUninit<Box<dyn Future<Output = ()>>>,
+pub(super) struct FrameUpdatePollable<T: Transposer, A: Arg<T>> {
+    // references context, frame.transposer, and args
+    future: MaybeUninit<Pin<Box<dyn Future<Output = ()>>>>,
 
     // references state and frame.internal
     context: MaybeUninit<UpdateContext<T>>,
 
-    frame:  Box<Frame<T>>,
-    state:  LazyState<T::InputState>,
-    inputs: Option<Vec<T::Input>>,
-    time:   EngineTime<T::Time>,
+    frame: Box<Frame<T>>,
+    state: LazyState<T::InputState>,
+    args:  MaybeUninit<A::Stored>,
+    time:  EngineTime<T::Time>,
 
     // lots of self references. very dangerous.
     _pin: PhantomPinned,
 }
 
-impl<T: Transposer> FrameUpdatePollable<T> {
+impl<T: Transposer, A: Arg<T>> FrameUpdatePollable<T, A> {
     // SAFETY: make sure to call init before doing anything with the new value.
     pub unsafe fn new(frame: Box<Frame<T>>, time: EngineTime<T::Time>) -> Self {
         Self {
@@ -36,15 +36,13 @@ impl<T: Transposer> FrameUpdatePollable<T> {
             context: MaybeUninit::uninit(),
             frame,
             state: LazyState::new(),
-
-            // this may change during init, if the args are for an input.
-            inputs: None,
+            args: MaybeUninit::uninit(),
             time,
             _pin: PhantomPinned,
         }
     }
 
-    pub fn init<'s>(self: Pin<&'s mut Self>, args: UpdateArgs<T>) -> Result<(), usize> {
+    pub fn init<'s>(self: Pin<&'s mut Self>, args: A::Passed) -> Result<(), usize> {
         let this = unsafe { self.get_unchecked_mut() };
 
         // SAFETY: we're storing this in context which is always dropped before frame.
@@ -61,33 +59,49 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         let context_ref: &'s mut _ = unsafe { context_ptr.as_mut().unwrap() };
 
         let transposer_ref: &'s mut _ = unsafe { transposer_ptr.as_mut().unwrap() };
+
         // create our future
-        let fut = match args {
-            UpdateArgs::Init => transposer_ref.init(context_ref),
-            UpdateArgs::Input {
-                inputs,
-            } => {
-                this.inputs = Some(inputs);
-
-                let inputs_ptr: *const _ = this.inputs.as_ref().unwrap();
-                let inputs_ref = unsafe { inputs_ptr.as_ref().unwrap() };
-
-                transposer_ref.handle_input(this.time.raw_time()?, inputs_ref, context_ref)
-            },
-            UpdateArgs::Scheduled {
-                payload,
-            } => transposer_ref.handle_scheduled(this.time.raw_time()?, payload, context_ref),
+        let fut = unsafe {
+            A::get_fut(
+                transposer_ref,
+                context_ref,
+                this.time.raw_time()?,
+                args,
+                &mut this.args,
+            )
         };
-        this.future = MaybeUninit::new(unsafe { std::mem::transmute(fut) });
+
+        this.future = MaybeUninit::new(fut);
 
         Ok(())
     }
 
-    pub fn reclaim_pending(mut self) -> Option<Vec<T::Input>> {
-        core::mem::take(&mut self.inputs)
+    pub fn reclaim_pending(self) -> A::Stored {
+        let mut this = ManuallyDrop::new(self);
+
+        // SAFETY: future is always initialized.
+        unsafe { this.future.assume_init_drop() };
+
+        // SAFETY: context is always initialized.
+        unsafe { this.context.assume_init_drop() };
+
+        // SAFETY: because we're forgetting about self we can just sorta go for it.
+        let frame: &mut MaybeUninit<Box<Frame<T>>> =
+            unsafe { core::mem::transmute(&mut this.frame) };
+        // SAFETY: this is initialized cause it's from a non maybeuninit value and transmuted
+        unsafe { frame.assume_init_drop() };
+
+        let time: &mut MaybeUninit<EngineTime<T::Time>> =
+            unsafe { core::mem::transmute(&mut this.frame) };
+        unsafe { time.assume_init_drop() };
+
+        // SAFETY: args is always initialized, and future is the only thing with a reference to it.
+        let args = unsafe { this.args.assume_init_read() };
+
+        args
     }
 
-    pub fn reclaim_ready(self) -> (Box<Frame<T>>, Vec<T::Output>, Option<Vec<T::Input>>) {
+    pub fn reclaim_ready(self) -> (Box<Frame<T>>, Vec<T::Output>, A::Stored) {
         let mut this = ManuallyDrop::new(self);
 
         // SAFETY: future is always initialized.
@@ -103,9 +117,14 @@ impl<T: Transposer> FrameUpdatePollable<T> {
         // SAFETY: this is initialized cause it's from a non maybeuninit value and transmuted
         let frame = unsafe { frame.assume_init_read() };
 
-        let inputs = core::mem::take(&mut this.inputs);
+        let time: &mut MaybeUninit<EngineTime<T::Time>> =
+            unsafe { core::mem::transmute(&mut this.frame) };
+        unsafe { time.assume_init_drop() };
 
-        (frame, outputs, inputs)
+        // SAFETY: args is always initialized, and future is the only thing with a reference to it.
+        let args = unsafe { this.args.assume_init_read() };
+
+        (frame, outputs, args)
     }
 
     pub fn needs_input_state(&self) -> bool {
@@ -121,16 +140,17 @@ impl<T: Transposer> FrameUpdatePollable<T> {
     }
 }
 
-impl<T: Transposer> Drop for FrameUpdatePollable<T> {
+impl<T: Transposer, A: Arg<T>> Drop for FrameUpdatePollable<T, A> {
     fn drop(&mut self) {
         unsafe {
             self.future.assume_init_drop();
             self.context.assume_init_drop();
+            self.args.assume_init_drop();
         }
     }
 }
 
-impl<T: Transposer> Future for FrameUpdatePollable<T> {
+impl<T: Transposer, A: Arg<T>> Future for FrameUpdatePollable<T, A> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -140,9 +160,6 @@ impl<T: Transposer> Future for FrameUpdatePollable<T> {
         // SAFETY: we always init future immediately after creating it.
         let future = unsafe { this.future.assume_init_mut() };
         let future = future.as_mut();
-
-        // SAFETY: re-pinning
-        let future = unsafe { Pin::new_unchecked(future) };
 
         future.poll(cx)
     }
