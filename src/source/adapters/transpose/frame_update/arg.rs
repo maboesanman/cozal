@@ -14,9 +14,9 @@ pub trait Arg<T: Transposer> {
     type Stored;
 
     // STORAGE MUST BE VALID AFTER THIS
-    fn get_fut<'a>(
+    fn get_fut<'a, C: UpdateContext<T>>(
         transposer: &'a mut T,
-        context: &'a mut UpdateContext<T>,
+        context: &'a mut C,
         time: T::Time,
         value: Self::Passed,
         storage_slot: &'a mut MaybeUninit<Self::Stored>,
@@ -37,9 +37,9 @@ impl<T: Transposer> Arg<T> for InitArg<T> {
 
     type Stored = ();
 
-    fn get_fut<'a>(
+    fn get_fut<'a, C: UpdateContext<T>>(
         transposer: &'a mut T,
-        context: &'a mut UpdateContext<T>,
+        context: &'a mut C,
         _time: T::Time,
         _value: Self::Passed,
         storage_slot: &'a mut MaybeUninit<Self::Stored>,
@@ -66,9 +66,9 @@ impl<T: Transposer> Arg<T> for InputArg<T> {
 
     type Stored = Box<[T::Input]>;
 
-    fn get_fut<'a>(
+    fn get_fut<'a, C: UpdateContext<T>>(
         transposer: &'a mut T,
-        context: &'a mut UpdateContext<T>,
+        context: &'a mut C,
         time: T::Time,
         value: Self::Passed,
         storage_slot: &'a mut MaybeUninit<Self::Stored>,
@@ -109,9 +109,9 @@ impl<T: Transposer> Arg<T> for ScheduledArg<T> {
 
     type Stored = ();
 
-    fn get_fut<'a>(
+    fn get_fut<'a, C: UpdateContext<T>>(
         transposer: &'a mut T,
-        context: &'a mut UpdateContext<T>,
+        context: &'a mut C,
         time: T::Time,
         value: Self::Passed,
         storage_slot: &'a mut MaybeUninit<Self::Stored>,

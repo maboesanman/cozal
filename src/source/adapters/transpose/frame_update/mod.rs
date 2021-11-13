@@ -7,11 +7,13 @@ use futures_core::FusedFuture;
 
 use self::arg::Arg;
 use self::frame_update_pollable::FrameUpdatePollable;
+use self::update_context::UpdateContext;
 pub use self::update_result::UpdateResult;
 use super::engine_time::EngineTime;
 use super::frame::Frame;
 use crate::transposer::Transposer;
-pub(crate) mod arg;
+mod arg;
+mod frame_sequence_item;
 mod frame_update_pollable;
 mod lazy_state;
 mod update_context;
@@ -20,14 +22,14 @@ mod update_result;
 /// future to initialize a TransposerFrame
 ///
 /// this type owns a frame, and has many self references.
-pub struct FrameUpdate<T: Transposer, A: Arg<T>> {
-    inner: FrameUpdateInner<T, A>,
+pub struct FrameUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
+    inner: FrameUpdateInner<T, C, A>,
 }
 
-enum FrameUpdateInner<T: Transposer, A: Arg<T>> {
+enum FrameUpdateInner<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     // Unpollable variants hold the references until we can create the pollable future
     Unpollable(FrameUpdateUnpollable<T, A>),
-    Pollable(FrameUpdatePollable<T, A>),
+    Pollable(FrameUpdatePollable<T, C, A>),
     Terminated,
 }
 
@@ -37,7 +39,7 @@ struct FrameUpdateUnpollable<T: Transposer, A: Arg<T>> {
     time:  EngineTime<T::Time>,
 }
 
-impl<T: Transposer, A: Arg<T>> FrameUpdate<T, A>
+impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> FrameUpdate<T, C, A>
 where
     T::Scheduled: Clone,
 {
@@ -96,8 +98,8 @@ where
     }
 }
 
-impl<T: Transposer, A: Arg<T>> Future for FrameUpdate<T, A> {
-    type Output = UpdateResult<T, A>;
+impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for FrameUpdate<T, C, A> {
+    type Output = UpdateResult<T, C, A>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         // SAFETY the pin is only relavent for the pollable variant, which we don't move around.
@@ -170,7 +172,7 @@ impl<T: Transposer, A: Arg<T>> Future for FrameUpdate<T, A> {
     }
 }
 
-impl<T: Transposer, A: Arg<T>> FusedFuture for FrameUpdate<T, A> {
+impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> FusedFuture for FrameUpdate<T, C, A> {
     fn is_terminated(&self) -> bool {
         matches!(self.inner, FrameUpdateInner::Terminated)
     }

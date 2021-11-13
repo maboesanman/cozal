@@ -11,12 +11,12 @@ use super::update_context::UpdateContext;
 use crate::source::adapters::transpose::engine_time::EngineTime;
 use crate::transposer::Transposer;
 
-pub(super) struct FrameUpdatePollable<T: Transposer, A: Arg<T>> {
+pub(super) struct FrameUpdatePollable<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     // references context, frame.transposer, and args
     future: MaybeUninit<Pin<Box<dyn Future<Output = ()>>>>,
 
     // references state and frame.internal
-    context: MaybeUninit<UpdateContext<T>>,
+    context: MaybeUninit<C>,
 
     frame: Box<Frame<T>>,
     state: LazyState<T::InputState>,
@@ -27,7 +27,7 @@ pub(super) struct FrameUpdatePollable<T: Transposer, A: Arg<T>> {
     _pin: PhantomPinned,
 }
 
-impl<T: Transposer, A: Arg<T>> FrameUpdatePollable<T, A> {
+impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> FrameUpdatePollable<T, C, A> {
     // SAFETY: make sure to call init before doing anything with the new value.
     pub unsafe fn new(frame: Box<Frame<T>>, time: EngineTime<T::Time>) -> Self {
         Self {
@@ -50,7 +50,7 @@ impl<T: Transposer, A: Arg<T>> FrameUpdatePollable<T, A> {
         let state_ptr: *mut _ = &mut this.state;
 
         // SAFETY: we're storing this in context which is always dropped before state.
-        let context = unsafe { UpdateContext::new(this.time.clone(), internal_ptr, state_ptr) };
+        let context = unsafe { C::new(this.time.clone(), internal_ptr, state_ptr) };
         this.context = MaybeUninit::new(context);
 
         // SAFETY: we're storing this in future, which is always dropped before context.
@@ -99,7 +99,7 @@ impl<T: Transposer, A: Arg<T>> FrameUpdatePollable<T, A> {
         unsafe { this.args.assume_init_read() }
     }
 
-    pub fn reclaim_ready(self) -> (Box<Frame<T>>, Vec<T::Output>, A::Stored) {
+    pub fn reclaim_ready(self) -> (Box<Frame<T>>, C::Outputs, A::Stored) {
         let mut this = ManuallyDrop::new(self);
 
         // SAFETY: future is always initialized.
@@ -138,7 +138,7 @@ impl<T: Transposer, A: Arg<T>> FrameUpdatePollable<T, A> {
     }
 }
 
-impl<T: Transposer, A: Arg<T>> Drop for FrameUpdatePollable<T, A> {
+impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Drop for FrameUpdatePollable<T, C, A> {
     fn drop(&mut self) {
         unsafe {
             self.future.assume_init_drop();
@@ -148,7 +148,7 @@ impl<T: Transposer, A: Arg<T>> Drop for FrameUpdatePollable<T, A> {
     }
 }
 
-impl<T: Transposer, A: Arg<T>> Future for FrameUpdatePollable<T, A> {
+impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for FrameUpdatePollable<T, C, A> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
