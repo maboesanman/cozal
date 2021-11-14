@@ -4,6 +4,7 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 
 use futures_core::FusedFuture;
+use pin_project::pin_project;
 
 use super::{Arg, EngineTime, Frame, FrameUpdatePollable, UpdateContext, UpdateResult};
 use crate::transposer::Transposer;
@@ -11,14 +12,17 @@ use crate::transposer::Transposer;
 /// future to initialize a TransposerFrame
 ///
 /// this type owns a frame, and has many self references.
+#[pin_project]
 pub struct FrameUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
+    #[pin]
     inner: FrameUpdateInner<T, C, A>,
 }
 
+#[pin_project(project=FrameUpdateInnerProject)]
 enum FrameUpdateInner<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     // Unpollable variants hold the references until we can create the pollable future
     Unpollable(FrameUpdateUnpollable<T, A>),
-    Pollable(FrameUpdatePollable<T, C, A>),
+    Pollable(#[pin] FrameUpdatePollable<T, C, A>),
     Terminated,
 }
 
@@ -45,6 +49,7 @@ where
     pub fn reclaim(self: Pin<&mut Self>) -> Result<A::Stored, ()> {
         let mut result = Err(());
 
+        // SAFETY: we are discarding the pollable variant, so the pin invariants on pollable are upheld.
         let this = unsafe { self.get_unchecked_mut() };
 
         take_mut::take(&mut this.inner, |inner| match inner {
@@ -74,12 +79,8 @@ where
         self: Pin<&mut Self>,
         state: T::InputState,
     ) -> Result<(), T::InputState> {
-        let this = unsafe { self.get_unchecked_mut() };
-        match &mut this.inner {
-            FrameUpdateInner::Pollable(p) => {
-                let p = unsafe { Pin::new_unchecked(p) };
-                p.set_input_state(state)
-            },
+        match self.project().inner.project() {
+            FrameUpdateInnerProject::Pollable(p) => p.set_input_state(state),
             _ => Err(state),
         }
     }
@@ -89,42 +90,32 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for FrameUpdate<T, C,
     type Output = UpdateResult<T, C, A>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        // SAFETY the pin is only relavent for the pollable variant, which we don't move around.
-        let this = unsafe { self.get_unchecked_mut() };
-        let inner = &mut this.inner;
+        let mut this = self.project();
         'poll: loop {
+            // SAFETY the pin is only relavent for the pollable variant, which we don't move around.
+            let inner = unsafe { this.inner.as_mut().get_unchecked_mut() };
             let _ = match inner {
                 FrameUpdateInner::Unpollable(_) => {
-                    // get vars ready to take out of self.
-                    let mut args: MaybeUninit<A::Passed> = MaybeUninit::uninit();
-
                     // take out of self and replace with a Pollable with uninit future.
-                    take_mut::take(inner, |inner_owned| {
-                        if let FrameUpdateInner::Unpollable(FrameUpdateUnpollable {
-                            frame,
-                            args: args_temp,
-                            time,
-                        }) = inner_owned
-                        {
-                            args = MaybeUninit::new(args_temp);
+                    if let FrameUpdateInner::Unpollable(FrameUpdateUnpollable {
+                        frame,
+                        args,
+                        time,
+                    }) = core::mem::replace(inner, FrameUpdateInner::Terminated)
+                    {
+                        // SAFETY: we init this immediately after placing it.
+                        *inner = FrameUpdateInner::Pollable(unsafe {
+                            FrameUpdatePollable::new(frame, time)
+                        });
 
-                            // SAFETY: we are calling init in just a few lines
-                            FrameUpdateInner::Pollable(unsafe {
-                                FrameUpdatePollable::new(frame, time)
-                            })
+                        // init out uninit context and future.
+                        if let FrameUpdateInnerProject::Pollable(pollable) =
+                            this.inner.as_mut().project()
+                        {
+                            pollable.init(args)
                         } else {
                             unreachable!()
                         }
-                    });
-
-                    // init out uninit context and future.
-                    if let FrameUpdateInner::Pollable(pollable) = inner {
-                        // SAFETY: these must have been assigned if we are now pollable.
-                        let args = unsafe { args.assume_init() };
-                        let pollable = unsafe { Pin::new_unchecked(pollable) };
-
-                        // SAFETY: new must have been called if we are now pollable
-                        pollable.init(args)
                     } else {
                         unreachable!()
                     }
