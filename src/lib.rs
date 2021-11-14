@@ -6,7 +6,7 @@
 #![deny(single_use_lifetimes)]
 #![allow(clippy::or_fun_call)]
 // TODO: remove this allow
-#![allow(unused)]
+#![allow(dead_code)]
 
 #[cfg(test)]
 mod test;

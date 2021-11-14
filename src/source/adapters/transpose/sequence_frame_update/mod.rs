@@ -94,24 +94,6 @@ impl<T: Transposer> SequenceFrameUpdateInner<T> {
                 | SequenceFrameUpdateInner::RepeatUnsaturatedScheduled
         )
     }
-    pub fn is_saturating(&self) -> bool {
-        matches!(
-            self,
-            SequenceFrameUpdateInner::SaturatingInit { .. }
-                | SequenceFrameUpdateInner::OriginalSaturatingInput { .. }
-                | SequenceFrameUpdateInner::OriginalSaturatingScheduled { .. }
-                | SequenceFrameUpdateInner::RepeatSaturatingInput { .. }
-                | SequenceFrameUpdateInner::RepeatSaturatingScheduled { .. }
-        )
-    }
-    pub fn is_saturated(&self) -> bool {
-        matches!(
-            self,
-            SequenceFrameUpdateInner::SaturatedInit { .. }
-                | SequenceFrameUpdateInner::SaturatedInput { .. }
-                | SequenceFrameUpdateInner::SaturatedScheduled { .. }
-        )
-    }
 
     pub fn can_be_taken(&self) -> bool {
         matches!(
@@ -320,13 +302,13 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
                 }
             },
             SequenceFrameUpdateInner::OriginalSaturatingScheduled {
-                update,
+                update: _,
             } => {
                 result = Ok(());
                 SequenceFrameUpdateInner::OriginalUnsaturatedScheduled
             },
             SequenceFrameUpdateInner::RepeatSaturatingScheduled {
-                update,
+                update: _,
             } => {
                 result = Ok(());
                 SequenceFrameUpdateInner::RepeatUnsaturatedScheduled
@@ -397,12 +379,6 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
                 SequenceFrameUpdatePoll::ReadyOutputs(outputs)
             })
         }
-        fn handle_repeat_outputs<T: Transposer>(
-            outputs: Vec<T::Output>,
-            outputs_emitted: &mut OutputsEmitted,
-        ) -> Result<SequenceFrameUpdatePoll<T>, ()> {
-            Ok(SequenceFrameUpdatePoll::ReadyNoOutputs)
-        }
 
         fn handle_pending<T: Transposer, C: UpdateContext<T>, A: Arg<T>>(
             update: &FrameUpdate<T, C, A>,
@@ -460,7 +436,7 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
                     frame,
-                    outputs,
+                    outputs: _,
                     arg,
                 }) => {
                     self.inner = {
@@ -497,7 +473,7 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
                     frame,
-                    outputs,
+                    outputs: _,
                     arg: (),
                 }) => {
                     self.inner = {

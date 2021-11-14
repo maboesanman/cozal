@@ -2,7 +2,7 @@ use core::future::Future;
 use core::pin::Pin;
 
 use super::super::frame::FrameMetaData;
-use super::engine_time::{EngineTime, EngineTimeSchedule};
+use super::engine_time::EngineTime;
 use super::lazy_state::LazyState;
 use crate::transposer::context::*;
 use crate::transposer::{ExpireHandle, Transposer};

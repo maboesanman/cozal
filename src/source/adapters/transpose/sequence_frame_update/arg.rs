@@ -52,7 +52,7 @@ impl<T: Transposer> Arg<T> for InitArg<T> {
     fn get_arg(
         _frame: &mut Frame<T>,
         _in_arg: Self::Stored,
-        time: &EngineTime<T::Time>,
+        _time: &EngineTime<T::Time>,
     ) -> Self::Passed {
     }
 
@@ -125,6 +125,8 @@ impl<T: Transposer> Arg<T> for ScheduledArg<T> {
         debug_assert!(val.is_some());
 
         let (t, payload) = val.unwrap();
+
+        debug_assert!(time.raw_time() == t.time);
 
         payload
     }

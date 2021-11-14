@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use rand::Rng;
 
 use super::{Frame, FrameMetaData};
-use crate::source::adapters::transpose::engine_time::{EngineTime, EngineTimeSchedule};
+use crate::source::adapters::transpose::engine_time::EngineTimeSchedule;
 use crate::transposer::context::{
     HandleInputContext,
     HandleScheduleContext,
@@ -133,7 +133,6 @@ fn frame_internal() {
 
 #[test]
 fn frame_internal_pop() {
-    let init_time = EngineTime::<usize>::new_init();
     let seed = rand::thread_rng().gen();
     let mut internal = FrameMetaData::<TestTransposer>::new(seed);
 
@@ -187,7 +186,6 @@ fn frame_internal_pop() {
 
 #[test]
 fn frame_internal_failed_expire() {
-    let init_time = EngineTime::<usize>::new_init();
     let seed = rand::thread_rng().gen();
     let mut internal = FrameMetaData::<TestTransposer>::new(seed);
 
@@ -207,7 +205,6 @@ fn frame_internal_failed_expire() {
 
 #[test]
 fn frame() {
-    let init_time = EngineTime::<usize>::new_init();
     let transposer = TestTransposer {};
     let seed = rand::thread_rng().gen();
     let mut frame = Frame::new(transposer, seed);
@@ -234,7 +231,6 @@ fn frame() {
 
 #[test]
 fn frame_clone() {
-    let init_time = EngineTime::<usize>::new_init();
     let transposer = TestTransposer {};
     let seed = rand::thread_rng().gen();
     let mut frame = Frame::new(transposer, seed);
@@ -269,7 +265,6 @@ fn frame_clone() {
 #[test]
 #[should_panic]
 fn frame_internal_expire_illegal() {
-    let init_time = EngineTime::<usize>::new_init();
     let seed = rand::thread_rng().gen();
     let mut internal = FrameMetaData::<TestTransposer>::new(seed);
 
