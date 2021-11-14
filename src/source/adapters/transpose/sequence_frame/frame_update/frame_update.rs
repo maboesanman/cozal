@@ -1,5 +1,4 @@
 use core::future::Future;
-use core::mem::MaybeUninit;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
