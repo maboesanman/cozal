@@ -7,6 +7,7 @@ use pin_project::pin_project;
 
 use super::{Arg, EngineTime, Frame, FrameUpdatePollable, UpdateContext, UpdateResult};
 use crate::transposer::Transposer;
+use crate::util::take_mut;
 
 /// future to initialize a TransposerFrame
 ///
@@ -46,24 +47,22 @@ where
     }
 
     pub fn reclaim(self: Pin<&mut Self>) -> Result<A::Stored, ()> {
-        let mut result = Err(());
-
         // SAFETY: we are discarding the pollable variant, so the pin invariants on pollable are upheld.
         let this = unsafe { self.get_unchecked_mut() };
 
-        take_mut::take(&mut this.inner, |inner| match inner {
-            FrameUpdateInner::Unpollable(u) => {
-                result = Ok(A::get_stored(u.args));
-                FrameUpdateInner::Terminated
+        take_mut::take_and_return_or_recover(
+            &mut this.inner,
+            || FrameUpdateInner::Terminated,
+            |inner| match inner {
+                FrameUpdateInner::Unpollable(u) => {
+                    (FrameUpdateInner::Terminated, Ok(A::get_stored(u.args)))
+                },
+                FrameUpdateInner::Pollable(p) => {
+                    (FrameUpdateInner::Terminated, Ok(p.reclaim_pending()))
+                },
+                other => (other, Err(())),
             },
-            FrameUpdateInner::Pollable(p) => {
-                result = Ok(p.reclaim_pending());
-                FrameUpdateInner::Terminated
-            },
-            other => other,
-        });
-
-        result
+        )
     }
 
     pub fn needs_input_state(&self) -> Result<bool, ()> {

@@ -232,6 +232,7 @@ impl<Src: Source> Source for Multiplex<Src> {
     }
 
     fn max_channel(&self) -> NonZeroUsize {
+        // SAFETY: usize::MAX is not 0.
         unsafe { NonZeroUsize::new_unchecked(usize::MAX) }
     }
 }

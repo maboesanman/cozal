@@ -15,6 +15,7 @@ use crate::source::adapters::transpose::sequence_frame::frame_update::{
     UpdateResult,
 };
 use crate::transposer::Transposer;
+use crate::util::take_mut;
 
 pub struct SequenceFrame<T: Transposer> {
     time:            EngineTime<T::Time>,
@@ -114,38 +115,28 @@ impl<T: Transposer> SequenceFrame<T> {
             return Err(())
         }
 
-        let mut frame_dest = MaybeUninit::uninit();
-
-        take_mut::take_or_recover(
+        let frame = take_mut::take_and_return_or_recover(
             &mut previous.inner,
             || SequenceFrameInner::Unreachable,
             |prev| match prev {
                 SequenceFrameInner::SaturatedInit {
                     frame,
-                } => {
-                    frame_dest = MaybeUninit::new(frame);
-                    SequenceFrameInner::UnsaturatedInit
-                },
+                } => (SequenceFrameInner::UnsaturatedInit, frame),
                 SequenceFrameInner::SaturatedInput {
                     inputs,
                     frame,
-                } => {
-                    frame_dest = MaybeUninit::new(frame);
+                } => (
                     SequenceFrameInner::RepeatUnsaturatedInput {
                         inputs,
-                    }
-                },
+                    },
+                    frame,
+                ),
                 SequenceFrameInner::SaturatedScheduled {
                     frame,
-                } => {
-                    frame_dest = MaybeUninit::new(frame);
-                    SequenceFrameInner::RepeatUnsaturatedScheduled
-                },
+                } => (SequenceFrameInner::RepeatUnsaturatedScheduled, frame),
                 _ => unreachable!(),
             },
         );
-
-        let frame = unsafe { frame_dest.assume_init() };
 
         self.saturate_from_frame(frame)?;
 
@@ -223,66 +214,53 @@ impl<T: Transposer> SequenceFrame<T> {
     }
 
     pub fn desaturate(&mut self) -> Result<(), ()> {
-        let mut result = Err(());
-        take_mut::take(&mut self.inner, |original| match original {
-            SequenceFrameInner::OriginalSaturatingInput {
-                mut update,
-            } => {
-                let inputs = update.as_mut().reclaim();
-                if inputs.is_ok() {
-                    result = Ok(())
-                };
-                SequenceFrameInner::OriginalUnsaturatedInput {
-                    inputs: inputs.unwrap_or(Box::new([])),
-                }
+        take_mut::take_and_return_or_recover(
+            &mut self.inner,
+            SequenceFrameInner::recover,
+            |original| match original {
+                SequenceFrameInner::OriginalSaturatingInput {
+                    mut update,
+                } => {
+                    let inputs = update.as_mut().reclaim();
+                    let result = inputs.is_ok().then(|| ()).ok_or(());
+                    let inner = SequenceFrameInner::OriginalUnsaturatedInput {
+                        inputs: inputs.unwrap_or(Box::new([])),
+                    };
+                    (inner, result)
+                },
+                SequenceFrameInner::RepeatSaturatingInput {
+                    mut update,
+                } => {
+                    let inputs = update.as_mut().reclaim();
+                    let result = inputs.is_ok().then(|| ()).ok_or(());
+                    let inner = SequenceFrameInner::RepeatUnsaturatedInput {
+                        inputs: inputs.unwrap_or(Box::new([])),
+                    };
+                    (inner, result)
+                },
+                SequenceFrameInner::OriginalSaturatingScheduled {
+                    update: _,
+                } => (SequenceFrameInner::OriginalUnsaturatedScheduled, Ok(())),
+                SequenceFrameInner::RepeatSaturatingScheduled {
+                    update: _,
+                } => (SequenceFrameInner::RepeatUnsaturatedScheduled, Ok(())),
+                SequenceFrameInner::SaturatedInit {
+                    ..
+                } => (SequenceFrameInner::UnsaturatedInit, Ok(())),
+                SequenceFrameInner::SaturatedInput {
+                    inputs, ..
+                } => (
+                    SequenceFrameInner::RepeatUnsaturatedInput {
+                        inputs,
+                    },
+                    Ok(()),
+                ),
+                SequenceFrameInner::SaturatedScheduled {
+                    ..
+                } => (SequenceFrameInner::RepeatUnsaturatedScheduled, Ok(())),
+                other => (other, Err(())),
             },
-            SequenceFrameInner::RepeatSaturatingInput {
-                mut update,
-            } => {
-                let inputs = update.as_mut().reclaim();
-                if inputs.is_ok() {
-                    result = Ok(())
-                };
-                SequenceFrameInner::RepeatUnsaturatedInput {
-                    inputs: inputs.unwrap_or(Box::new([])),
-                }
-            },
-            SequenceFrameInner::OriginalSaturatingScheduled {
-                update: _,
-            } => {
-                result = Ok(());
-                SequenceFrameInner::OriginalUnsaturatedScheduled
-            },
-            SequenceFrameInner::RepeatSaturatingScheduled {
-                update: _,
-            } => {
-                result = Ok(());
-                SequenceFrameInner::RepeatUnsaturatedScheduled
-            },
-            SequenceFrameInner::SaturatedInit {
-                ..
-            } => {
-                result = Ok(());
-                SequenceFrameInner::UnsaturatedInit
-            },
-            SequenceFrameInner::SaturatedInput {
-                inputs, ..
-            } => {
-                result = Ok(());
-                SequenceFrameInner::RepeatUnsaturatedInput {
-                    inputs,
-                }
-            },
-            SequenceFrameInner::SaturatedScheduled {
-                ..
-            } => {
-                result = Ok(());
-                SequenceFrameInner::RepeatUnsaturatedScheduled
-            },
-            other => other,
-        });
-
-        result
+        )
     }
 
     pub fn rollback(mut self) -> Result<(bool, Option<Box<[T::Input]>>), ()> {
@@ -525,6 +503,10 @@ enum SequenceFrameInner<T: Transposer> {
 }
 
 impl<T: Transposer> SequenceFrameInner<T> {
+    fn recover() -> Self {
+        Self::Unreachable
+    }
+
     pub fn is_unsaturated(&self) -> bool {
         matches!(
             self,

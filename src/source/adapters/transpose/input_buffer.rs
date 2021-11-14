@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use crate::util::take_mut;
+
 pub struct InputBuffer<Time: Ord + Copy, Input>(BTreeMap<Time, InputContainer<Input>>);
 
 enum InputContainer<Input> {
@@ -17,7 +19,7 @@ impl<Input> InputContainer<Input> {
     }
 
     fn heat(&mut self) -> &mut Vec<Input> {
-        take_mut::take(self, |this| match this {
+        take_mut::take_or_recover(self, Self::recover, |this| match this {
             InputContainer::Cold(b) => {
                 let v = b.into_vec();
                 InputContainer::Hot(v)
@@ -29,6 +31,10 @@ impl<Input> InputContainer<Input> {
             InputContainer::Hot(vec) => vec,
             InputContainer::Cold(_) => unreachable!(),
         }
+    }
+
+    fn recover() -> Self {
+        Self::Cold(Box::new([]))
     }
 }
 
@@ -88,7 +94,7 @@ impl<Time: Ord + Copy, Input> InputBuffer<Time, Input> {
 
     pub fn extend_front(&mut self, time: Time, inputs: Box<[Input]>) {
         match self.0.get_mut(&time) {
-            Some(current) => take_mut::take(current, |c| {
+            Some(current) => take_mut::take_or_recover(current, InputContainer::recover, |c| {
                 let mut new_vec: Vec<_> = inputs.into();
                 new_vec.extend(c.into_iter());
                 new_vec.into()
