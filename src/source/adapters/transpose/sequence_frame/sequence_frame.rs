@@ -476,10 +476,13 @@ type OriginalContext<T> = UpdateContextCollector<T, Vec<<T as Transposer>::Outpu
 type RepeatContext<T> = UpdateContextCollector<T, ()>;
 
 type InitUpdate<T> = FrameUpdate<T, OriginalContext<T>, InitArg<T>>;
-type OriginalInputUpdate<T> = FrameUpdate<T, OriginalContext<T>, InputArg<T>>;
-type OriginalScheduledUpdate<T> = FrameUpdate<T, OriginalContext<T>, ScheduledArg<T>>;
-type RepeatInputUpdate<T> = FrameUpdate<T, RepeatContext<T>, InputArg<T>>;
-type RepeatScheduledUpdate<T> = FrameUpdate<T, RepeatContext<T>, ScheduledArg<T>>;
+type InputUpdate<T, C> = FrameUpdate<T, C, InputArg<T>>;
+type ScheduledUpdate<T, C> = FrameUpdate<T, C, ScheduledArg<T>>;
+
+type OriginalInputUpdate<T> = InputUpdate<T, OriginalContext<T>>;
+type OriginalScheduledUpdate<T> = ScheduledUpdate<T, OriginalContext<T>>;
+type RepeatInputUpdate<T> = InputUpdate<T, RepeatContext<T>>;
+type RepeatScheduledUpdate<T> = ScheduledUpdate<T, RepeatContext<T>>;
 
 enum SequenceFrameInner<T: Transposer> {
     // notably this can never be rehydrated because you need the preceding frame
