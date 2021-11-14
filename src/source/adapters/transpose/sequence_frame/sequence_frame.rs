@@ -472,14 +472,14 @@ impl OutputsEmitted {
     }
 }
 
-type InitUpdate<T> =
-    FrameUpdate<T, UpdateContextCollector<T, Vec<<T as Transposer>::Output>>, InitArg<T>>;
-type OriginalInputUpdate<T> =
-    FrameUpdate<T, UpdateContextCollector<T, Vec<<T as Transposer>::Output>>, InputArg<T>>;
-type OriginalScheduledUpdate<T> =
-    FrameUpdate<T, UpdateContextCollector<T, Vec<<T as Transposer>::Output>>, ScheduledArg<T>>;
-type RepeatInputUpdate<T> = FrameUpdate<T, UpdateContextCollector<T, ()>, InputArg<T>>;
-type RepeatScheduledUpdate<T> = FrameUpdate<T, UpdateContextCollector<T, ()>, ScheduledArg<T>>;
+type OriginalContext<T> = UpdateContextCollector<T, Vec<<T as Transposer>::Output>>;
+type RepeatContext<T> = UpdateContextCollector<T, ()>;
+
+type InitUpdate<T> = FrameUpdate<T, OriginalContext<T>, InitArg<T>>;
+type OriginalInputUpdate<T> = FrameUpdate<T, OriginalContext<T>, InputArg<T>>;
+type OriginalScheduledUpdate<T> = FrameUpdate<T, OriginalContext<T>, ScheduledArg<T>>;
+type RepeatInputUpdate<T> = FrameUpdate<T, RepeatContext<T>, InputArg<T>>;
+type RepeatScheduledUpdate<T> = FrameUpdate<T, RepeatContext<T>, ScheduledArg<T>>;
 
 enum SequenceFrameInner<T: Transposer> {
     // notably this can never be rehydrated because you need the preceding frame
