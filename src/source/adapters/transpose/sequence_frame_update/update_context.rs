@@ -36,8 +36,8 @@ where
     frame_internal: *mut FrameMetaData<T>,
     input_state:    *mut LazyState<T::InputState>,
 
-    time:           EngineTime<T::Time>,
-    schedule_index: usize,
+    time:                   EngineTime<T::Time>,
+    current_emission_index: usize,
 
     // values to output
     outputs: Vec<T::Output>,
@@ -58,7 +58,7 @@ impl<T: Transposer> UpdateContext<T> for OriginalUpdateContext<T> {
             frame_internal,
             input_state,
             time,
-            schedule_index: 0,
+            current_emission_index: 0,
             outputs: Vec::new(),
         }
     }
@@ -96,10 +96,10 @@ impl<T: Transposer> ScheduleEventContext<T> for OriginalUpdateContext<T> {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
-        let time = self.time.spawn_scheduled(time, self.schedule_index);
+        let time = self.time.spawn_scheduled(time, self.current_emission_index);
 
         self.get_frame_internal_mut().schedule_event(time, payload);
-        self.schedule_index += 1;
+        self.current_emission_index += 1;
 
         Ok(())
     }
@@ -113,12 +113,12 @@ impl<T: Transposer> ScheduleEventContext<T> for OriginalUpdateContext<T> {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
-        let time = self.time.spawn_scheduled(time, self.schedule_index);
+        let time = self.time.spawn_scheduled(time, self.current_emission_index);
 
         let handle = self
             .get_frame_internal_mut()
             .schedule_event_expireable(time, payload);
-        self.schedule_index += 1;
+        self.current_emission_index += 1;
 
         Ok(handle)
     }
@@ -153,8 +153,8 @@ where
     frame_internal: *mut FrameMetaData<T>,
     input_state:    *mut LazyState<T::InputState>,
 
-    time:           EngineTime<T::Time>,
-    schedule_index: usize,
+    time:                   EngineTime<T::Time>,
+    current_emission_index: usize,
 }
 
 impl<T: Transposer> InitContext<T> for RepeatUpdateContext<T> {}
@@ -172,7 +172,7 @@ impl<T: Transposer> UpdateContext<T> for RepeatUpdateContext<T> {
             frame_internal,
             input_state,
             time,
-            schedule_index: 0,
+            current_emission_index: 0,
         }
     }
 
@@ -207,10 +207,10 @@ impl<T: Transposer> ScheduleEventContext<T> for RepeatUpdateContext<T> {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
-        let time = self.time.spawn_scheduled(time, self.schedule_index);
+        let time = self.time.spawn_scheduled(time, self.current_emission_index);
 
         self.get_frame_internal_mut().schedule_event(time, payload);
-        self.schedule_index += 1;
+        self.current_emission_index += 1;
 
         Ok(())
     }
@@ -224,12 +224,12 @@ impl<T: Transposer> ScheduleEventContext<T> for RepeatUpdateContext<T> {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
-        let time = self.time.spawn_scheduled(time, self.schedule_index);
+        let time = self.time.spawn_scheduled(time, self.current_emission_index);
 
         let handle = self
             .get_frame_internal_mut()
             .schedule_event_expireable(time, payload);
-        self.schedule_index += 1;
+        self.current_emission_index += 1;
 
         Ok(handle)
     }
