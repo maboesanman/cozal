@@ -15,6 +15,8 @@ mod arg;
 mod frame_update;
 mod frame_update_pollable;
 mod lazy_state;
+#[cfg(test)]
+mod test;
 mod update_context;
 mod update_result;
 use self::engine_time::EngineTime;
@@ -27,81 +29,6 @@ pub struct SequenceFrameUpdate<T: Transposer> {
     time:            EngineTime<T::Time>,
     inner:           SequenceFrameUpdateInner<T>,
     outputs_emitted: OutputsEmitted,
-}
-
-enum OutputsEmitted {
-    Pending,
-    None,
-    Some,
-}
-
-impl OutputsEmitted {
-    pub fn is_some(&self) -> bool {
-        matches!(self, &OutputsEmitted::Some)
-    }
-}
-
-type InitUpdate<T> = FrameUpdate<T, OriginalUpdateContext<T>, InitArg<T>>;
-type OriginalInputUpdate<T> = FrameUpdate<T, OriginalUpdateContext<T>, InputArg<T>>;
-type OriginalScheduledUpdate<T> = FrameUpdate<T, OriginalUpdateContext<T>, ScheduledArg<T>>;
-type RepeatInputUpdate<T> = FrameUpdate<T, RepeatUpdateContext<T>, InputArg<T>>;
-type RepeatScheduledUpdate<T> = FrameUpdate<T, RepeatUpdateContext<T>, ScheduledArg<T>>;
-
-enum SequenceFrameUpdateInner<T: Transposer> {
-    OriginalUnsaturatedInput {
-        inputs: <InputArg<T> as Arg<T>>::Stored,
-    },
-    OriginalUnsaturatedScheduled,
-    RepeatUnsaturatedInput {
-        inputs: <InputArg<T> as Arg<T>>::Stored,
-    },
-    RepeatUnsaturatedScheduled,
-    SaturatingInit {
-        update: Pin<Box<InitUpdate<T>>>,
-    },
-    OriginalSaturatingInput {
-        update: Pin<Box<OriginalInputUpdate<T>>>,
-    },
-    OriginalSaturatingScheduled {
-        update: Pin<Box<OriginalScheduledUpdate<T>>>,
-    },
-    RepeatSaturatingInput {
-        update: Pin<Box<RepeatInputUpdate<T>>>,
-    },
-    RepeatSaturatingScheduled {
-        update: Pin<Box<RepeatScheduledUpdate<T>>>,
-    },
-    SaturatedInit {
-        frame: Box<Frame<T>>,
-    },
-    SaturatedInput {
-        inputs: <InputArg<T> as Arg<T>>::Stored,
-        frame:  Box<Frame<T>>,
-    },
-    SaturatedScheduled {
-        frame: Box<Frame<T>>,
-    },
-    Unreachable,
-}
-
-impl<T: Transposer> SequenceFrameUpdateInner<T> {
-    pub fn is_unsaturated(&self) -> bool {
-        matches!(
-            self,
-            SequenceFrameUpdateInner::OriginalUnsaturatedInput { .. }
-                | SequenceFrameUpdateInner::OriginalUnsaturatedScheduled
-                | SequenceFrameUpdateInner::RepeatUnsaturatedInput { .. }
-                | SequenceFrameUpdateInner::RepeatUnsaturatedScheduled
-        )
-    }
-
-    pub fn can_be_taken(&self) -> bool {
-        matches!(
-            self,
-            SequenceFrameUpdateInner::SaturatedInput { .. }
-                | SequenceFrameUpdateInner::SaturatedScheduled { .. }
-        )
-    }
 }
 
 impl<T: Transposer> SequenceFrameUpdate<T> {
@@ -126,6 +53,9 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
         input_buffer: &mut InputBuffer<T::Time, T::Input>,
     ) -> Result<Option<Self>, ()> {
         let frame = match &self.inner {
+            SequenceFrameUpdateInner::SaturatedInit {
+                frame, ..
+            } => frame.as_ref(),
             SequenceFrameUpdateInner::SaturatedInput {
                 frame, ..
             } => frame.as_ref(),
@@ -516,6 +446,82 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
     }
 }
 
+enum OutputsEmitted {
+    Pending,
+    None,
+    Some,
+}
+
+impl OutputsEmitted {
+    pub fn is_some(&self) -> bool {
+        matches!(self, &OutputsEmitted::Some)
+    }
+}
+
+type InitUpdate<T> = FrameUpdate<T, OriginalUpdateContext<T>, InitArg<T>>;
+type OriginalInputUpdate<T> = FrameUpdate<T, OriginalUpdateContext<T>, InputArg<T>>;
+type OriginalScheduledUpdate<T> = FrameUpdate<T, OriginalUpdateContext<T>, ScheduledArg<T>>;
+type RepeatInputUpdate<T> = FrameUpdate<T, RepeatUpdateContext<T>, InputArg<T>>;
+type RepeatScheduledUpdate<T> = FrameUpdate<T, RepeatUpdateContext<T>, ScheduledArg<T>>;
+
+enum SequenceFrameUpdateInner<T: Transposer> {
+    OriginalUnsaturatedInput {
+        inputs: <InputArg<T> as Arg<T>>::Stored,
+    },
+    OriginalUnsaturatedScheduled,
+    RepeatUnsaturatedInput {
+        inputs: <InputArg<T> as Arg<T>>::Stored,
+    },
+    RepeatUnsaturatedScheduled,
+    SaturatingInit {
+        update: Pin<Box<InitUpdate<T>>>,
+    },
+    OriginalSaturatingInput {
+        update: Pin<Box<OriginalInputUpdate<T>>>,
+    },
+    OriginalSaturatingScheduled {
+        update: Pin<Box<OriginalScheduledUpdate<T>>>,
+    },
+    RepeatSaturatingInput {
+        update: Pin<Box<RepeatInputUpdate<T>>>,
+    },
+    RepeatSaturatingScheduled {
+        update: Pin<Box<RepeatScheduledUpdate<T>>>,
+    },
+    SaturatedInit {
+        frame: Box<Frame<T>>,
+    },
+    SaturatedInput {
+        inputs: <InputArg<T> as Arg<T>>::Stored,
+        frame:  Box<Frame<T>>,
+    },
+    SaturatedScheduled {
+        frame: Box<Frame<T>>,
+    },
+    Unreachable,
+}
+
+impl<T: Transposer> SequenceFrameUpdateInner<T> {
+    pub fn is_unsaturated(&self) -> bool {
+        matches!(
+            self,
+            SequenceFrameUpdateInner::OriginalUnsaturatedInput { .. }
+                | SequenceFrameUpdateInner::OriginalUnsaturatedScheduled
+                | SequenceFrameUpdateInner::RepeatUnsaturatedInput { .. }
+                | SequenceFrameUpdateInner::RepeatUnsaturatedScheduled
+        )
+    }
+
+    pub fn can_be_taken(&self) -> bool {
+        matches!(
+            self,
+            SequenceFrameUpdateInner::SaturatedInput { .. }
+                | SequenceFrameUpdateInner::SaturatedScheduled { .. }
+        )
+    }
+}
+
+#[derive(Debug)]
 pub enum SequenceFrameUpdatePoll<T: Transposer> {
     Pending,
     NeedsState,

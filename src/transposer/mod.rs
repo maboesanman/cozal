@@ -58,7 +58,7 @@ pub trait Transposer {
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`InitContext`] documentation.
-    async fn init(&mut self, cx: &mut dyn InitContext<Self>);
+    async fn init(&mut self, _cx: &mut dyn InitContext<Self>) {}
 
     /// The function to respond to input.
     ///
@@ -71,10 +71,11 @@ pub trait Transposer {
     /// For more information on `cx` see the [`UpdateContext`] documentation.
     async fn handle_input(
         &mut self,
-        time: Self::Time,
-        inputs: &[Self::Input],
-        cx: &mut dyn HandleInputContext<Self>,
-    );
+        _time: Self::Time,
+        _inputs: &[Self::Input],
+        _cx: &mut dyn HandleInputContext<Self>,
+    ) {
+    }
 
     /// The function to respond to internally scheduled events.
     ///
@@ -84,10 +85,11 @@ pub trait Transposer {
     /// For more information on `cx` see the [`UpdateContext`] documentation.
     async fn handle_scheduled(
         &mut self,
-        time: Self::Time,
-        payload: Self::Scheduled,
-        cx: &mut dyn HandleScheduleContext<Self>,
-    );
+        _time: Self::Time,
+        _payload: Self::Scheduled,
+        _cx: &mut dyn HandleScheduleContext<Self>,
+    ) {
+    }
 
     /// The function to interpolate between states
     ///

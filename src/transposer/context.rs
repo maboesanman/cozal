@@ -50,6 +50,7 @@ pub trait ScheduleEventContext<T: Transposer> {
 }
 
 #[non_exhaustive]
+#[derive(Debug)]
 pub enum ScheduleEventError {
     NewEventBeforeCurrent,
 }
@@ -62,6 +63,7 @@ pub trait ExpireEventContext<T: Transposer> {
 }
 
 #[non_exhaustive]
+#[derive(Debug)]
 pub enum ExpireEventError {
     InvalidOrUsedHandle,
 }

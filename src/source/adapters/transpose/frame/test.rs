@@ -28,24 +28,6 @@ impl Transposer for TestTransposer {
 
     type Output = ();
 
-    async fn init(&mut self, _cx: &mut dyn InitContext<Self>) {}
-
-    async fn handle_input(
-        &mut self,
-        _time: Self::Time,
-        _inputs: &[Self::Input],
-        _cx: &mut dyn HandleInputContext<Self>,
-    ) {
-    }
-
-    async fn handle_scheduled(
-        &mut self,
-        _time: Self::Time,
-        _payload: Self::Scheduled,
-        _cx: &mut dyn HandleScheduleContext<Self>,
-    ) {
-    }
-
     async fn interpolate(
         &self,
         _base_time: Self::Time,
