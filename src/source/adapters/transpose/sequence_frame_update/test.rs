@@ -4,10 +4,7 @@ use rand::Rng;
 
 use super::SequenceFrameUpdate;
 use crate::source::adapters::transpose::input_buffer::InputBuffer;
-use crate::source::adapters::transpose::sequence_frame_update::{
-    SequenceFrameUpdateInner,
-    SequenceFrameUpdatePoll,
-};
+use crate::source::adapters::transpose::sequence_frame_update::SequenceFrameUpdatePoll;
 use crate::test::test_waker::DummyWaker;
 use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
 use crate::transposer::Transposer;
@@ -60,7 +57,7 @@ impl Transposer for TestTransposer {
 }
 
 #[test]
-fn init_saturate() {
+fn saturate_take() {
     let transposer = TestTransposer {
         counter: 17
     };
@@ -76,17 +73,9 @@ fn init_saturate() {
         Ok(SequenceFrameUpdatePoll::ReadyNoOutputs)
     );
 
-    let mut scheduled = init.next_unsaturated(&mut input_buffer).unwrap().unwrap();
-    scheduled.saturate_clone(&mut init).unwrap();
+    let mut scheduled = init;
 
-    let (waker, _) = DummyWaker::new();
-
-    assert_matches!(
-        scheduled.poll(waker),
-        Ok(SequenceFrameUpdatePoll::ReadyOutputs(_))
-    );
-
-    for i in 2..100 {
+    for i in 1..100 {
         let mut scheduled_next = scheduled
             .next_unsaturated(&mut input_buffer)
             .unwrap()
@@ -103,4 +92,72 @@ fn init_saturate() {
 
         scheduled = scheduled_next;
     }
+}
+
+#[test]
+fn saturate_clone() {
+    let transposer = TestTransposer {
+        counter: 17
+    };
+    let rng_seed = rand::thread_rng().gen();
+    let mut input_buffer = InputBuffer::new();
+
+    let mut init = SequenceFrameUpdate::new_init(transposer, rng_seed);
+
+    let (waker, _) = DummyWaker::new();
+
+    assert_matches!(
+        init.poll(waker),
+        Ok(SequenceFrameUpdatePoll::ReadyNoOutputs)
+    );
+
+    let mut scheduled = init;
+
+    for i in 1..100 {
+        let mut scheduled_next = scheduled
+            .next_unsaturated(&mut input_buffer)
+            .unwrap()
+            .unwrap();
+        scheduled_next.saturate_clone(&mut scheduled).unwrap();
+
+        let (waker, _) = DummyWaker::new();
+
+        let poll_result = scheduled_next.poll(waker);
+        if let SequenceFrameUpdatePoll::ReadyOutputs(o) = poll_result.unwrap() {
+            assert_eq!(o.len(), 1);
+            assert_eq!(*o.first().unwrap(), i * 10);
+        }
+
+        scheduled = scheduled_next;
+    }
+}
+
+#[test]
+fn desaturate() {
+    let transposer = TestTransposer {
+        counter: 17
+    };
+    let rng_seed = rand::thread_rng().gen();
+    let mut input_buffer = InputBuffer::new();
+
+    let mut init = SequenceFrameUpdate::new_init(transposer, rng_seed);
+    init.poll(DummyWaker::new().0).unwrap();
+
+    let mut scheduled1 = init.next_unsaturated(&mut input_buffer).unwrap().unwrap();
+    scheduled1.saturate_clone(&mut init).unwrap();
+    scheduled1.poll(DummyWaker::new().0).unwrap();
+
+    let mut scheduled2 = init.next_unsaturated(&mut input_buffer).unwrap().unwrap();
+    scheduled2.saturate_clone(&mut scheduled1).unwrap();
+    scheduled2.poll(DummyWaker::new().0).unwrap();
+
+    scheduled1.desaturate().unwrap();
+    scheduled1.saturate_clone(&mut init).unwrap();
+    scheduled1.poll(DummyWaker::new().0).unwrap();
+
+    scheduled2.desaturate().unwrap();
+    scheduled2.saturate_clone(&mut scheduled1).unwrap();
+    scheduled2.poll(DummyWaker::new().0).unwrap();
+
+    init.desaturate().unwrap();
 }

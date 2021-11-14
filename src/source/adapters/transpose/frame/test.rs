@@ -3,12 +3,7 @@ use rand::Rng;
 
 use super::{Frame, FrameMetaData};
 use crate::source::adapters::transpose::engine_time::EngineTimeSchedule;
-use crate::transposer::context::{
-    HandleInputContext,
-    HandleScheduleContext,
-    InitContext,
-    InterpolateContext,
-};
+use crate::transposer::context::InterpolateContext;
 use crate::transposer::Transposer;
 
 #[derive(Clone)]

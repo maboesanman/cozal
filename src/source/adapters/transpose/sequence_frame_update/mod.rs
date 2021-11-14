@@ -103,7 +103,7 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
 
     // previous is expected to be the value produced this via next_unsaturated.
     pub fn saturate_take(&mut self, previous: &mut Self) -> Result<(), ()> {
-        if !(previous.inner.can_be_taken() && self.inner.is_unsaturated()) {
+        if !(previous.inner.is_saturated() && self.inner.is_unsaturated()) {
             return Err(())
         }
 
@@ -113,6 +113,12 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
             &mut previous.inner,
             || SequenceFrameUpdateInner::Unreachable,
             |prev| match prev {
+                SequenceFrameUpdateInner::SaturatedInit {
+                    frame,
+                } => {
+                    frame_dest = MaybeUninit::new(frame);
+                    SequenceFrameUpdateInner::UnsaturatedInit
+                },
                 SequenceFrameUpdateInner::SaturatedInput {
                     inputs,
                     frame,
@@ -242,6 +248,12 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
             } => {
                 result = Ok(());
                 SequenceFrameUpdateInner::RepeatUnsaturatedScheduled
+            },
+            SequenceFrameUpdateInner::SaturatedInit {
+                ..
+            } => {
+                result = Ok(());
+                SequenceFrameUpdateInner::UnsaturatedInit
             },
             SequenceFrameUpdateInner::SaturatedInput {
                 inputs, ..
@@ -465,6 +477,9 @@ type RepeatInputUpdate<T> = FrameUpdate<T, RepeatUpdateContext<T>, InputArg<T>>;
 type RepeatScheduledUpdate<T> = FrameUpdate<T, RepeatUpdateContext<T>, ScheduledArg<T>>;
 
 enum SequenceFrameUpdateInner<T: Transposer> {
+    // notably this can never be rehydrated because you need the preceding frame
+    // and there isn't one, because this is init.
+    UnsaturatedInit,
     OriginalUnsaturatedInput {
         inputs: <InputArg<T> as Arg<T>>::Stored,
     },
@@ -512,10 +527,11 @@ impl<T: Transposer> SequenceFrameUpdateInner<T> {
         )
     }
 
-    pub fn can_be_taken(&self) -> bool {
+    pub fn is_saturated(&self) -> bool {
         matches!(
             self,
-            SequenceFrameUpdateInner::SaturatedInput { .. }
+            SequenceFrameUpdateInner::SaturatedInit { .. }
+                | SequenceFrameUpdateInner::SaturatedInput { .. }
                 | SequenceFrameUpdateInner::SaturatedScheduled { .. }
         )
     }

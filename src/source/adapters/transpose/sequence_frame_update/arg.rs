@@ -4,7 +4,6 @@ use core::pin::Pin;
 
 use futures_core::Future;
 
-use super::engine_time::EngineTime;
 use super::frame::Frame;
 use super::update_context::UpdateContext;
 use crate::transposer::Transposer;
@@ -22,11 +21,7 @@ pub trait Arg<T: Transposer> {
         storage_slot: &'a mut MaybeUninit<Self::Stored>,
     ) -> Pin<Box<dyn Future<Output = ()> + 'a>>;
 
-    fn get_arg(
-        frame: &mut Frame<T>,
-        in_arg: Self::Stored,
-        time: &EngineTime<T::Time>,
-    ) -> Self::Passed;
+    fn get_arg(frame: &mut Frame<T>, in_arg: Self::Stored) -> Self::Passed;
 
     fn get_stored(passed: Self::Passed) -> Self::Stored;
 }
@@ -49,12 +44,7 @@ impl<T: Transposer> Arg<T> for InitArg<T> {
         transposer.init(context)
     }
 
-    fn get_arg(
-        _frame: &mut Frame<T>,
-        _in_arg: Self::Stored,
-        _time: &EngineTime<T::Time>,
-    ) -> Self::Passed {
-    }
+    fn get_arg(_frame: &mut Frame<T>, _in_arg: Self::Stored) -> Self::Passed {}
 
     fn get_stored(_: Self::Passed) -> Self::Stored {}
 }
@@ -79,17 +69,7 @@ impl<T: Transposer> Arg<T> for InputArg<T> {
         transposer.handle_input(time, storage_slot, context)
     }
 
-    fn get_arg(
-        frame: &mut Frame<T>,
-        in_arg: Self::Stored,
-        time: &EngineTime<T::Time>,
-    ) -> Self::Passed {
-        debug_assert!(if let Some(nst) = frame.get_next_scheduled_time() {
-            time.raw_time() > nst.time
-        } else {
-            true
-        });
-
+    fn get_arg(_frame: &mut Frame<T>, in_arg: Self::Stored) -> Self::Passed {
         in_arg
     }
     fn get_stored(passed: Self::Passed) -> Self::Stored {
@@ -115,18 +95,12 @@ impl<T: Transposer> Arg<T> for ScheduledArg<T> {
         transposer.handle_scheduled(time, value, context)
     }
 
-    fn get_arg(
-        frame: &mut Frame<T>,
-        _in_arg: Self::Stored,
-        time: &EngineTime<T::Time>,
-    ) -> Self::Passed {
+    fn get_arg(frame: &mut Frame<T>, _in_arg: Self::Stored) -> Self::Passed {
         let val = frame.pop_schedule_event();
 
         debug_assert!(val.is_some());
 
-        let (t, payload) = val.unwrap();
-
-        debug_assert!(time.raw_time() == t.time);
+        let (_, payload) = val.unwrap();
 
         payload
     }

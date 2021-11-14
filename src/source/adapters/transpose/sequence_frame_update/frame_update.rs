@@ -40,7 +40,7 @@ where
     pub fn new(mut frame: Box<Frame<T>>, arg: A::Stored, time: EngineTime<T::Time>) -> Self {
         Self {
             inner: FrameUpdateInner::Unpollable(FrameUpdateUnpollable {
-                args: A::get_arg(&mut frame, arg, &time),
+                args: A::get_arg(&mut frame, arg),
                 frame,
                 time,
             }),
