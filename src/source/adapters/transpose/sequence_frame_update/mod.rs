@@ -30,9 +30,10 @@ pub struct SequenceFrameUpdate<T: Transposer> {
     inner:           SequenceFrameUpdateInner<T>,
     outputs_emitted: OutputsEmitted,
 
-    // these are used purely for enforcing that saturate calls use the previous
-    // frame. they should be converted into some type of debug assertion.
+    // these are used purely for enforcing that saturate calls use the previous frame.
+    #[cfg(debug_assertions)]
     uuid_self: uuid::Uuid,
+    #[cfg(debug_assertions)]
     uuid_prev: Option<uuid::Uuid>,
 }
 
@@ -50,7 +51,10 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
             time,
             inner,
             outputs_emitted: OutputsEmitted::Pending,
+
+            #[cfg(debug_assertions)]
             uuid_self: uuid::Uuid::new_v4(),
+            #[cfg(debug_assertions)]
             uuid_prev: None,
         }
     }
@@ -101,7 +105,10 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
             time,
             inner,
             outputs_emitted: OutputsEmitted::Pending,
+
+            #[cfg(debug_assertions)]
             uuid_self: uuid::Uuid::new_v4(),
+            #[cfg(debug_assertions)]
             uuid_prev: Some(self.uuid_self),
         };
 
@@ -110,9 +117,8 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
 
     // previous is expected to be the value produced this via next_unsaturated.
     pub fn saturate_take(&mut self, previous: &mut Self) -> Result<(), ()> {
-        if self.uuid_prev != Some(previous.uuid_self) {
-            return Err(())
-        }
+        #[cfg(debug_assertions)]
+        debug_assert!(self.uuid_prev == Some(previous.uuid_self));
 
         if !(previous.inner.is_saturated() && self.inner.is_unsaturated()) {
             return Err(())
@@ -161,9 +167,8 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
     where
         T: Clone,
     {
-        if self.uuid_prev != Some(previous.uuid_self) {
-            return Err(())
-        }
+        #[cfg(debug_assertions)]
+        debug_assert!(self.uuid_prev == Some(previous.uuid_self));
 
         let frame = match &previous.inner {
             SequenceFrameUpdateInner::SaturatedInit {
