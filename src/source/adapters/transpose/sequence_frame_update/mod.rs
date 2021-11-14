@@ -29,6 +29,11 @@ pub struct SequenceFrameUpdate<T: Transposer> {
     time:            EngineTime<T::Time>,
     inner:           SequenceFrameUpdateInner<T>,
     outputs_emitted: OutputsEmitted,
+
+    // these are used purely for enforcing that saturate calls use the previous
+    // frame. they should be converted into some type of debug assertion.
+    uuid_self: uuid::Uuid,
+    uuid_prev: Option<uuid::Uuid>,
 }
 
 impl<T: Transposer> SequenceFrameUpdate<T> {
@@ -45,6 +50,8 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
             time,
             inner,
             outputs_emitted: OutputsEmitted::Pending,
+            uuid_self: uuid::Uuid::new_v4(),
+            uuid_prev: None,
         }
     }
 
@@ -82,20 +89,20 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
             },
         };
 
-        let item = if is_input {
-            SequenceFrameUpdate {
-                time,
-                inner: SequenceFrameUpdateInner::OriginalUnsaturatedInput {
-                    inputs: input_buffer.pop_first().unwrap().1,
-                },
-                outputs_emitted: OutputsEmitted::Pending,
+        let inner = if is_input {
+            SequenceFrameUpdateInner::OriginalUnsaturatedInput {
+                inputs: input_buffer.pop_first().unwrap().1,
             }
         } else {
-            SequenceFrameUpdate {
-                time,
-                inner: SequenceFrameUpdateInner::OriginalUnsaturatedScheduled,
-                outputs_emitted: OutputsEmitted::Pending,
-            }
+            SequenceFrameUpdateInner::OriginalUnsaturatedScheduled
+        };
+
+        let item = SequenceFrameUpdate {
+            time,
+            inner,
+            outputs_emitted: OutputsEmitted::Pending,
+            uuid_self: uuid::Uuid::new_v4(),
+            uuid_prev: Some(self.uuid_self),
         };
 
         Ok(Some(item))
@@ -103,6 +110,10 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
 
     // previous is expected to be the value produced this via next_unsaturated.
     pub fn saturate_take(&mut self, previous: &mut Self) -> Result<(), ()> {
+        if self.uuid_prev != Some(previous.uuid_self) {
+            return Err(())
+        }
+
         if !(previous.inner.is_saturated() && self.inner.is_unsaturated()) {
             return Err(())
         }
@@ -150,6 +161,10 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
     where
         T: Clone,
     {
+        if self.uuid_prev != Some(previous.uuid_self) {
+            return Err(())
+        }
+
         let frame = match &previous.inner {
             SequenceFrameUpdateInner::SaturatedInit {
                 frame, ..

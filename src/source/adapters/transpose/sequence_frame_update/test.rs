@@ -147,7 +147,10 @@ fn desaturate() {
     scheduled1.saturate_clone(&mut init).unwrap();
     scheduled1.poll(DummyWaker::new().0).unwrap();
 
-    let mut scheduled2 = init.next_unsaturated(&mut input_buffer).unwrap().unwrap();
+    let mut scheduled2 = scheduled1
+        .next_unsaturated(&mut input_buffer)
+        .unwrap()
+        .unwrap();
     scheduled2.saturate_clone(&mut scheduled1).unwrap();
     scheduled2.poll(DummyWaker::new().0).unwrap();
 
