@@ -25,7 +25,7 @@ pub(super) struct FrameUpdatePollable<T: Transposer, C: UpdateContext<T>, A: Arg
 }
 
 impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> FrameUpdatePollable<T, C, A> {
-    // SAFETY: make sure to call init before doing anything with the new value.
+    // SAFETY: make sure to call init before doing anything with the new value, including dropping it.
     pub unsafe fn new(frame: Box<Frame<T>>, time: EngineTime<T::Time>) -> Self {
         Self {
             future: MaybeUninit::uninit(),
