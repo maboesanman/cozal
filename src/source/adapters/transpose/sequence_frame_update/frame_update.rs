@@ -38,8 +38,6 @@ where
     T::Scheduled: Clone,
 {
     pub fn new(mut frame: Box<Frame<T>>, arg: A::Stored, time: EngineTime<T::Time>) -> Self {
-        debug_assert!(time.is_init());
-
         Self {
             inner: FrameUpdateInner::Unpollable(FrameUpdateUnpollable {
                 args: A::get_arg(&mut frame, arg, &time),

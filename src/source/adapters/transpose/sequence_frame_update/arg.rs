@@ -54,7 +54,6 @@ impl<T: Transposer> Arg<T> for InitArg<T> {
         _in_arg: Self::Stored,
         time: &EngineTime<T::Time>,
     ) -> Self::Passed {
-        debug_assert!(time.is_init());
     }
 
     fn get_stored(_: Self::Passed) -> Self::Stored {}
@@ -85,13 +84,8 @@ impl<T: Transposer> Arg<T> for InputArg<T> {
         in_arg: Self::Stored,
         time: &EngineTime<T::Time>,
     ) -> Self::Passed {
-        debug_assert!(time.is_input());
-
         debug_assert!(if let Some(nst) = frame.get_next_scheduled_time() {
-            match time.raw_time() {
-                Ok(time) => time > nst.time,
-                Err(_) => false,
-            }
+            time.raw_time() > nst.time
         } else {
             true
         });
@@ -126,15 +120,11 @@ impl<T: Transposer> Arg<T> for ScheduledArg<T> {
         _in_arg: Self::Stored,
         time: &EngineTime<T::Time>,
     ) -> Self::Passed {
-        debug_assert!(time.is_scheduled());
-
         let val = frame.pop_schedule_event();
 
         debug_assert!(val.is_some());
 
         let (t, payload) = val.unwrap();
-
-        debug_assert!(time.equals_scheduled(&t));
 
         payload
     }

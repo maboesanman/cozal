@@ -92,7 +92,7 @@ impl<T: Transposer> ScheduleEventContext<T> for OriginalUpdateContext<T> {
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<(), ScheduleEventError> {
-        if time < self.time.raw_time().unwrap() {
+        if time < self.time.raw_time() {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
@@ -109,7 +109,7 @@ impl<T: Transposer> ScheduleEventContext<T> for OriginalUpdateContext<T> {
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, ScheduleEventError> {
-        if time < self.time.raw_time().unwrap() {
+        if time < self.time.raw_time() {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
@@ -203,7 +203,7 @@ impl<T: Transposer> ScheduleEventContext<T> for RepeatUpdateContext<T> {
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<(), ScheduleEventError> {
-        if time < self.time.raw_time().unwrap() {
+        if time < self.time.raw_time() {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
@@ -220,7 +220,7 @@ impl<T: Transposer> ScheduleEventContext<T> for RepeatUpdateContext<T> {
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, ScheduleEventError> {
-        if time < self.time.raw_time().unwrap() {
+        if time < self.time.raw_time() {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 

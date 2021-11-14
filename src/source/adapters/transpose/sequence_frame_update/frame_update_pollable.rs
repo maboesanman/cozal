@@ -63,7 +63,7 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> FrameUpdatePollable<T, C, A>
         let fut = A::get_fut(
             transposer_ref,
             context_ref,
-            this.time.raw_time()?,
+            this.time.raw_time(),
             args,
             &mut this.args,
         );

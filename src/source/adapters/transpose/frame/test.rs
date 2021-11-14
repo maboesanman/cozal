@@ -59,7 +59,6 @@ impl Transposer for TestTransposer {
 
 #[test]
 fn frame_internal() {
-    let init_time = EngineTime::<usize>::new_init();
     let seed = rand::thread_rng().gen();
     let mut internal = FrameMetaData::<TestTransposer>::new(seed);
 
@@ -70,9 +69,9 @@ fn frame_internal() {
     for i in 0..100 {
         internal.schedule_event(
             EngineTimeSchedule {
-                time:         10,
-                parent:       init_time.clone(),
-                parent_index: i,
+                time:           10,
+                parent_index:   0,
+                emission_index: i,
             },
             i,
         )
@@ -88,9 +87,9 @@ fn frame_internal() {
         exp_handles.push((
             internal.schedule_event_expireable(
                 EngineTimeSchedule {
-                    time:         20,
-                    parent:       init_time.clone(),
-                    parent_index: 100 + i,
+                    time:           20,
+                    parent_index:   0,
+                    emission_index: 100 + i,
                 },
                 i,
             ),
@@ -105,9 +104,9 @@ fn frame_internal() {
     for i in 0..100 {
         internal.schedule_event(
             EngineTimeSchedule {
-                time:         5 + i,
-                parent:       init_time.clone(),
-                parent_index: 200 + i,
+                time:           5 + i,
+                parent_index:   0,
+                emission_index: 200 + i,
             },
             i,
         )
@@ -144,9 +143,9 @@ fn frame_internal_pop() {
 
     internal.schedule_event(
         EngineTimeSchedule {
-            time:         10,
-            parent:       init_time.clone(),
-            parent_index: 0,
+            time:           10,
+            parent_index:   0,
+            emission_index: 0,
         },
         17,
     );
@@ -157,9 +156,9 @@ fn frame_internal_pop() {
 
     internal.schedule_event_expireable(
         EngineTimeSchedule {
-            time:         20,
-            parent:       init_time.clone(),
-            parent_index: 1,
+            time:           20,
+            parent_index:   0,
+            emission_index: 1,
         },
         23,
     );
@@ -194,9 +193,9 @@ fn frame_internal_failed_expire() {
 
     let handle = internal.schedule_event_expireable(
         EngineTimeSchedule {
-            time:         10,
-            parent:       init_time.clone(),
-            parent_index: 0,
+            time:           10,
+            parent_index:   0,
+            emission_index: 0,
         },
         17,
     );
@@ -219,9 +218,9 @@ fn frame() {
     for i in 3..10 {
         frame.metadata.schedule_event(
             EngineTimeSchedule {
-                time:         5 + i,
-                parent:       init_time.clone(),
-                parent_index: i,
+                time:           5 + i,
+                parent_index:   0,
+                emission_index: i,
             },
             i,
         )
@@ -246,9 +245,9 @@ fn frame_clone() {
     for i in 3..10 {
         frame.metadata.schedule_event(
             EngineTimeSchedule {
-                time:         5 + i,
-                parent:       init_time.clone(),
-                parent_index: i,
+                time:           5 + i,
+                parent_index:   0,
+                emission_index: i,
             },
             i,
         )
@@ -276,9 +275,9 @@ fn frame_internal_expire_illegal() {
 
     let handle = internal.schedule_event_expireable(
         EngineTimeSchedule {
-            time:         20,
-            parent:       init_time.clone(),
-            parent_index: 1,
+            time:           20,
+            parent_index:   0,
+            emission_index: 1,
         },
         23,
     );

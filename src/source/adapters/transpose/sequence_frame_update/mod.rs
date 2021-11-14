@@ -355,7 +355,7 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
         mut self,
         input_buffer: &mut InputBuffer<T::Time, T::Input>,
     ) -> Result<bool, ()> {
-        let time = self.time.raw_time().map_err(|_| ())?;
+        let time = self.time.raw_time();
         let inputs = match replace(&mut self.inner, SequenceFrameUpdateInner::Unreachable) {
             SequenceFrameUpdateInner::OriginalUnsaturatedInput {
                 inputs,
