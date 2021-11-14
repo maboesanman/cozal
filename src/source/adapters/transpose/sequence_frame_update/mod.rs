@@ -1,8 +1,7 @@
 use core::cmp::Ordering;
-use core::mem::MaybeUninit;
+use core::mem::{replace, MaybeUninit};
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
-use std::process::Output;
 
 use arg::{Arg, InitArg, InputArg, ScheduledArg};
 use futures_core::Future;
@@ -156,13 +155,18 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
         let next_input_time = input_buffer.first_time();
         let next_scheduled_time = frame.get_next_scheduled_time();
 
+        let next_time_index = self.time.index() + 1;
+
         let (time, is_input) = match (next_input_time, next_scheduled_time) {
             (None, None) => return Ok(None),
-            (None, Some(t)) => (EngineTime::new_scheduled(t.clone()), false),
-            (Some(t), None) => (EngineTime::new_input(t), true),
+            (None, Some(t)) => (EngineTime::new_scheduled(next_time_index, t.clone()), false),
+            (Some(t), None) => (EngineTime::new_input(next_time_index, t), true),
             (Some(t_i), Some(t_s)) => match t_i.cmp(&t_s.time) {
-                Ordering::Greater => (EngineTime::new_scheduled(t_s.clone()), false),
-                _ => (EngineTime::new_input(t_i), true),
+                Ordering::Greater => (
+                    EngineTime::new_scheduled(next_time_index, t_s.clone()),
+                    false,
+                ),
+                _ => (EngineTime::new_input(next_time_index, t_i), true),
             },
         };
 
@@ -185,6 +189,7 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
         Ok(Some(item))
     }
 
+    // previous is expected to be the value produced this via next_unsaturated.
     pub fn saturate_take(&mut self, previous: &mut Self) -> Result<(), ()> {
         if !(previous.inner.can_be_taken() && self.inner.is_unsaturated()) {
             return Err(())
@@ -222,6 +227,7 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
         Ok(())
     }
 
+    // previous is expected to be the value produced this via next_unsaturated.
     pub fn saturate_clone(&mut self, previous: &Self) -> Result<(), ()>
     where
         T: Clone,
@@ -345,9 +351,12 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
         result
     }
 
-    pub fn rollback(self, input_buffer: &mut InputBuffer<T::Time, T::Input>) -> Result<bool, ()> {
+    pub fn rollback(
+        mut self,
+        input_buffer: &mut InputBuffer<T::Time, T::Input>,
+    ) -> Result<bool, ()> {
         let time = self.time.raw_time().map_err(|_| ())?;
-        let inputs = match self.inner {
+        let inputs = match replace(&mut self.inner, SequenceFrameUpdateInner::Unreachable) {
             SequenceFrameUpdateInner::OriginalUnsaturatedInput {
                 inputs,
             } => Some(inputs),

@@ -96,13 +96,9 @@ impl<T: Transposer> ScheduleEventContext<T> for OriginalUpdateContext<T> {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
-        let schedule_time = EngineTimeSchedule {
-            time,
-            parent: self.time.clone(),
-            parent_index: self.schedule_index,
-        };
-        self.get_frame_internal_mut()
-            .schedule_event(schedule_time, payload);
+        let time = self.time.spawn_scheduled(time, self.schedule_index);
+
+        self.get_frame_internal_mut().schedule_event(time, payload);
         self.schedule_index += 1;
 
         Ok(())
@@ -117,11 +113,7 @@ impl<T: Transposer> ScheduleEventContext<T> for OriginalUpdateContext<T> {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
-        let time = EngineTimeSchedule {
-            time,
-            parent: self.time.clone(),
-            parent_index: self.schedule_index,
-        };
+        let time = self.time.spawn_scheduled(time, self.schedule_index);
 
         let handle = self
             .get_frame_internal_mut()
@@ -215,13 +207,9 @@ impl<T: Transposer> ScheduleEventContext<T> for RepeatUpdateContext<T> {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
-        let schedule_time = EngineTimeSchedule {
-            time,
-            parent: self.time.clone(),
-            parent_index: self.schedule_index,
-        };
-        self.get_frame_internal_mut()
-            .schedule_event(schedule_time, payload);
+        let time = self.time.spawn_scheduled(time, self.schedule_index);
+
+        self.get_frame_internal_mut().schedule_event(time, payload);
         self.schedule_index += 1;
 
         Ok(())
@@ -236,11 +224,7 @@ impl<T: Transposer> ScheduleEventContext<T> for RepeatUpdateContext<T> {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
-        let time = EngineTimeSchedule {
-            time,
-            parent: self.time.clone(),
-            parent_index: self.schedule_index,
-        };
+        let time = self.time.spawn_scheduled(time, self.schedule_index);
 
         let handle = self
             .get_frame_internal_mut()
