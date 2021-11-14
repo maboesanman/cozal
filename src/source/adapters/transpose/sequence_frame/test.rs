@@ -3,7 +3,7 @@ use matches::assert_matches;
 use rand::Rng;
 
 use super::super::input_buffer::InputBuffer;
-use super::{SequenceFrameUpdate, SequenceFrameUpdatePoll};
+use super::{SequenceFrame, SequenceFramePoll};
 use crate::test::test_waker::DummyWaker;
 use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
 use crate::transposer::Transposer;
@@ -63,14 +63,11 @@ fn saturate_take() {
     let rng_seed = rand::thread_rng().gen();
     let mut input_buffer = InputBuffer::new();
 
-    let mut init = SequenceFrameUpdate::new_init(transposer, rng_seed);
+    let mut init = SequenceFrame::new_init(transposer, rng_seed);
 
     let (waker, _) = DummyWaker::new();
 
-    assert_matches!(
-        init.poll(waker),
-        Ok(SequenceFrameUpdatePoll::ReadyNoOutputs)
-    );
+    assert_matches!(init.poll(waker), Ok(SequenceFramePoll::ReadyNoOutputs));
 
     let mut scheduled = init;
 
@@ -84,7 +81,7 @@ fn saturate_take() {
         let (waker, _) = DummyWaker::new();
 
         let poll_result = scheduled_next.poll(waker);
-        if let SequenceFrameUpdatePoll::ReadyOutputs(o) = poll_result.unwrap() {
+        if let SequenceFramePoll::ReadyOutputs(o) = poll_result.unwrap() {
             assert_eq!(o.len(), 1);
             assert_eq!(*o.first().unwrap(), i * 10);
         }
@@ -101,14 +98,11 @@ fn saturate_clone() {
     let rng_seed = rand::thread_rng().gen();
     let mut input_buffer = InputBuffer::new();
 
-    let mut init = SequenceFrameUpdate::new_init(transposer, rng_seed);
+    let mut init = SequenceFrame::new_init(transposer, rng_seed);
 
     let (waker, _) = DummyWaker::new();
 
-    assert_matches!(
-        init.poll(waker),
-        Ok(SequenceFrameUpdatePoll::ReadyNoOutputs)
-    );
+    assert_matches!(init.poll(waker), Ok(SequenceFramePoll::ReadyNoOutputs));
 
     let mut scheduled = init;
 
@@ -122,7 +116,7 @@ fn saturate_clone() {
         let (waker, _) = DummyWaker::new();
 
         let poll_result = scheduled_next.poll(waker);
-        if let SequenceFrameUpdatePoll::ReadyOutputs(o) = poll_result.unwrap() {
+        if let SequenceFramePoll::ReadyOutputs(o) = poll_result.unwrap() {
             assert_eq!(o.len(), 1);
             assert_eq!(*o.first().unwrap(), i * 10);
         }
@@ -139,7 +133,7 @@ fn desaturate() {
     let rng_seed = rand::thread_rng().gen();
     let mut input_buffer = InputBuffer::new();
 
-    let mut init = SequenceFrameUpdate::new_init(transposer, rng_seed);
+    let mut init = SequenceFrame::new_init(transposer, rng_seed);
     init.poll(DummyWaker::new().0).unwrap();
 
     let mut scheduled1 = init.next_unsaturated(&mut input_buffer).unwrap().unwrap();
