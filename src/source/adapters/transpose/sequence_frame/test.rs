@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use matches::assert_matches;
 use rand::Rng;
 
-use super::super::input_buffer::InputBuffer;
 use super::{SequenceFrame, SequenceFramePoll};
 use crate::test::test_waker::DummyWaker;
 use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
@@ -61,7 +60,7 @@ fn saturate_take() {
         counter: 17
     };
     let rng_seed = rand::thread_rng().gen();
-    let mut input_buffer = InputBuffer::new();
+    let mut next_input = None;
 
     let mut init = SequenceFrame::new_init(transposer, rng_seed);
 
@@ -73,7 +72,7 @@ fn saturate_take() {
 
     for i in 1..100 {
         let mut scheduled_next = scheduled
-            .next_unsaturated(&mut input_buffer)
+            .next_unsaturated(&mut next_input)
             .unwrap()
             .unwrap();
         scheduled_next.saturate_take(&mut scheduled).unwrap();
@@ -96,7 +95,7 @@ fn saturate_clone() {
         counter: 17
     };
     let rng_seed = rand::thread_rng().gen();
-    let mut input_buffer = InputBuffer::new();
+    let mut next_input = None;
 
     let mut init = SequenceFrame::new_init(transposer, rng_seed);
 
@@ -108,7 +107,7 @@ fn saturate_clone() {
 
     for i in 1..100 {
         let mut scheduled_next = scheduled
-            .next_unsaturated(&mut input_buffer)
+            .next_unsaturated(&mut next_input)
             .unwrap()
             .unwrap();
         scheduled_next.saturate_clone(&mut scheduled).unwrap();
@@ -131,17 +130,17 @@ fn desaturate() {
         counter: 17
     };
     let rng_seed = rand::thread_rng().gen();
-    let mut input_buffer = InputBuffer::new();
+    let mut next_input = None;
 
     let mut init = SequenceFrame::new_init(transposer, rng_seed);
     init.poll(DummyWaker::new().0).unwrap();
 
-    let mut scheduled1 = init.next_unsaturated(&mut input_buffer).unwrap().unwrap();
+    let mut scheduled1 = init.next_unsaturated(&mut next_input).unwrap().unwrap();
     scheduled1.saturate_clone(&mut init).unwrap();
     scheduled1.poll(DummyWaker::new().0).unwrap();
 
     let mut scheduled2 = scheduled1
-        .next_unsaturated(&mut input_buffer)
+        .next_unsaturated(&mut next_input)
         .unwrap()
         .unwrap();
     scheduled2.saturate_clone(&mut scheduled1).unwrap();

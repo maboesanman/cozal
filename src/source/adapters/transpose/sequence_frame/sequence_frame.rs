@@ -5,7 +5,6 @@ use core::task::{Context, Poll, Waker};
 
 use futures_core::Future;
 
-use super::super::input_buffer::InputBuffer;
 use super::args::{InitArg, InputArg, ScheduledArg};
 use super::engine_time::EngineTime;
 use super::frame_update::{Frame, FrameUpdate};
@@ -53,7 +52,7 @@ impl<T: Transposer> SequenceFrame<T> {
 
     pub fn next_unsaturated(
         &self,
-        input_buffer: &mut InputBuffer<T::Time, T::Input>,
+        next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
     ) -> Result<Option<Self>, ()> {
         let frame = match &self.inner {
             SequenceFrameInner::SaturatedInit {
@@ -67,27 +66,26 @@ impl<T: Transposer> SequenceFrame<T> {
             } => frame.as_ref(),
             _ => return Err(()),
         };
-        let next_input_time = input_buffer.first_time();
         let next_scheduled_time = frame.get_next_scheduled_time();
 
         let next_time_index = self.time.index() + 1;
 
-        let (time, is_input) = match (next_input_time, next_scheduled_time) {
+        let (time, is_input) = match (&next_inputs, next_scheduled_time) {
             (None, None) => return Ok(None),
             (None, Some(t)) => (EngineTime::new_scheduled(next_time_index, t.clone()), false),
-            (Some(t), None) => (EngineTime::new_input(next_time_index, t), true),
-            (Some(t_i), Some(t_s)) => match t_i.cmp(&t_s.time) {
+            (Some((t, _)), None) => (EngineTime::new_input(next_time_index, *t), true),
+            (Some((t_i, _)), Some(t_s)) => match t_i.cmp(&t_s.time) {
                 Ordering::Greater => (
                     EngineTime::new_scheduled(next_time_index, t_s.clone()),
                     false,
                 ),
-                _ => (EngineTime::new_input(next_time_index, t_i), true),
+                _ => (EngineTime::new_input(next_time_index, *t_i), true),
             },
         };
 
         let inner = if is_input {
             SequenceFrameInner::OriginalUnsaturatedInput {
-                inputs: input_buffer.pop_first().unwrap().1,
+                inputs: core::mem::take(next_inputs).unwrap().1,
             }
         } else {
             SequenceFrameInner::OriginalUnsaturatedScheduled
@@ -287,11 +285,7 @@ impl<T: Transposer> SequenceFrame<T> {
         result
     }
 
-    pub fn rollback(
-        mut self,
-        input_buffer: &mut InputBuffer<T::Time, T::Input>,
-    ) -> Result<bool, ()> {
-        let time = self.time.raw_time();
+    pub fn rollback(mut self) -> Result<(bool, Option<Box<[T::Input]>>), ()> {
         let inputs = match replace(&mut self.inner, SequenceFrameInner::Unreachable) {
             SequenceFrameInner::OriginalUnsaturatedInput {
                 inputs,
@@ -311,11 +305,7 @@ impl<T: Transposer> SequenceFrame<T> {
             _ => None,
         };
 
-        for inputs in inputs.into_iter() {
-            input_buffer.extend_front(time, inputs)
-        }
-
-        Ok(self.outputs_emitted.is_some())
+        Ok((self.outputs_emitted.is_some(), inputs))
     }
 
     pub fn poll(&mut self, waker: Waker) -> Result<SequenceFramePoll<T>, ()> {

@@ -7,6 +7,7 @@
 #![allow(clippy::or_fun_call)]
 // TODO: remove this allow
 #![allow(dead_code)]
+#![allow(clippy::module_inception)]
 
 #[cfg(test)]
 mod test;
