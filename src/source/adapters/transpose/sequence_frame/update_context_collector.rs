@@ -58,6 +58,7 @@ impl<T: Transposer, C: OutputCollector<T::Output>> UpdateContext<T>
 {
     type Outputs = C;
 
+    // SAFETY: need to gurantee the pointers outlive this object.
     unsafe fn new(
         time: EngineTime<T::Time>,
         frame_internal: *mut FrameMetaData<T>,
@@ -78,13 +79,13 @@ impl<T: Transposer, C: OutputCollector<T::Output>> UpdateContext<T>
 }
 
 impl<T: Transposer, C: OutputCollector<T::Output>> UpdateContextCollector<T, C> {
-    // SAFETY: ensure this UpdateContext is dropped before frame_internal and input_state.
-
     fn get_frame_internal_mut(&mut self) -> &mut FrameMetaData<T> {
+        // SAFETY: this is good as long as the constructor's criteria are met.
         unsafe { self.frame_internal.as_mut().unwrap() }
     }
 
     fn get_input_state_mut(&mut self) -> &mut LazyState<T::InputState> {
+        // SAFETY: this is good as long as the constructor's criteria are met.
         unsafe { self.input_state.as_mut().unwrap() }
     }
 }

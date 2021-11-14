@@ -12,7 +12,7 @@ where
     // SAFETY: ensure this UpdateContext is dropped before frame_internal and input_state.
     unsafe fn new(
         time: EngineTime<T::Time>,
-        frame_internal: *mut FrameMetaData<T>,
+        metadata: *mut FrameMetaData<T>,
         input_state: *mut LazyState<T::InputState>,
     ) -> Self;
 

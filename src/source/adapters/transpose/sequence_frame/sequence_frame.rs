@@ -1,5 +1,5 @@
 use core::cmp::Ordering;
-use core::mem::{replace, MaybeUninit};
+use core::mem::replace;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
