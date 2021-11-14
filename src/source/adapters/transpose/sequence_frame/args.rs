@@ -4,27 +4,8 @@ use core::pin::Pin;
 
 use futures_core::Future;
 
-use super::frame::Frame;
-use super::update_context::UpdateContext;
+use super::frame_update::{Arg, Frame, UpdateContext};
 use crate::transposer::Transposer;
-
-pub trait Arg<T: Transposer> {
-    type Passed;
-    type Stored;
-
-    // STORAGE MUST BE VALID AFTER THIS
-    fn get_fut<'a, C: UpdateContext<T>>(
-        transposer: &'a mut T,
-        context: &'a mut C,
-        time: T::Time,
-        value: Self::Passed,
-        storage_slot: &'a mut MaybeUninit<Self::Stored>,
-    ) -> Pin<Box<dyn Future<Output = ()> + 'a>>;
-
-    fn get_arg(frame: &mut Frame<T>, in_arg: Self::Stored) -> Self::Passed;
-
-    fn get_stored(passed: Self::Passed) -> Self::Stored;
-}
 
 pub struct InitArg<T: Transposer>(PhantomData<T>);
 impl<T: Transposer> Arg<T> for InitArg<T> {
@@ -65,8 +46,8 @@ impl<T: Transposer> Arg<T> for InputArg<T> {
         *storage_slot = MaybeUninit::new(value);
 
         // SAFETY: we just assigned this
-        let storage_slot = unsafe { storage_slot.assume_init_mut() };
-        transposer.handle_input(time, storage_slot, context)
+        let inputs_ref = unsafe { storage_slot.assume_init_ref() }.as_ref();
+        transposer.handle_input(time, inputs_ref, context)
     }
 
     fn get_arg(_frame: &mut Frame<T>, in_arg: Self::Stored) -> Self::Passed {

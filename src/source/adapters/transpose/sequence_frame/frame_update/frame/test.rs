@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use rand::Rng;
 
-use super::{Frame, FrameMetaData};
-use crate::source::adapters::transpose::engine_time::EngineTimeSchedule;
+use super::super::super::engine_time::EngineTimeSchedule;
+use super::frame_metadata::FrameMetaData;
+use super::Frame;
 use crate::transposer::context::InterpolateContext;
 use crate::transposer::Transposer;
 

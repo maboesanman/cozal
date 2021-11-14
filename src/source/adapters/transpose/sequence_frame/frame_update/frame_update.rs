@@ -5,12 +5,7 @@ use core::task::{Context, Poll};
 
 use futures_core::FusedFuture;
 
-use super::arg::Arg;
-use super::engine_time::EngineTime;
-use super::frame::Frame;
-use super::frame_update_pollable::FrameUpdatePollable;
-use super::update_context::UpdateContext;
-use super::update_result::UpdateResult;
+use super::{Arg, EngineTime, Frame, FrameUpdatePollable, UpdateContext, UpdateResult};
 use crate::transposer::Transposer;
 
 /// future to initialize a TransposerFrame

@@ -2,9 +2,8 @@ use async_trait::async_trait;
 use matches::assert_matches;
 use rand::Rng;
 
-use super::SequenceFrameUpdate;
-use crate::source::adapters::transpose::input_buffer::InputBuffer;
-use crate::source::adapters::transpose::sequence_frame_update::SequenceFrameUpdatePoll;
+use super::super::input_buffer::InputBuffer;
+use super::{SequenceFrameUpdate, SequenceFrameUpdatePoll};
 use crate::test::test_waker::DummyWaker;
 use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
 use crate::transposer::Transposer;

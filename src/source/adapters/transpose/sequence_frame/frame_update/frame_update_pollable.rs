@@ -4,11 +4,7 @@ use core::mem::{ManuallyDrop, MaybeUninit};
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use super::super::frame::Frame;
-use super::arg::Arg;
-use super::engine_time::EngineTime;
-use super::lazy_state::LazyState;
-use super::update_context::UpdateContext;
+use super::{Arg, EngineTime, Frame, LazyState, UpdateContext};
 use crate::transposer::Transposer;
 
 pub(super) struct FrameUpdatePollable<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {

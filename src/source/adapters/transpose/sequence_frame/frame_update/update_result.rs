@@ -1,6 +1,4 @@
-use super::super::frame::Frame;
-use super::arg::Arg;
-use super::update_context::UpdateContext;
+use super::{Arg, Frame, UpdateContext};
 use crate::transposer::Transposer;
 
 pub struct UpdateResult<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
