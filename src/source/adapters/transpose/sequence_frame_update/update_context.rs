@@ -261,7 +261,7 @@ impl<T: Transposer> ExpireEventContext<T> for RepeatUpdateContext<T> {
 }
 
 impl<T: Transposer> EmitEventContext<T> for RepeatUpdateContext<T> {
-    fn emit_event(&mut self, payload: T::Output) {}
+    fn emit_event(&mut self, _payload: T::Output) {}
 }
 
 impl<T: Transposer> RngContext for RepeatUpdateContext<T> {

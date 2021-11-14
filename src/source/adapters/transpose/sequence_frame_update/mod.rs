@@ -244,6 +244,50 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
         Ok(())
     }
 
+    fn saturate_from_frame(&mut self, frame: Box<Frame<T>>) -> Result<(), ()> {
+        if !self.inner.is_unsaturated() {
+            return Err(())
+        }
+
+        take_mut::take_or_recover(
+            &mut self.inner,
+            || SequenceFrameUpdateInner::Unreachable,
+            |next| match next {
+                SequenceFrameUpdateInner::OriginalUnsaturatedInput {
+                    inputs,
+                } => {
+                    let update = FrameUpdate::new(frame, inputs, self.time.clone());
+                    SequenceFrameUpdateInner::OriginalSaturatingInput {
+                        update: Box::pin(update),
+                    }
+                },
+                SequenceFrameUpdateInner::RepeatUnsaturatedInput {
+                    inputs,
+                } => {
+                    let update = FrameUpdate::new(frame, inputs, self.time.clone());
+                    SequenceFrameUpdateInner::RepeatSaturatingInput {
+                        update: Box::pin(update),
+                    }
+                },
+                SequenceFrameUpdateInner::OriginalUnsaturatedScheduled => {
+                    let update = FrameUpdate::new(frame, (), self.time.clone());
+                    SequenceFrameUpdateInner::OriginalSaturatingScheduled {
+                        update: Box::pin(update),
+                    }
+                },
+                SequenceFrameUpdateInner::RepeatUnsaturatedScheduled => {
+                    let update = FrameUpdate::new(frame, (), self.time.clone());
+                    SequenceFrameUpdateInner::RepeatSaturatingScheduled {
+                        update: Box::pin(update),
+                    }
+                },
+                _ => unreachable!(),
+            },
+        );
+
+        Ok(())
+    }
+
     pub fn desaturate(&mut self) -> Result<(), ()> {
         let mut result = Err(());
         take_mut::take(&mut self.inner, |original| match original {
@@ -301,10 +345,7 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
         result
     }
 
-    pub fn rollback(
-        self,
-        input_buffer: &mut InputBuffer<T::Time, T::Input>,
-    ) -> Result<Option<T::Time>, ()> {
+    pub fn rollback(self, input_buffer: &mut InputBuffer<T::Time, T::Input>) -> Result<bool, ()> {
         let time = self.time.raw_time().map_err(|_| ())?;
         let inputs = match self.inner {
             SequenceFrameUpdateInner::OriginalUnsaturatedInput {
@@ -329,10 +370,7 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
             input_buffer.extend_front(time, inputs)
         }
 
-        if self.outputs_emitted.is_some() {
-            // do something?
-        }
-        todo!() // need to keep track of what has beem emitted
+        Ok(self.outputs_emitted.is_some())
     }
 
     pub fn poll(&mut self, waker: Waker) -> Result<SequenceFrameUpdatePoll<T>, ()> {
@@ -467,52 +505,29 @@ impl<T: Transposer> SequenceFrameUpdate<T> {
         }
     }
 
-    pub fn time(&self) -> &EngineTime<T::Time> {
-        &self.time
+    pub fn set_input_state(&mut self, state: T::InputState) -> Result<(), T::InputState> {
+        match &mut self.inner {
+            SequenceFrameUpdateInner::SaturatingInit {
+                update,
+            } => update.as_mut().set_input_state(state),
+            SequenceFrameUpdateInner::OriginalSaturatingInput {
+                update,
+            } => update.as_mut().set_input_state(state),
+            SequenceFrameUpdateInner::OriginalSaturatingScheduled {
+                update,
+            } => update.as_mut().set_input_state(state),
+            SequenceFrameUpdateInner::RepeatSaturatingInput {
+                update,
+            } => update.as_mut().set_input_state(state),
+            SequenceFrameUpdateInner::RepeatSaturatingScheduled {
+                update,
+            } => update.as_mut().set_input_state(state),
+            _ => Err(state),
+        }
     }
 
-    fn saturate_from_frame(&mut self, frame: Box<Frame<T>>) -> Result<(), ()> {
-        if !self.inner.is_unsaturated() {
-            return Err(())
-        }
-
-        take_mut::take_or_recover(
-            &mut self.inner,
-            || SequenceFrameUpdateInner::Unreachable,
-            |next| match next {
-                SequenceFrameUpdateInner::OriginalUnsaturatedInput {
-                    inputs,
-                } => {
-                    let update = FrameUpdate::new(frame, inputs, self.time.clone());
-                    SequenceFrameUpdateInner::OriginalSaturatingInput {
-                        update: Box::pin(update),
-                    }
-                },
-                SequenceFrameUpdateInner::RepeatUnsaturatedInput {
-                    inputs,
-                } => {
-                    let update = FrameUpdate::new(frame, inputs, self.time.clone());
-                    SequenceFrameUpdateInner::RepeatSaturatingInput {
-                        update: Box::pin(update),
-                    }
-                },
-                SequenceFrameUpdateInner::OriginalUnsaturatedScheduled => {
-                    let update = FrameUpdate::new(frame, (), self.time.clone());
-                    SequenceFrameUpdateInner::OriginalSaturatingScheduled {
-                        update: Box::pin(update),
-                    }
-                },
-                SequenceFrameUpdateInner::RepeatUnsaturatedScheduled => {
-                    let update = FrameUpdate::new(frame, (), self.time.clone());
-                    SequenceFrameUpdateInner::RepeatSaturatingScheduled {
-                        update: Box::pin(update),
-                    }
-                },
-                _ => unreachable!(),
-            },
-        );
-
-        Ok(())
+    pub fn time(&self) -> &EngineTime<T::Time> {
+        &self.time
     }
 }
 

@@ -56,14 +56,6 @@ impl<S> LazyState<S> {
     pub fn requested(&self) -> bool {
         matches!(self.0, LazyStateInner::Requested(_))
     }
-
-    pub fn destroy(self) -> Option<S> {
-        match self.0 {
-            LazyStateInner::Ready(s) => Some(s),
-            LazyStateInner::Pending => None,
-            LazyStateInner::Requested(_) => None,
-        }
-    }
 }
 
 impl<S> Default for LazyState<S> {
