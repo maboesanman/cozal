@@ -3,6 +3,7 @@ use context::{HandleInputContext, HandleScheduleContext, InitContext, Interpolat
 
 pub mod context;
 mod expire_handle;
+mod sequence_frame;
 mod test;
 
 pub use expire_handle::ExpireHandle;

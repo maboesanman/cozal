@@ -1,5 +1,4 @@
 pub(self) mod input_buffer;
-pub(self) mod sequence_frame;
 
 // #[cfg(test)]
 // pub mod test;
