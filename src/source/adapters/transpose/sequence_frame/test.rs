@@ -3,9 +3,9 @@ use matches::assert_matches;
 use rand::Rng;
 
 use super::{SequenceFrame, SequenceFramePoll};
-use crate::test::test_waker::DummyWaker;
 use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
 use crate::transposer::Transposer;
+use crate::util::dummy_waker::DummyWaker;
 
 #[derive(Clone, Debug)]
 struct TestTransposer {

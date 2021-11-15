@@ -7,13 +7,8 @@ use futures_core::Future;
 
 use super::args::{InitArg, InputArg, ScheduledArg};
 use super::engine_time::EngineTime;
-use super::frame_update::{Frame, FrameUpdate};
+use super::frame_update::{Arg, Frame, FrameUpdate, UpdateContext, UpdateResult};
 use super::update_context_collector::UpdateContextCollector;
-use crate::source::adapters::transpose::sequence_frame::frame_update::{
-    Arg,
-    UpdateContext,
-    UpdateResult,
-};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 

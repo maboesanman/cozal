@@ -7,12 +7,10 @@ pub struct DummyWaker {
     wake_count: AtomicUsize,
 }
 
-#[allow(dead_code)]
 pub struct DummyWakerWatcher {
     waker: Arc<DummyWaker>,
 }
 
-#[allow(dead_code)]
 impl DummyWakerWatcher {
     pub fn current_count(&self) -> usize {
         self.waker.wake_count.load(Ordering::SeqCst)

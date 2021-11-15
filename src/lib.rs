@@ -9,9 +9,6 @@
 #![allow(dead_code)]
 #![allow(clippy::module_inception)]
 
-#[cfg(test)]
-mod test;
-
 pub mod source;
 pub mod transposer;
 pub(self) mod util;
