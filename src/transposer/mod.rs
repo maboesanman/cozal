@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext};
 
 pub mod context;
+// mod evaluate_to;
 mod expire_handle;
 mod sequence_frame;
 mod test;
@@ -104,7 +105,6 @@ pub trait Transposer {
         &self,
         base_time: Self::Time,
         interpolated_time: Self::Time,
-        input_state: Self::InputState,
         cx: &mut dyn InterpolateContext<Self>,
     ) -> Self::OutputState;
 

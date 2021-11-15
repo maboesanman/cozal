@@ -1,4 +1,4 @@
-pub(self) mod input_buffer;
+pub mod input_buffer;
 
 // #[cfg(test)]
 // pub mod test;

@@ -28,7 +28,6 @@ impl Transposer for TestTransposer {
         &self,
         _base_time: Self::Time,
         _interpolated_time: Self::Time,
-        _state: Self::InputState,
         _cx: &mut dyn InterpolateContext<Self>,
     ) -> Self::OutputState {
         unimplemented!()

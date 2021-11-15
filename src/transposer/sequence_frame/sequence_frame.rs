@@ -237,7 +237,7 @@ impl<T: Transposer> SequenceFrame<T> {
         );
     }
 
-    pub fn desaturate(&mut self) -> Result<(), DesaturateErr> {
+    pub fn desaturate(&mut self) -> Result<Option<T>, DesaturateErr> {
         take_mut::take_and_return_or_recover(
             &mut self.inner,
             SequenceFrameInner::recover,
@@ -249,7 +249,7 @@ impl<T: Transposer> SequenceFrame<T> {
                         // elevate to panic, because we should be fully saturated in this situation
                         inputs: update.as_mut().reclaim().unwrap(),
                     };
-                    (inner, Ok(()))
+                    (inner, Ok(None))
                 },
                 SequenceFrameInner::RepeatSaturatingInput {
                     mut update,
@@ -258,28 +258,35 @@ impl<T: Transposer> SequenceFrame<T> {
                         // elevate to panic, because we should be fully saturated in this situation
                         inputs: update.as_mut().reclaim().unwrap(),
                     };
-                    (inner, Ok(()))
+                    (inner, Ok(None))
                 },
                 SequenceFrameInner::OriginalSaturatingScheduled {
                     update: _,
-                } => (SequenceFrameInner::OriginalUnsaturatedScheduled, Ok(())),
+                } => (SequenceFrameInner::OriginalUnsaturatedScheduled, Ok(None)),
                 SequenceFrameInner::RepeatSaturatingScheduled {
                     update: _,
-                } => (SequenceFrameInner::RepeatUnsaturatedScheduled, Ok(())),
+                } => (SequenceFrameInner::RepeatUnsaturatedScheduled, Ok(None)),
                 SequenceFrameInner::SaturatedInit {
-                    ..
-                } => (SequenceFrameInner::UnsaturatedInit, Ok(())),
+                    frame,
+                } => (
+                    SequenceFrameInner::UnsaturatedInit,
+                    Ok(Some(frame.transposer)),
+                ),
                 SequenceFrameInner::SaturatedInput {
-                    inputs, ..
+                    inputs,
+                    frame,
                 } => (
                     SequenceFrameInner::RepeatUnsaturatedInput {
                         inputs,
                     },
-                    Ok(()),
+                    Ok(Some(frame.transposer)),
                 ),
                 SequenceFrameInner::SaturatedScheduled {
-                    ..
-                } => (SequenceFrameInner::RepeatUnsaturatedScheduled, Ok(())),
+                    frame,
+                } => (
+                    SequenceFrameInner::RepeatUnsaturatedScheduled,
+                    Ok(Some(frame.transposer)),
+                ),
                 other => (other, Err(DesaturateErr::AlreadyUnsaturated)),
             },
         )

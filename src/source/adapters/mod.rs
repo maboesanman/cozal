@@ -3,7 +3,7 @@ mod map;
 // mod offload;
 mod multiplex;
 mod shift;
-mod transpose;
+pub(crate) mod transpose;
 
 pub use self::duplicate::Duplicate;
 pub use self::map::Map;

@@ -1,6 +1,6 @@
 mod source_poll;
 
-mod adapters;
+pub mod adapters;
 pub mod traits;
 
 pub use self::source_poll::SourcePoll;
