@@ -93,8 +93,8 @@ impl<T: Transposer, C: OutputCollector<T::Output>> UpdateContextCollector<T, C> 
 impl<T: Transposer, C: OutputCollector<T::Output>> InputStateContext<T>
     for UpdateContextCollector<T, C>
 {
-    fn get_input_state(&mut self) -> Pin<&mut dyn Future<Output = T::InputState>> {
-        unsafe { Pin::new_unchecked(self.get_input_state_mut()) }
+    fn get_input_state(&mut self) -> Pin<Box<dyn '_ + Future<Output = T::InputState>>> {
+        Box::pin(self.get_input_state_mut())
     }
 }
 

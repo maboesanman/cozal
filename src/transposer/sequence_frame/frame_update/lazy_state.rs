@@ -11,7 +11,7 @@ pub enum LazyStateInner<S> {
     Pending,
 }
 
-impl<S> Future for LazyState<S> {
+impl<S> Future for &mut LazyState<S> {
     type Output = S;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<S> {
