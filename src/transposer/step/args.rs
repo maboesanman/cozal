@@ -4,7 +4,7 @@ use core::pin::Pin;
 
 use futures_core::Future;
 
-use super::frame_update::{Arg, Frame, UpdateContext};
+use super::update::{Arg, UpdateContext, WrappedTransposer};
 use crate::transposer::Transposer;
 
 pub struct InitArg<T: Transposer>(PhantomData<T>);
@@ -25,7 +25,7 @@ impl<T: Transposer> Arg<T> for InitArg<T> {
         transposer.init(context)
     }
 
-    fn get_arg(_frame: &mut Frame<T>, _in_arg: Self::Stored) -> Self::Passed {}
+    fn get_arg(_frame: &mut WrappedTransposer<T>, _in_arg: Self::Stored) -> Self::Passed {}
 
     fn get_stored(_: Self::Passed) -> Self::Stored {}
 }
@@ -50,7 +50,7 @@ impl<T: Transposer> Arg<T> for InputArg<T> {
         transposer.handle_input(time, inputs_ref, context)
     }
 
-    fn get_arg(_frame: &mut Frame<T>, in_arg: Self::Stored) -> Self::Passed {
+    fn get_arg(_frame: &mut WrappedTransposer<T>, in_arg: Self::Stored) -> Self::Passed {
         in_arg
     }
     fn get_stored(passed: Self::Passed) -> Self::Stored {
@@ -76,7 +76,7 @@ impl<T: Transposer> Arg<T> for ScheduledArg<T> {
         transposer.handle_scheduled(time, value, context)
     }
 
-    fn get_arg(frame: &mut Frame<T>, _in_arg: Self::Stored) -> Self::Passed {
+    fn get_arg(frame: &mut WrappedTransposer<T>, _in_arg: Self::Stored) -> Self::Passed {
         let val = frame.pop_schedule_event();
 
         debug_assert!(val.is_some());

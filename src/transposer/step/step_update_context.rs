@@ -1,8 +1,8 @@
 use core::future::Future;
 use core::pin::Pin;
 
-use super::engine_time::EngineTime;
-use super::frame_update::{FrameMetaData, LazyState, UpdateContext};
+use super::time::ResolvedTime;
+use super::update::{LazyState, TransposerMetaData, UpdateContext};
 use crate::transposer::context::*;
 use crate::transposer::{ExpireHandle, Transposer};
 
@@ -29,39 +29,37 @@ impl<O> OutputCollector<O> for () {
 ///
 /// the primary features are scheduling and expiring events,
 /// though there are more methods to interact with the engine.
-pub struct UpdateContextCollector<T: Transposer, C: OutputCollector<T::Output>>
+pub struct StepUpdateContext<T: Transposer, C: OutputCollector<T::Output>>
 where
     T::Scheduled: Clone,
 {
     // these are pointers because this is stored next to the targets.
-    frame_internal: *mut FrameMetaData<T>,
+    frame_internal: *mut TransposerMetaData<T>,
     input_state:    *mut LazyState<T::InputState>,
 
-    time:                   EngineTime<T::Time>,
+    time:                   ResolvedTime<T::Time>,
     current_emission_index: usize,
 
     // values to output
     output_collector: C,
 }
 
-impl<T: Transposer, C: OutputCollector<T::Output>> InitContext<T> for UpdateContextCollector<T, C> {}
+impl<T: Transposer, C: OutputCollector<T::Output>> InitContext<T> for StepUpdateContext<T, C> {}
 impl<T: Transposer, C: OutputCollector<T::Output>> HandleInputContext<T>
-    for UpdateContextCollector<T, C>
+    for StepUpdateContext<T, C>
 {
 }
 impl<T: Transposer, C: OutputCollector<T::Output>> HandleScheduleContext<T>
-    for UpdateContextCollector<T, C>
+    for StepUpdateContext<T, C>
 {
 }
-impl<T: Transposer, C: OutputCollector<T::Output>> UpdateContext<T>
-    for UpdateContextCollector<T, C>
-{
+impl<T: Transposer, C: OutputCollector<T::Output>> UpdateContext<T> for StepUpdateContext<T, C> {
     type Outputs = C;
 
     // SAFETY: need to gurantee the pointers outlive this object.
     unsafe fn new(
-        time: EngineTime<T::Time>,
-        frame_internal: *mut FrameMetaData<T>,
+        time: ResolvedTime<T::Time>,
+        frame_internal: *mut TransposerMetaData<T>,
         input_state: *mut LazyState<T::InputState>,
     ) -> Self {
         Self {
@@ -78,8 +76,8 @@ impl<T: Transposer, C: OutputCollector<T::Output>> UpdateContext<T>
     }
 }
 
-impl<T: Transposer, C: OutputCollector<T::Output>> UpdateContextCollector<T, C> {
-    fn get_frame_internal_mut(&mut self) -> &mut FrameMetaData<T> {
+impl<T: Transposer, C: OutputCollector<T::Output>> StepUpdateContext<T, C> {
+    fn get_frame_internal_mut(&mut self) -> &mut TransposerMetaData<T> {
         // SAFETY: this is good as long as the constructor's criteria are met.
         unsafe { self.frame_internal.as_mut().unwrap() }
     }
@@ -91,7 +89,7 @@ impl<T: Transposer, C: OutputCollector<T::Output>> UpdateContextCollector<T, C> 
 }
 
 impl<T: Transposer, C: OutputCollector<T::Output>> InputStateContext<T>
-    for UpdateContextCollector<T, C>
+    for StepUpdateContext<T, C>
 {
     fn get_input_state(&mut self) -> Pin<Box<dyn '_ + Future<Output = T::InputState>>> {
         Box::pin(self.get_input_state_mut())
@@ -99,7 +97,7 @@ impl<T: Transposer, C: OutputCollector<T::Output>> InputStateContext<T>
 }
 
 impl<T: Transposer, C: OutputCollector<T::Output>> ScheduleEventContext<T>
-    for UpdateContextCollector<T, C>
+    for StepUpdateContext<T, C>
 {
     fn schedule_event(
         &mut self,
@@ -139,7 +137,7 @@ impl<T: Transposer, C: OutputCollector<T::Output>> ScheduleEventContext<T>
 }
 
 impl<T: Transposer, C: OutputCollector<T::Output>> ExpireEventContext<T>
-    for UpdateContextCollector<T, C>
+    for StepUpdateContext<T, C>
 {
     fn expire_event(
         &mut self,
@@ -149,15 +147,13 @@ impl<T: Transposer, C: OutputCollector<T::Output>> ExpireEventContext<T>
     }
 }
 
-impl<T: Transposer, C: OutputCollector<T::Output>> EmitEventContext<T>
-    for UpdateContextCollector<T, C>
-{
+impl<T: Transposer, C: OutputCollector<T::Output>> EmitEventContext<T> for StepUpdateContext<T, C> {
     fn emit_event(&mut self, payload: T::Output) {
         self.output_collector.push(payload);
     }
 }
 
-impl<T: Transposer, C: OutputCollector<T::Output>> RngContext for UpdateContextCollector<T, C> {
+impl<T: Transposer, C: OutputCollector<T::Output>> RngContext for StepUpdateContext<T, C> {
     fn get_rng(&mut self) -> &mut dyn rand::RngCore {
         &mut self.get_frame_internal_mut().rng
     }

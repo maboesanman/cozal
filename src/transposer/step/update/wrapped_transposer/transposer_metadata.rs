@@ -4,26 +4,26 @@ use rand_chacha::rand_core::block::BlockRng;
 use rand_chacha::ChaCha12Core;
 
 use super::expire_handle_factory::ExpireHandleFactory;
-use super::EngineTimeSchedule;
+use super::ScheduledTime;
 use crate::transposer::context::ExpireEventError;
 use crate::transposer::{ExpireHandle, Transposer};
 
 #[derive(Clone)]
-pub struct FrameMetaData<T: Transposer>
+pub struct TransposerMetaData<T: Transposer>
 where
     T::Scheduled: Clone,
 {
-    pub schedule: OrdMap<EngineTimeSchedule<T::Time>, T::Scheduled>,
+    pub schedule: OrdMap<ScheduledTime<T::Time>, T::Scheduled>,
 
-    pub expire_handles_forward:  HashMap<ExpireHandle, EngineTimeSchedule<T::Time>>,
-    pub expire_handles_backward: OrdMap<EngineTimeSchedule<T::Time>, ExpireHandle>,
+    pub expire_handles_forward:  HashMap<ExpireHandle, ScheduledTime<T::Time>>,
+    pub expire_handles_backward: OrdMap<ScheduledTime<T::Time>, ExpireHandle>,
 
     pub expire_handle_factory: ExpireHandleFactory,
 
     pub rng: BlockRng<ChaCha12Core>,
 }
 
-impl<T: Transposer> FrameMetaData<T>
+impl<T: Transposer> TransposerMetaData<T>
 where
     T::Scheduled: Clone,
 {
@@ -37,13 +37,13 @@ where
         }
     }
 
-    pub fn schedule_event(&mut self, time: EngineTimeSchedule<T::Time>, payload: T::Scheduled) {
+    pub fn schedule_event(&mut self, time: ScheduledTime<T::Time>, payload: T::Scheduled) {
         self.schedule.insert(time, payload);
     }
 
     pub fn schedule_event_expireable(
         &mut self,
-        time: EngineTimeSchedule<T::Time>,
+        time: ScheduledTime<T::Time>,
         payload: T::Scheduled,
     ) -> ExpireHandle {
         self.schedule_event(time.clone(), payload);
@@ -74,11 +74,11 @@ where
         }
     }
 
-    pub fn get_next_scheduled_time(&self) -> Option<&EngineTimeSchedule<T::Time>> {
+    pub fn get_next_scheduled_time(&self) -> Option<&ScheduledTime<T::Time>> {
         self.schedule.get_min().map(|(k, _)| k)
     }
 
-    pub fn pop_first_event(&mut self) -> Option<(EngineTimeSchedule<T::Time>, T::Scheduled)> {
+    pub fn pop_first_event(&mut self) -> Option<(ScheduledTime<T::Time>, T::Scheduled)> {
         if let (Some((k, v)), new) = self.schedule.without_min_with_key() {
             self.schedule = new;
 

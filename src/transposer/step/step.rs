@@ -6,15 +6,15 @@ use core::task::{Context, Poll, Waker};
 use futures_core::Future;
 
 use super::args::{InitArg, InputArg, ScheduledArg};
-use super::engine_time::EngineTime;
-use super::frame_update::{Arg, Frame, FrameUpdate, UpdateContext, UpdateResult};
-use super::update_context_collector::UpdateContextCollector;
+use super::step_update_context::StepUpdateContext;
+use super::time::ResolvedTime;
+use super::update::{Arg, UpdateContext, UpdateResult, WrappedTransposer, WrappedUpdate};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
-pub struct SequenceFrame<T: Transposer> {
-    time:            EngineTime<T::Time>,
-    inner:           SequenceFrameInner<T>,
+pub struct Step<T: Transposer> {
+    time:            ResolvedTime<T::Time>,
+    inner:           StepInner<T>,
     outputs_emitted: OutputsEmitted,
 
     // these are used purely for enforcing that saturate calls use the previous frame.
@@ -46,17 +46,17 @@ pub enum PollErr {
     NotSaturating,
 }
 
-impl<T: Transposer> SequenceFrame<T> {
+impl<T: Transposer> Step<T> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
-        let time = EngineTime::new_init();
-        let frame = Frame::new(transposer, rng_seed);
+        let time = ResolvedTime::new_init();
+        let frame = WrappedTransposer::new(transposer, rng_seed);
         let frame = Box::new(frame);
-        let update = FrameUpdate::new(frame, (), time.clone());
+        let update = WrappedUpdate::new(frame, (), time.clone());
         let update = Box::pin(update);
-        let inner = SequenceFrameInner::SaturatingInit {
+        let inner = StepInner::SaturatingInit {
             update,
         };
-        SequenceFrame {
+        Step {
             time,
             inner,
             outputs_emitted: OutputsEmitted::Pending,
@@ -73,13 +73,13 @@ impl<T: Transposer> SequenceFrame<T> {
         next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         let frame = match &self.inner {
-            SequenceFrameInner::SaturatedInit {
+            StepInner::SaturatedInit {
                 frame, ..
             } => frame.as_ref(),
-            SequenceFrameInner::SaturatedInput {
+            StepInner::SaturatedInput {
                 frame, ..
             } => frame.as_ref(),
-            SequenceFrameInner::SaturatedScheduled {
+            StepInner::SaturatedScheduled {
                 frame, ..
             } => frame.as_ref(),
             _ => return Err(NextUnsaturatedErr::NotSaturated),
@@ -90,26 +90,29 @@ impl<T: Transposer> SequenceFrame<T> {
 
         let (time, is_input) = match (&next_inputs, next_scheduled_time) {
             (None, None) => return Ok(None),
-            (None, Some(t)) => (EngineTime::new_scheduled(next_time_index, t.clone()), false),
-            (Some((t, _)), None) => (EngineTime::new_input(next_time_index, *t), true),
+            (None, Some(t)) => (
+                ResolvedTime::new_scheduled(next_time_index, t.clone()),
+                false,
+            ),
+            (Some((t, _)), None) => (ResolvedTime::new_input(next_time_index, *t), true),
             (Some((t_i, _)), Some(t_s)) => match t_i.cmp(&t_s.time) {
                 Ordering::Greater => (
-                    EngineTime::new_scheduled(next_time_index, t_s.clone()),
+                    ResolvedTime::new_scheduled(next_time_index, t_s.clone()),
                     false,
                 ),
-                _ => (EngineTime::new_input(next_time_index, *t_i), true),
+                _ => (ResolvedTime::new_input(next_time_index, *t_i), true),
             },
         };
 
         let inner = if is_input {
-            SequenceFrameInner::OriginalUnsaturatedInput {
+            StepInner::OriginalUnsaturatedInput {
                 inputs: core::mem::take(next_inputs).unwrap().1,
             }
         } else {
-            SequenceFrameInner::OriginalUnsaturatedScheduled
+            StepInner::OriginalUnsaturatedScheduled
         };
 
-        let item = SequenceFrame {
+        let item = Step {
             time,
             inner,
             outputs_emitted: OutputsEmitted::Pending,
@@ -140,23 +143,23 @@ impl<T: Transposer> SequenceFrame<T> {
 
         let frame = take_mut::take_and_return_or_recover(
             &mut previous.inner,
-            || SequenceFrameInner::Unreachable,
+            || StepInner::Unreachable,
             |prev| match prev {
-                SequenceFrameInner::SaturatedInit {
+                StepInner::SaturatedInit {
                     frame,
-                } => (SequenceFrameInner::UnsaturatedInit, frame),
-                SequenceFrameInner::SaturatedInput {
+                } => (StepInner::UnsaturatedInit, frame),
+                StepInner::SaturatedInput {
                     inputs,
                     frame,
                 } => (
-                    SequenceFrameInner::RepeatUnsaturatedInput {
+                    StepInner::RepeatUnsaturatedInput {
                         inputs,
                     },
                     frame,
                 ),
-                SequenceFrameInner::SaturatedScheduled {
+                StepInner::SaturatedScheduled {
                     frame,
-                } => (SequenceFrameInner::RepeatUnsaturatedScheduled, frame),
+                } => (StepInner::RepeatUnsaturatedScheduled, frame),
                 _ => unreachable!(),
             },
         );
@@ -181,13 +184,13 @@ impl<T: Transposer> SequenceFrame<T> {
         }
 
         let frame = match &previous.inner {
-            SequenceFrameInner::SaturatedInit {
+            StepInner::SaturatedInit {
                 frame, ..
             } => Ok(frame.clone()),
-            SequenceFrameInner::SaturatedInput {
+            StepInner::SaturatedInput {
                 frame, ..
             } => Ok(frame.clone()),
-            SequenceFrameInner::SaturatedScheduled {
+            StepInner::SaturatedScheduled {
                 frame,
             } => Ok(frame.clone()),
             _ => Err(SaturateErr::PreviousNotSaturated),
@@ -199,36 +202,36 @@ impl<T: Transposer> SequenceFrame<T> {
     }
 
     // panics if self is unsaturated.
-    fn saturate_from_frame(&mut self, frame: Box<Frame<T>>) {
+    fn saturate_from_frame(&mut self, frame: Box<WrappedTransposer<T>>) {
         take_mut::take_or_recover(
             &mut self.inner,
-            || SequenceFrameInner::Unreachable,
+            || StepInner::Unreachable,
             |next| match next {
-                SequenceFrameInner::OriginalUnsaturatedInput {
+                StepInner::OriginalUnsaturatedInput {
                     inputs,
                 } => {
-                    let update = FrameUpdate::new(frame, inputs, self.time.clone());
-                    SequenceFrameInner::OriginalSaturatingInput {
+                    let update = WrappedUpdate::new(frame, inputs, self.time.clone());
+                    StepInner::OriginalSaturatingInput {
                         update: Box::pin(update),
                     }
                 },
-                SequenceFrameInner::RepeatUnsaturatedInput {
+                StepInner::RepeatUnsaturatedInput {
                     inputs,
                 } => {
-                    let update = FrameUpdate::new(frame, inputs, self.time.clone());
-                    SequenceFrameInner::RepeatSaturatingInput {
+                    let update = WrappedUpdate::new(frame, inputs, self.time.clone());
+                    StepInner::RepeatSaturatingInput {
                         update: Box::pin(update),
                     }
                 },
-                SequenceFrameInner::OriginalUnsaturatedScheduled => {
-                    let update = FrameUpdate::new(frame, (), self.time.clone());
-                    SequenceFrameInner::OriginalSaturatingScheduled {
+                StepInner::OriginalUnsaturatedScheduled => {
+                    let update = WrappedUpdate::new(frame, (), self.time.clone());
+                    StepInner::OriginalSaturatingScheduled {
                         update: Box::pin(update),
                     }
                 },
-                SequenceFrameInner::RepeatUnsaturatedScheduled => {
-                    let update = FrameUpdate::new(frame, (), self.time.clone());
-                    SequenceFrameInner::RepeatSaturatingScheduled {
+                StepInner::RepeatUnsaturatedScheduled => {
+                    let update = WrappedUpdate::new(frame, (), self.time.clone());
+                    StepInner::RepeatSaturatingScheduled {
                         update: Box::pin(update),
                     }
                 },
@@ -238,81 +241,76 @@ impl<T: Transposer> SequenceFrame<T> {
     }
 
     pub fn desaturate(&mut self) -> Result<Option<T>, DesaturateErr> {
-        take_mut::take_and_return_or_recover(
-            &mut self.inner,
-            SequenceFrameInner::recover,
-            |original| match original {
-                SequenceFrameInner::OriginalSaturatingInput {
+        take_mut::take_and_return_or_recover(&mut self.inner, StepInner::recover, |original| {
+            match original {
+                StepInner::OriginalSaturatingInput {
                     mut update,
                 } => {
-                    let inner = SequenceFrameInner::OriginalUnsaturatedInput {
+                    let inner = StepInner::OriginalUnsaturatedInput {
                         // elevate to panic, because we should be fully saturated in this situation
                         inputs: update.as_mut().reclaim().unwrap(),
                     };
                     (inner, Ok(None))
                 },
-                SequenceFrameInner::RepeatSaturatingInput {
+                StepInner::RepeatSaturatingInput {
                     mut update,
                 } => {
-                    let inner = SequenceFrameInner::RepeatUnsaturatedInput {
+                    let inner = StepInner::RepeatUnsaturatedInput {
                         // elevate to panic, because we should be fully saturated in this situation
                         inputs: update.as_mut().reclaim().unwrap(),
                     };
                     (inner, Ok(None))
                 },
-                SequenceFrameInner::OriginalSaturatingScheduled {
+                StepInner::OriginalSaturatingScheduled {
                     update: _,
-                } => (SequenceFrameInner::OriginalUnsaturatedScheduled, Ok(None)),
-                SequenceFrameInner::RepeatSaturatingScheduled {
+                } => (StepInner::OriginalUnsaturatedScheduled, Ok(None)),
+                StepInner::RepeatSaturatingScheduled {
                     update: _,
-                } => (SequenceFrameInner::RepeatUnsaturatedScheduled, Ok(None)),
-                SequenceFrameInner::SaturatedInit {
+                } => (StepInner::RepeatUnsaturatedScheduled, Ok(None)),
+                StepInner::SaturatedInit {
                     frame,
-                } => (
-                    SequenceFrameInner::UnsaturatedInit,
-                    Ok(Some(frame.transposer)),
-                ),
-                SequenceFrameInner::SaturatedInput {
+                } => (StepInner::UnsaturatedInit, Ok(Some(frame.transposer))),
+                StepInner::SaturatedInput {
                     inputs,
                     frame,
                 } => (
-                    SequenceFrameInner::RepeatUnsaturatedInput {
+                    StepInner::RepeatUnsaturatedInput {
                         inputs,
                     },
                     Ok(Some(frame.transposer)),
                 ),
-                SequenceFrameInner::SaturatedScheduled {
+                StepInner::SaturatedScheduled {
                     frame,
                 } => (
-                    SequenceFrameInner::RepeatUnsaturatedScheduled,
+                    StepInner::RepeatUnsaturatedScheduled,
                     Ok(Some(frame.transposer)),
                 ),
                 other => (other, Err(DesaturateErr::AlreadyUnsaturated)),
-            },
-        )
+            }
+        })
     }
 
     pub fn rollback(mut self) -> (bool, Option<Box<[T::Input]>>) {
-        let inputs = match replace(&mut self.inner, SequenceFrameInner::Unreachable) {
-            SequenceFrameInner::OriginalUnsaturatedInput {
+        let inputs = match replace(&mut self.inner, StepInner::Unreachable) {
+            StepInner::OriginalUnsaturatedInput {
                 inputs,
             } => Some(inputs),
-            SequenceFrameInner::RepeatUnsaturatedInput {
+            StepInner::RepeatUnsaturatedInput {
                 inputs,
             } => Some(inputs),
-            SequenceFrameInner::OriginalSaturatingInput {
+            StepInner::OriginalSaturatingInput {
                 mut update,
             } => {
                 // elevate to panic, because we should be fully saturated in this situation
                 Some(update.as_mut().reclaim().unwrap())
             },
-            SequenceFrameInner::RepeatSaturatingInput {
+            StepInner::RepeatSaturatingInput {
                 mut update,
             } => {
                 // elevate to panic, because we should be fully saturated in this situation
                 Some(update.as_mut().reclaim().unwrap())
             },
-            SequenceFrameInner::SaturatedInput {
+            StepInner::SaturatedInput {
                 inputs, ..
             } => Some(inputs),
             _ => None,
@@ -321,37 +319,37 @@ impl<T: Transposer> SequenceFrame<T> {
         (self.outputs_emitted.is_some(), inputs)
     }
 
-    pub fn poll(&mut self, waker: Waker) -> Result<SequenceFramePoll<T>, PollErr> {
+    pub fn poll(&mut self, waker: Waker) -> Result<StepPoll<T>, PollErr> {
         let mut cx = Context::from_waker(&waker);
 
         fn handle_original_outputs<T: Transposer>(
             outputs: Vec<T::Output>,
             outputs_emitted: &mut OutputsEmitted,
-        ) -> Result<SequenceFramePoll<T>, PollErr> {
+        ) -> Result<StepPoll<T>, PollErr> {
             Ok(if outputs.is_empty() {
                 *outputs_emitted = OutputsEmitted::None;
-                SequenceFramePoll::ReadyNoOutputs
+                StepPoll::ReadyNoOutputs
             } else {
                 *outputs_emitted = OutputsEmitted::Some;
-                SequenceFramePoll::ReadyOutputs(outputs)
+                StepPoll::ReadyOutputs(outputs)
             })
         }
 
         fn handle_pending<T: Transposer, C: UpdateContext<T>, A: Arg<T>>(
-            update: &FrameUpdate<T, C, A>,
-        ) -> Result<SequenceFramePoll<T>, PollErr> {
+            update: &WrappedUpdate<T, C, A>,
+        ) -> Result<StepPoll<T>, PollErr> {
             Ok({
                 // this means there is an unrecoverable mismatch between update and inner.
                 if update.needs_input_state().unwrap() {
-                    SequenceFramePoll::NeedsState
+                    StepPoll::NeedsState
                 } else {
-                    SequenceFramePoll::Pending
+                    StepPoll::Pending
                 }
             })
         }
 
         match &mut self.inner {
-            SequenceFrameInner::SaturatingInit {
+            StepInner::SaturatingInit {
                 update,
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
@@ -360,7 +358,7 @@ impl<T: Transposer> SequenceFrame<T> {
                     arg: (),
                 }) => {
                     self.inner = {
-                        SequenceFrameInner::SaturatedInit {
+                        StepInner::SaturatedInit {
                             frame,
                         }
                     };
@@ -369,7 +367,7 @@ impl<T: Transposer> SequenceFrame<T> {
                 },
                 Poll::Pending => handle_pending(update),
             },
-            SequenceFrameInner::OriginalSaturatingInput {
+            StepInner::OriginalSaturatingInput {
                 update,
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
@@ -378,7 +376,7 @@ impl<T: Transposer> SequenceFrame<T> {
                     arg,
                 }) => {
                     self.inner = {
-                        SequenceFrameInner::SaturatedInput {
+                        StepInner::SaturatedInput {
                             frame,
                             inputs: arg,
                         }
@@ -389,7 +387,7 @@ impl<T: Transposer> SequenceFrame<T> {
                 Poll::Pending => handle_pending(update),
             },
 
-            SequenceFrameInner::RepeatSaturatingInput {
+            StepInner::RepeatSaturatingInput {
                 update,
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
@@ -398,17 +396,17 @@ impl<T: Transposer> SequenceFrame<T> {
                     arg,
                 }) => {
                     self.inner = {
-                        SequenceFrameInner::SaturatedInput {
+                        StepInner::SaturatedInput {
                             frame,
                             inputs: arg,
                         }
                     };
 
-                    Ok(SequenceFramePoll::ReadyNoOutputs)
+                    Ok(StepPoll::ReadyNoOutputs)
                 },
                 Poll::Pending => handle_pending(update),
             },
-            SequenceFrameInner::OriginalSaturatingScheduled {
+            StepInner::OriginalSaturatingScheduled {
                 update,
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
@@ -417,7 +415,7 @@ impl<T: Transposer> SequenceFrame<T> {
                     arg: (),
                 }) => {
                     self.inner = {
-                        SequenceFrameInner::SaturatedScheduled {
+                        StepInner::SaturatedScheduled {
                             frame,
                         }
                     };
@@ -426,7 +424,7 @@ impl<T: Transposer> SequenceFrame<T> {
                 },
                 Poll::Pending => handle_pending(update),
             },
-            SequenceFrameInner::RepeatSaturatingScheduled {
+            StepInner::RepeatSaturatingScheduled {
                 update,
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
@@ -435,12 +433,12 @@ impl<T: Transposer> SequenceFrame<T> {
                     arg: (),
                 }) => {
                     self.inner = {
-                        SequenceFrameInner::SaturatedScheduled {
+                        StepInner::SaturatedScheduled {
                             frame,
                         }
                     };
 
-                    Ok(SequenceFramePoll::ReadyNoOutputs)
+                    Ok(StepPoll::ReadyNoOutputs)
                 },
                 Poll::Pending => handle_pending(update),
             },
@@ -450,26 +448,26 @@ impl<T: Transposer> SequenceFrame<T> {
 
     pub fn set_input_state(&mut self, state: T::InputState) -> Result<(), T::InputState> {
         match &mut self.inner {
-            SequenceFrameInner::SaturatingInit {
+            StepInner::SaturatingInit {
                 update,
             } => update.as_mut().set_input_state(state),
-            SequenceFrameInner::OriginalSaturatingInput {
+            StepInner::OriginalSaturatingInput {
                 update,
             } => update.as_mut().set_input_state(state),
-            SequenceFrameInner::OriginalSaturatingScheduled {
+            StepInner::OriginalSaturatingScheduled {
                 update,
             } => update.as_mut().set_input_state(state),
-            SequenceFrameInner::RepeatSaturatingInput {
+            StepInner::RepeatSaturatingInput {
                 update,
             } => update.as_mut().set_input_state(state),
-            SequenceFrameInner::RepeatSaturatingScheduled {
+            StepInner::RepeatSaturatingScheduled {
                 update,
             } => update.as_mut().set_input_state(state),
             _ => Err(state),
         }
     }
 
-    pub fn time(&self) -> &EngineTime<T::Time> {
+    pub fn time(&self) -> &ResolvedTime<T::Time> {
         &self.time
     }
 }
@@ -486,19 +484,19 @@ impl OutputsEmitted {
     }
 }
 
-type OriginalContext<T> = UpdateContextCollector<T, Vec<<T as Transposer>::Output>>;
-type RepeatContext<T> = UpdateContextCollector<T, ()>;
+type OriginalContext<T> = StepUpdateContext<T, Vec<<T as Transposer>::Output>>;
+type RepeatContext<T> = StepUpdateContext<T, ()>;
 
-type InitUpdate<T> = FrameUpdate<T, OriginalContext<T>, InitArg<T>>;
-type InputUpdate<T, C> = FrameUpdate<T, C, InputArg<T>>;
-type ScheduledUpdate<T, C> = FrameUpdate<T, C, ScheduledArg<T>>;
+type InitUpdate<T> = WrappedUpdate<T, OriginalContext<T>, InitArg<T>>;
+type InputUpdate<T, C> = WrappedUpdate<T, C, InputArg<T>>;
+type ScheduledUpdate<T, C> = WrappedUpdate<T, C, ScheduledArg<T>>;
 
 type OriginalInputUpdate<T> = InputUpdate<T, OriginalContext<T>>;
 type OriginalScheduledUpdate<T> = ScheduledUpdate<T, OriginalContext<T>>;
 type RepeatInputUpdate<T> = InputUpdate<T, RepeatContext<T>>;
 type RepeatScheduledUpdate<T> = ScheduledUpdate<T, RepeatContext<T>>;
 
-enum SequenceFrameInner<T: Transposer> {
+enum StepInner<T: Transposer> {
     // notably this can never be rehydrated because you need the preceding frame
     // and there isn't one, because this is init.
     UnsaturatedInit,
@@ -526,19 +524,19 @@ enum SequenceFrameInner<T: Transposer> {
         update: Pin<Box<RepeatScheduledUpdate<T>>>,
     },
     SaturatedInit {
-        frame: Box<Frame<T>>,
+        frame: Box<WrappedTransposer<T>>,
     },
     SaturatedInput {
         inputs: <InputArg<T> as Arg<T>>::Stored,
-        frame:  Box<Frame<T>>,
+        frame:  Box<WrappedTransposer<T>>,
     },
     SaturatedScheduled {
-        frame: Box<Frame<T>>,
+        frame: Box<WrappedTransposer<T>>,
     },
     Unreachable,
 }
 
-impl<T: Transposer> SequenceFrameInner<T> {
+impl<T: Transposer> StepInner<T> {
     fn recover() -> Self {
         Self::Unreachable
     }
@@ -546,25 +544,25 @@ impl<T: Transposer> SequenceFrameInner<T> {
     pub fn is_unsaturated(&self) -> bool {
         matches!(
             self,
-            SequenceFrameInner::OriginalUnsaturatedInput { .. }
-                | SequenceFrameInner::OriginalUnsaturatedScheduled
-                | SequenceFrameInner::RepeatUnsaturatedInput { .. }
-                | SequenceFrameInner::RepeatUnsaturatedScheduled
+            StepInner::OriginalUnsaturatedInput { .. }
+                | StepInner::OriginalUnsaturatedScheduled
+                | StepInner::RepeatUnsaturatedInput { .. }
+                | StepInner::RepeatUnsaturatedScheduled
         )
     }
 
     pub fn is_saturated(&self) -> bool {
         matches!(
             self,
-            SequenceFrameInner::SaturatedInit { .. }
-                | SequenceFrameInner::SaturatedInput { .. }
-                | SequenceFrameInner::SaturatedScheduled { .. }
+            StepInner::SaturatedInit { .. }
+                | StepInner::SaturatedInput { .. }
+                | StepInner::SaturatedScheduled { .. }
         )
     }
 }
 
 #[derive(Debug)]
-pub enum SequenceFramePoll<T: Transposer> {
+pub enum StepPoll<T: Transposer> {
     Pending,
     NeedsState,
     ReadyNoOutputs,
