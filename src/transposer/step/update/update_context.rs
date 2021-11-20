@@ -1,4 +1,4 @@
-use super::{LazyState, ResolvedTime, TransposerMetaData};
+use super::{LazyState, StepTime, TransposerMetaData};
 use crate::transposer::context::*;
 use crate::transposer::Transposer;
 
@@ -11,7 +11,7 @@ where
 
     // SAFETY: ensure this UpdateContext is dropped before frame_internal and input_state.
     unsafe fn new(
-        time: ResolvedTime<T::Time>,
+        time: StepTime<T::Time>,
         metadata: *mut TransposerMetaData<T>,
         input_state: *mut LazyState<T::InputState>,
     ) -> Self;

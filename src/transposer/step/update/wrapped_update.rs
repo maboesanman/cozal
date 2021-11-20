@@ -5,13 +5,11 @@ use core::task::{Context, Poll};
 use futures_core::FusedFuture;
 use pin_project::pin_project;
 
-use super::{Arg, RawUpdate, ResolvedTime, UpdateContext, UpdateResult, WrappedTransposer};
+use super::{Arg, RawUpdate, StepTime, UpdateContext, UpdateResult, WrappedTransposer};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
 /// future to initialize a TransposerFrame
-///
-/// this type owns a frame, and has many self references.
 #[pin_project]
 pub struct WrappedUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     #[pin]
@@ -29,7 +27,7 @@ enum WrappedUpdateInner<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
 struct UpdateData<T: Transposer, A: Arg<T>> {
     frame: Box<WrappedTransposer<T>>,
     args:  A::Passed,
-    time:  ResolvedTime<T::Time>,
+    time:  StepTime<T::Time>,
 }
 
 impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> WrappedUpdate<T, C, A>
@@ -39,7 +37,7 @@ where
     pub fn new(
         mut frame: Box<WrappedTransposer<T>>,
         arg: A::Stored,
-        time: ResolvedTime<T::Time>,
+        time: StepTime<T::Time>,
     ) -> Self {
         Self {
             inner: WrappedUpdateInner::Waiting(UpdateData {
@@ -134,7 +132,7 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for WrappedUpdate<T, 
                                 let (frame, outputs, arg) = unsafe { pollable.reclaim_ready() };
 
                                 Poll::Ready(UpdateResult {
-                                    frame,
+                                    wrapped_transposer: frame,
                                     outputs,
                                     arg,
                                 })

@@ -14,4 +14,4 @@ pub use update_result::UpdateResult;
 pub use wrapped_transposer::{TransposerMetaData, WrappedTransposer};
 pub use wrapped_update::WrappedUpdate;
 
-pub(self) use super::time::ResolvedTime;
+pub(self) use super::time::StepTime;

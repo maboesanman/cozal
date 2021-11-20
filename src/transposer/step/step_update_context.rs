@@ -1,7 +1,7 @@
 use core::future::Future;
 use core::pin::Pin;
 
-use super::time::ResolvedTime;
+use super::time::StepTime;
 use super::update::{LazyState, TransposerMetaData, UpdateContext};
 use crate::transposer::context::*;
 use crate::transposer::{ExpireHandle, Transposer};
@@ -37,7 +37,7 @@ where
     frame_internal: *mut TransposerMetaData<T>,
     input_state:    *mut LazyState<T::InputState>,
 
-    time:                   ResolvedTime<T::Time>,
+    time:                   StepTime<T::Time>,
     current_emission_index: usize,
 
     // values to output
@@ -58,7 +58,7 @@ impl<T: Transposer, C: OutputCollector<T::Output>> UpdateContext<T> for StepUpda
 
     // SAFETY: need to gurantee the pointers outlive this object.
     unsafe fn new(
-        time: ResolvedTime<T::Time>,
+        time: StepTime<T::Time>,
         frame_internal: *mut TransposerMetaData<T>,
         input_state: *mut LazyState<T::InputState>,
     ) -> Self {

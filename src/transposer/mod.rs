@@ -4,7 +4,7 @@ use context::{HandleInputContext, HandleScheduleContext, InitContext, Interpolat
 pub mod context;
 mod evaluate_to;
 mod expire_handle;
-mod step;
+pub mod step;
 mod test;
 
 pub use expire_handle::ExpireHandle;

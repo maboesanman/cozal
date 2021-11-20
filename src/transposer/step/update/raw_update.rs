@@ -4,7 +4,7 @@ use core::mem::{ManuallyDrop, MaybeUninit};
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use super::{Arg, LazyState, ResolvedTime, UpdateContext, WrappedTransposer};
+use super::{Arg, LazyState, StepTime, UpdateContext, WrappedTransposer};
 use crate::transposer::Transposer;
 use crate::util::drop_mut::{drop_mut_leave_uninit, take_mut_leave_uninit};
 
@@ -17,7 +17,7 @@ pub struct RawUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
 
     frame: Box<WrappedTransposer<T>>,
     state: LazyState<T::InputState>,
-    time:  ResolvedTime<T::Time>,
+    time:  StepTime<T::Time>,
     args:  MaybeUninit<A::Stored>,
 
     // lots of self references. very dangerous.
@@ -26,7 +26,7 @@ pub struct RawUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
 
 impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<T, C, A> {
     // SAFETY: make sure to call init before doing anything with the new value, including dropping it.
-    pub unsafe fn new(frame: Box<WrappedTransposer<T>>, time: ResolvedTime<T::Time>) -> Self {
+    pub unsafe fn new(frame: Box<WrappedTransposer<T>>, time: StepTime<T::Time>) -> Self {
         Self {
             future: MaybeUninit::uninit(),
             context: MaybeUninit::uninit(),

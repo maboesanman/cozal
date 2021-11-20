@@ -7,17 +7,17 @@ use futures_core::Future;
 
 use super::args::{InitArg, InputArg, ScheduledArg};
 use super::step_update_context::StepUpdateContext;
-use super::time::ResolvedTime;
+use super::time::StepTime;
 use super::update::{Arg, UpdateContext, UpdateResult, WrappedTransposer, WrappedUpdate};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
 pub struct Step<T: Transposer> {
-    time:            ResolvedTime<T::Time>,
+    time:            StepTime<T::Time>,
     inner:           StepInner<T>,
     outputs_emitted: OutputsEmitted,
 
-    // these are used purely for enforcing that saturate calls use the previous frame.
+    // these are used purely for enforcing that saturate calls use the previous wrapped_transposer.
     #[cfg(debug_assertions)]
     uuid_self: uuid::Uuid,
     #[cfg(debug_assertions)]
@@ -27,6 +27,8 @@ pub struct Step<T: Transposer> {
 #[derive(Debug)]
 pub enum NextUnsaturatedErr {
     NotSaturated,
+    #[cfg(debug_assertions)]
+    InputPastOrPresent,
 }
 #[derive(Debug)]
 pub enum SaturateErr {
@@ -48,10 +50,10 @@ pub enum PollErr {
 
 impl<T: Transposer> Step<T> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
-        let time = ResolvedTime::new_init();
-        let frame = WrappedTransposer::new(transposer, rng_seed);
-        let frame = Box::new(frame);
-        let update = WrappedUpdate::new(frame, (), time.clone());
+        let time = StepTime::new_init();
+        let wrapped_transposer = WrappedTransposer::new(transposer, rng_seed);
+        let wrapped_transposer = Box::new(wrapped_transposer);
+        let update = WrappedUpdate::new(wrapped_transposer, (), time.clone());
         let update = Box::pin(update);
         let inner = StepInner::SaturatingInit {
             update,
@@ -72,35 +74,39 @@ impl<T: Transposer> Step<T> {
         &self,
         next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
-        let frame = match &self.inner {
+        #[cfg(debug_assertions)]
+        if let Some((t, _)) = next_inputs {
+            if *t <= self.time().raw_time() {
+                return Err(NextUnsaturatedErr::InputPastOrPresent)
+            }
+        }
+
+        let wrapped_transposer = match &self.inner {
             StepInner::SaturatedInit {
-                frame, ..
-            } => frame.as_ref(),
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer.as_ref(),
             StepInner::SaturatedInput {
-                frame, ..
-            } => frame.as_ref(),
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer.as_ref(),
             StepInner::SaturatedScheduled {
-                frame, ..
-            } => frame.as_ref(),
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer.as_ref(),
             _ => return Err(NextUnsaturatedErr::NotSaturated),
         };
-        let next_scheduled_time = frame.get_next_scheduled_time();
+        let next_scheduled_time = wrapped_transposer.get_next_scheduled_time();
 
         let next_time_index = self.time.index() + 1;
 
         let (time, is_input) = match (&next_inputs, next_scheduled_time) {
             (None, None) => return Ok(None),
-            (None, Some(t)) => (
-                ResolvedTime::new_scheduled(next_time_index, t.clone()),
-                false,
-            ),
-            (Some((t, _)), None) => (ResolvedTime::new_input(next_time_index, *t), true),
+            (None, Some(t)) => (StepTime::new_scheduled(next_time_index, t.clone()), false),
+            (Some((t, _)), None) => (StepTime::new_input(next_time_index, *t), true),
             (Some((t_i, _)), Some(t_s)) => match t_i.cmp(&t_s.time) {
-                Ordering::Greater => (
-                    ResolvedTime::new_scheduled(next_time_index, t_s.clone()),
-                    false,
-                ),
-                _ => (ResolvedTime::new_input(next_time_index, *t_i), true),
+                Ordering::Greater => (StepTime::new_scheduled(next_time_index, t_s.clone()), false),
+                _ => (StepTime::new_input(next_time_index, *t_i), true),
             },
         };
 
@@ -141,30 +147,30 @@ impl<T: Transposer> Step<T> {
             return Err(SaturateErr::SelfNotUnsaturated)
         }
 
-        let frame = take_mut::take_and_return_or_recover(
+        let wrapped_transposer = take_mut::take_and_return_or_recover(
             &mut previous.inner,
             || StepInner::Unreachable,
             |prev| match prev {
                 StepInner::SaturatedInit {
-                    frame,
-                } => (StepInner::UnsaturatedInit, frame),
+                    wrapped_transposer,
+                } => (StepInner::UnsaturatedInit, wrapped_transposer),
                 StepInner::SaturatedInput {
                     inputs,
-                    frame,
+                    wrapped_transposer,
                 } => (
                     StepInner::RepeatUnsaturatedInput {
                         inputs,
                     },
-                    frame,
+                    wrapped_transposer,
                 ),
                 StepInner::SaturatedScheduled {
-                    frame,
-                } => (StepInner::RepeatUnsaturatedScheduled, frame),
+                    wrapped_transposer,
+                } => (StepInner::RepeatUnsaturatedScheduled, wrapped_transposer),
                 _ => unreachable!(),
             },
         );
 
-        self.saturate_from_frame(frame);
+        self.saturate_from_wrapped_transposer(wrapped_transposer);
 
         Ok(())
     }
@@ -183,26 +189,28 @@ impl<T: Transposer> Step<T> {
             return Err(SaturateErr::SelfNotUnsaturated)
         }
 
-        let frame = match &previous.inner {
+        let wrapped_transposer = match &previous.inner {
             StepInner::SaturatedInit {
-                frame, ..
-            } => Ok(frame.clone()),
+                wrapped_transposer,
+                ..
+            } => Ok(wrapped_transposer.clone()),
             StepInner::SaturatedInput {
-                frame, ..
-            } => Ok(frame.clone()),
+                wrapped_transposer,
+                ..
+            } => Ok(wrapped_transposer.clone()),
             StepInner::SaturatedScheduled {
-                frame,
-            } => Ok(frame.clone()),
+                wrapped_transposer,
+            } => Ok(wrapped_transposer.clone()),
             _ => Err(SaturateErr::PreviousNotSaturated),
         }?;
 
-        self.saturate_from_frame(frame);
+        self.saturate_from_wrapped_transposer(wrapped_transposer);
 
         Ok(())
     }
 
     // panics if self is unsaturated.
-    fn saturate_from_frame(&mut self, frame: Box<WrappedTransposer<T>>) {
+    fn saturate_from_wrapped_transposer(&mut self, wrapped_transposer: Box<WrappedTransposer<T>>) {
         take_mut::take_or_recover(
             &mut self.inner,
             || StepInner::Unreachable,
@@ -210,7 +218,7 @@ impl<T: Transposer> Step<T> {
                 StepInner::OriginalUnsaturatedInput {
                     inputs,
                 } => {
-                    let update = WrappedUpdate::new(frame, inputs, self.time.clone());
+                    let update = WrappedUpdate::new(wrapped_transposer, inputs, self.time.clone());
                     StepInner::OriginalSaturatingInput {
                         update: Box::pin(update),
                     }
@@ -218,19 +226,19 @@ impl<T: Transposer> Step<T> {
                 StepInner::RepeatUnsaturatedInput {
                     inputs,
                 } => {
-                    let update = WrappedUpdate::new(frame, inputs, self.time.clone());
+                    let update = WrappedUpdate::new(wrapped_transposer, inputs, self.time.clone());
                     StepInner::RepeatSaturatingInput {
                         update: Box::pin(update),
                     }
                 },
                 StepInner::OriginalUnsaturatedScheduled => {
-                    let update = WrappedUpdate::new(frame, (), self.time.clone());
+                    let update = WrappedUpdate::new(wrapped_transposer, (), self.time.clone());
                     StepInner::OriginalSaturatingScheduled {
                         update: Box::pin(update),
                     }
                 },
                 StepInner::RepeatUnsaturatedScheduled => {
-                    let update = WrappedUpdate::new(frame, (), self.time.clone());
+                    let update = WrappedUpdate::new(wrapped_transposer, (), self.time.clone());
                     StepInner::RepeatSaturatingScheduled {
                         update: Box::pin(update),
                     }
@@ -268,22 +276,25 @@ impl<T: Transposer> Step<T> {
                     update: _,
                 } => (StepInner::RepeatUnsaturatedScheduled, Ok(None)),
                 StepInner::SaturatedInit {
-                    frame,
-                } => (StepInner::UnsaturatedInit, Ok(Some(frame.transposer))),
+                    wrapped_transposer,
+                } => (
+                    StepInner::UnsaturatedInit,
+                    Ok(Some(wrapped_transposer.transposer)),
+                ),
                 StepInner::SaturatedInput {
                     inputs,
-                    frame,
+                    wrapped_transposer,
                 } => (
                     StepInner::RepeatUnsaturatedInput {
                         inputs,
                     },
-                    Ok(Some(frame.transposer)),
+                    Ok(Some(wrapped_transposer.transposer)),
                 ),
                 StepInner::SaturatedScheduled {
-                    frame,
+                    wrapped_transposer,
                 } => (
                     StepInner::RepeatUnsaturatedScheduled,
-                    Ok(Some(frame.transposer)),
+                    Ok(Some(wrapped_transposer.transposer)),
                 ),
                 other => (other, Err(DesaturateErr::AlreadyUnsaturated)),
             }
@@ -353,13 +364,13 @@ impl<T: Transposer> Step<T> {
                 update,
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
-                    frame,
+                    wrapped_transposer,
                     outputs,
                     arg: (),
                 }) => {
                     self.inner = {
                         StepInner::SaturatedInit {
-                            frame,
+                            wrapped_transposer,
                         }
                     };
 
@@ -371,13 +382,13 @@ impl<T: Transposer> Step<T> {
                 update,
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
-                    frame,
+                    wrapped_transposer,
                     outputs,
                     arg,
                 }) => {
                     self.inner = {
                         StepInner::SaturatedInput {
-                            frame,
+                            wrapped_transposer,
                             inputs: arg,
                         }
                     };
@@ -391,13 +402,13 @@ impl<T: Transposer> Step<T> {
                 update,
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
-                    frame,
+                    wrapped_transposer,
                     outputs: _,
                     arg,
                 }) => {
                     self.inner = {
                         StepInner::SaturatedInput {
-                            frame,
+                            wrapped_transposer,
                             inputs: arg,
                         }
                     };
@@ -410,13 +421,13 @@ impl<T: Transposer> Step<T> {
                 update,
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
-                    frame,
+                    wrapped_transposer,
                     outputs,
                     arg: (),
                 }) => {
                     self.inner = {
                         StepInner::SaturatedScheduled {
-                            frame,
+                            wrapped_transposer,
                         }
                     };
 
@@ -428,13 +439,13 @@ impl<T: Transposer> Step<T> {
                 update,
             } => match update.as_mut().poll(&mut cx) {
                 Poll::Ready(UpdateResult {
-                    frame,
+                    wrapped_transposer,
                     outputs: _,
                     arg: (),
                 }) => {
                     self.inner = {
                         StepInner::SaturatedScheduled {
-                            frame,
+                            wrapped_transposer,
                         }
                     };
 
@@ -467,8 +478,26 @@ impl<T: Transposer> Step<T> {
         }
     }
 
-    pub fn time(&self) -> &ResolvedTime<T::Time> {
+    pub fn time(&self) -> &StepTime<T::Time> {
         &self.time
+    }
+
+    // this has the additional gurantee that the pointer returned lives until this is desaturated or dropped.
+    // if you move self the returned pointer is still valid.
+    pub fn finished_wrapped_transposer(&self) -> Option<&WrappedTransposer<T>> {
+        match &self.inner {
+            StepInner::SaturatedInit {
+                wrapped_transposer,
+            } => Some(wrapped_transposer),
+            StepInner::SaturatedInput {
+                wrapped_transposer,
+                ..
+            } => Some(wrapped_transposer),
+            StepInner::SaturatedScheduled {
+                wrapped_transposer,
+            } => Some(wrapped_transposer),
+            _ => None,
+        }
     }
 }
 
@@ -497,7 +526,7 @@ type RepeatInputUpdate<T> = InputUpdate<T, RepeatContext<T>>;
 type RepeatScheduledUpdate<T> = ScheduledUpdate<T, RepeatContext<T>>;
 
 enum StepInner<T: Transposer> {
-    // notably this can never be rehydrated because you need the preceding frame
+    // notably this can never be rehydrated because you need the preceding wrapped_transposer
     // and there isn't one, because this is init.
     UnsaturatedInit,
     OriginalUnsaturatedInput {
@@ -524,14 +553,14 @@ enum StepInner<T: Transposer> {
         update: Pin<Box<RepeatScheduledUpdate<T>>>,
     },
     SaturatedInit {
-        frame: Box<WrappedTransposer<T>>,
+        wrapped_transposer: Box<WrappedTransposer<T>>,
     },
     SaturatedInput {
-        inputs: <InputArg<T> as Arg<T>>::Stored,
-        frame:  Box<WrappedTransposer<T>>,
+        inputs:             <InputArg<T> as Arg<T>>::Stored,
+        wrapped_transposer: Box<WrappedTransposer<T>>,
     },
     SaturatedScheduled {
-        frame: Box<WrappedTransposer<T>>,
+        wrapped_transposer: Box<WrappedTransposer<T>>,
     },
     Unreachable,
 }
