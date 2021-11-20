@@ -28,18 +28,18 @@ impl<T: Transposer> StepGroup<T> {
 
     pub fn poll(
         &mut self,
-        channel: usize,
-        waker: Waker,
-        next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
+        _channel: usize,
+        _waker: Waker,
+        _next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
     ) -> Result<StepGroupPoll<T>, ()> {
         unimplemented!()
     }
 
     pub fn interpolate_poll(
         &mut self,
-        time: T::Time,
-        channel: usize,
-        waker: Waker,
+        _time: T::Time,
+        _channel: usize,
+        _waker: Waker,
     ) -> InterpolatePoll<T> {
         unimplemented!()
     }
