@@ -5,11 +5,11 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 
 use super::{Arg, StepTime, UpdateContext, WrappedTransposer};
-use crate::transposer::lazy_state::LazyState;
+use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::Transposer;
 use crate::util::drop_mut::{drop_mut_leave_uninit, take_mut_leave_uninit};
 
-pub struct RawUpdate<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
+pub struct RawUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     // references context, frame.transposer, and args
     future: MaybeUninit<Pin<Box<dyn Future<Output = ()>>>>,
 
@@ -17,7 +17,7 @@ pub struct RawUpdate<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     context: MaybeUninit<C>,
 
     frame: Box<WrappedTransposer<T>>,
-    state: &'s LazyState<T::InputState>,
+    state: *const LazyState<T::InputState>,
     time:  StepTime<T::Time>,
     args:  MaybeUninit<A::Stored>,
 
@@ -25,13 +25,14 @@ pub struct RawUpdate<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     _pin: PhantomPinned,
 }
 
-impl<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<'s, T, C, A> {
+impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<T, C, A> {
     // SAFETY: make sure to call init before doing anything with the new value, including dropping it.
     pub unsafe fn new(
-        frame: Box<WrappedTransposer<T>>,
+        mut frame: Box<WrappedTransposer<T>>,
         time: StepTime<T::Time>,
-        state: &'s LazyState<T::InputState>,
+        state: *const LazyState<T::InputState>,
     ) -> Self {
+        frame.metadata.last_updated = time.raw_time();
         Self {
             future: MaybeUninit::uninit(),
             context: MaybeUninit::uninit(),
@@ -108,20 +109,19 @@ impl<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<'s, T, C, A> {
     }
 
     pub fn needs_input_state(&self) -> bool {
-        self.state.requested()
+        self.get_state().requested()
     }
 
-    pub fn set_input_state(
-        self: Pin<&mut Self>,
-        state: T::InputState,
-    ) -> Result<(), T::InputState> {
-        // SAFETY: this doesn't mess with any self referential fields.
-        let this = unsafe { self.get_unchecked_mut() };
-        this.state.set(state)
+    pub fn set_input_state(&self, state: T::InputState) -> Result<(), T::InputState> {
+        self.get_state().set(state)
+    }
+
+    fn get_state(&self) -> &LazyState<T::InputState> {
+        unsafe { self.state.as_ref().unwrap() }
     }
 }
 
-impl<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> Drop for RawUpdate<'s, T, C, A> {
+impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Drop for RawUpdate<T, C, A> {
     fn drop(&mut self) {
         // SAFETY: everything is init before this.
         unsafe {
@@ -132,7 +132,7 @@ impl<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> Drop for RawUpdate<'s, T
     }
 }
 
-impl<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for RawUpdate<'s, T, C, A> {
+impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for RawUpdate<T, C, A> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

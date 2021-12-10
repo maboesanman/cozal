@@ -9,3 +9,4 @@ mod test;
 
 pub use step::*;
 pub use time::StepTime;
+pub use update::WrappedTransposer;

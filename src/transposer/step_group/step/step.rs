@@ -2,7 +2,6 @@ use core::cmp::Ordering;
 use core::mem::replace;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
-use std::sync::Arc;
 
 use futures_core::Future;
 
@@ -10,15 +9,15 @@ use super::args::{InitArg, InputArg, ScheduledArg};
 use super::step_update_context::StepUpdateContext;
 use super::time::StepTime;
 use super::update::{Arg, UpdateContext, UpdateResult, WrappedTransposer, WrappedUpdate};
-use crate::transposer::lazy_state::{self, LazyState};
+use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
-pub struct Step<'s, T: Transposer> {
+pub struct Step<T: Transposer> {
     time:            StepTime<T::Time>,
-    inner:           StepInner<'s, T>,
+    inner:           StepInner<T>,
     outputs_emitted: OutputsEmitted,
-    input_state:     &'s LazyState<T::InputState>,
+    input_state:     *const LazyState<T::InputState>,
 
     // these are used purely for enforcing that saturate calls use the previous wrapped_transposer.
     #[cfg(debug_assertions)]
@@ -52,11 +51,11 @@ pub enum PollErr {
     Saturated,
 }
 
-impl<'s, T: Transposer> Step<'s, T> {
+impl<T: Transposer> Step<T> {
     pub fn new_init(
         transposer: T,
         rng_seed: [u8; 32],
-        input_state: &'s LazyState<T::InputState>,
+        input_state: *const LazyState<T::InputState>,
     ) -> Self {
         let time = StepTime::new_init();
         let wrapped_transposer = WrappedTransposer::new(transposer, rng_seed);
@@ -82,7 +81,7 @@ impl<'s, T: Transposer> Step<'s, T> {
     pub fn next_unsaturated(
         &self,
         next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
-        input_state: &'s LazyState<T::InputState>,
+        input_state: *const LazyState<T::InputState>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         #[cfg(debug_assertions)]
         if let Some((t, _)) = next_inputs {
@@ -610,16 +609,16 @@ impl OutputsEmitted {
 type OriginalContext<T> = StepUpdateContext<T, Vec<<T as Transposer>::Output>>;
 type RepeatContext<T> = StepUpdateContext<T, ()>;
 
-type InitUpdate<'s, T> = WrappedUpdate<'s, T, OriginalContext<T>, InitArg<T>>;
-type InputUpdate<'s, T, C> = WrappedUpdate<'s, T, C, InputArg<T>>;
-type ScheduledUpdate<'s, T, C> = WrappedUpdate<'s, T, C, ScheduledArg<T>>;
+type InitUpdate<T> = WrappedUpdate<T, OriginalContext<T>, InitArg<T>>;
+type InputUpdate<T, C> = WrappedUpdate<T, C, InputArg<T>>;
+type ScheduledUpdate<T, C> = WrappedUpdate<T, C, ScheduledArg<T>>;
 
-type OriginalInputUpdate<'s, T> = InputUpdate<'s, T, OriginalContext<T>>;
-type OriginalScheduledUpdate<'s, T> = ScheduledUpdate<'s, T, OriginalContext<T>>;
-type RepeatInputUpdate<'s, T> = InputUpdate<'s, T, RepeatContext<T>>;
-type RepeatScheduledUpdate<'s, T> = ScheduledUpdate<'s, T, RepeatContext<T>>;
+type OriginalInputUpdate<T> = InputUpdate<T, OriginalContext<T>>;
+type OriginalScheduledUpdate<T> = ScheduledUpdate<T, OriginalContext<T>>;
+type RepeatInputUpdate<T> = InputUpdate<T, RepeatContext<T>>;
+type RepeatScheduledUpdate<T> = ScheduledUpdate<T, RepeatContext<T>>;
 
-enum StepInner<'s, T: Transposer> {
+enum StepInner<T: Transposer> {
     // notably this can never be rehydrated because you need the preceding wrapped_transposer
     // and there isn't one, because this is init.
     UnsaturatedInit,
@@ -632,19 +631,19 @@ enum StepInner<'s, T: Transposer> {
     },
     RepeatUnsaturatedScheduled,
     SaturatingInit {
-        update: Pin<Box<InitUpdate<'s, T>>>,
+        update: Pin<Box<InitUpdate<T>>>,
     },
     OriginalSaturatingInput {
-        update: Pin<Box<OriginalInputUpdate<'s, T>>>,
+        update: Pin<Box<OriginalInputUpdate<T>>>,
     },
     OriginalSaturatingScheduled {
-        update: Pin<Box<OriginalScheduledUpdate<'s, T>>>,
+        update: Pin<Box<OriginalScheduledUpdate<T>>>,
     },
     RepeatSaturatingInput {
-        update: Pin<Box<RepeatInputUpdate<'s, T>>>,
+        update: Pin<Box<RepeatInputUpdate<T>>>,
     },
     RepeatSaturatingScheduled {
-        update: Pin<Box<RepeatScheduledUpdate<'s, T>>>,
+        update: Pin<Box<RepeatScheduledUpdate<T>>>,
     },
     SaturatedInit {
         wrapped_transposer: Box<WrappedTransposer<T>>,
@@ -659,7 +658,7 @@ enum StepInner<'s, T: Transposer> {
     Unreachable,
 }
 
-impl<'s, T: Transposer> StepInner<'s, T> {
+impl<T: Transposer> StepInner<T> {
     fn recover() -> Self {
         Self::Unreachable
     }

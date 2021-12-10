@@ -5,9 +5,8 @@ use std::task::{Wake, Waker};
 
 use futures_core::Future;
 
-use crate::transposer::interpolation::Interpolation;
-use crate::transposer::lazy_state::LazyState;
-use crate::transposer::step::{PollErr as StepPollErr, SaturateErr, Step, StepPoll, StepTime};
+use super::lazy_state::LazyState;
+use super::step::{Step, StepTime};
 use crate::transposer::Transposer;
 use crate::util::stack_waker::StackWaker;
 use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
@@ -66,8 +65,8 @@ impl<T: Transposer> StepGroup<T> {
                 .unwrap()
                 .next_unsaturated(next_inputs)
                 .map_err(|e| match e {
-                    crate::transposer::step::NextUnsaturatedErr::NotSaturated => unreachable!(),
-                    crate::transposer::step::NextUnsaturatedErr::InputPastOrPresent => {
+                    super::step::NextUnsaturatedErr::NotSaturated => unreachable!(),
+                    super::step::NextUnsaturatedErr::InputPastOrPresent => {
                         NextUnsaturatedErr::InputPastOrPresent
                     },
                 })?;

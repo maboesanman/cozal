@@ -4,7 +4,7 @@ use core::pin::Pin;
 use super::time::StepTime;
 use super::update::{TransposerMetaData, UpdateContext};
 use crate::transposer::context::*;
-use crate::transposer::lazy_state::LazyState;
+use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::{ExpireHandle, Transposer};
 
 pub trait OutputCollector<O> {

@@ -13,6 +13,8 @@ pub struct TransposerMetaData<T: Transposer>
 where
     T::Scheduled: Clone,
 {
+    pub last_updated: T::Time,
+
     pub schedule: OrdMap<ScheduledTime<T::Time>, T::Scheduled>,
 
     pub expire_handles_forward:  HashMap<ExpireHandle, ScheduledTime<T::Time>>,
@@ -29,6 +31,7 @@ where
 {
     pub fn new(rng_seed: [u8; 32]) -> Self {
         Self {
+            last_updated:            T::Time::default(),
             schedule:                OrdMap::new(),
             expire_handles_forward:  HashMap::new(),
             expire_handles_backward: OrdMap::new(),

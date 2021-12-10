@@ -1,6 +1,6 @@
 use super::{StepTime, TransposerMetaData};
 use crate::transposer::context::*;
-use crate::transposer::lazy_state::LazyState;
+use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::Transposer;
 
 pub trait UpdateContext<T: Transposer>:

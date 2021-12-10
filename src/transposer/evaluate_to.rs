@@ -28,7 +28,6 @@ where
             input_buffer.insert_back(time, input);
         }
     }
-
     EvaluateTo {
         inner: EvaluateToInner::Step {
             frame: Step::new_init(transposer, seed),
@@ -54,8 +53,15 @@ where
     S: Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
+    Pending {
+        transposer: T,
+        until:      T::Time,
+        events:     Vec<(T::Time, T::Input)>,
+        state:      S,
+        seed:       [u8; 32],
+    },
     Step {
-        frame:     Step<T>,
+        frame:     Step<'static, T>,
         events:    InputBuffer<T::Time, T::Input>,
         state:     S,
         state_fut: Option<Fs>,

@@ -3,8 +3,8 @@ use matches::assert_matches;
 use rand::Rng;
 
 use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
-use crate::transposer::lazy_state::LazyState;
-use crate::transposer::step::step::{Step, StepPoll};
+use crate::transposer::step_group::lazy_state::LazyState;
+use crate::transposer::step_group::step::{Step, StepPoll};
 use crate::transposer::Transposer;
 use crate::util::dummy_waker::DummyWaker;
 
