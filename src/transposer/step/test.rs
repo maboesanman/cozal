@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use matches::assert_matches;
 use rand::Rng;
 
-use super::{Step, StepPoll};
 use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
+use crate::transposer::lazy_state::LazyState;
+use crate::transposer::step::step::{Step, StepPoll};
 use crate::transposer::Transposer;
 use crate::util::dummy_waker::DummyWaker;
 
@@ -61,17 +62,19 @@ fn saturate_take() {
     let rng_seed = rand::thread_rng().gen();
     let mut next_input = None;
 
-    let mut init = Step::new_init(transposer, rng_seed);
+    let s = LazyState::new();
+    let mut init = Step::new_init(transposer, rng_seed, &s);
 
     let (waker, _) = DummyWaker::new();
 
     assert_matches!(init.poll(waker), Ok(StepPoll::ReadyNoOutputs));
 
+    let s = LazyState::new();
     let mut scheduled = init;
 
     for i in 1..100 {
         let mut scheduled_next = scheduled
-            .next_unsaturated(&mut next_input)
+            .next_unsaturated(&mut next_input, &s)
             .unwrap()
             .unwrap();
         scheduled_next.saturate_take(&mut scheduled).unwrap();
@@ -96,17 +99,19 @@ fn saturate_clone() {
     let rng_seed = rand::thread_rng().gen();
     let mut next_input = None;
 
-    let mut init = Step::new_init(transposer, rng_seed);
+    let s = LazyState::new();
+    let mut init = Step::new_init(transposer, rng_seed, &s);
 
     let (waker, _) = DummyWaker::new();
 
     assert_matches!(init.poll(waker), Ok(StepPoll::ReadyNoOutputs));
 
+    let s = LazyState::new();
     let mut scheduled = init;
 
     for i in 1..100 {
         let mut scheduled_next = scheduled
-            .next_unsaturated(&mut next_input)
+            .next_unsaturated(&mut next_input, &s)
             .unwrap()
             .unwrap();
         scheduled_next.saturate_clone(&mut scheduled).unwrap();
@@ -120,6 +125,7 @@ fn saturate_clone() {
         }
 
         scheduled = scheduled_next;
+        // s = LazyState::new();
     }
 }
 
@@ -131,15 +137,18 @@ fn desaturate() {
     let rng_seed = rand::thread_rng().gen();
     let mut next_input = None;
 
-    let mut init = Step::new_init(transposer, rng_seed);
+    let s = LazyState::new();
+    let mut init = Step::new_init(transposer, rng_seed, &s);
     init.poll(DummyWaker::new().0).unwrap();
 
-    let mut scheduled1 = init.next_unsaturated(&mut next_input).unwrap().unwrap();
+    let s = LazyState::new();
+    let mut scheduled1 = init.next_unsaturated(&mut next_input, &s).unwrap().unwrap();
     scheduled1.saturate_clone(&mut init).unwrap();
     scheduled1.poll(DummyWaker::new().0).unwrap();
 
+    let s = LazyState::new();
     let mut scheduled2 = scheduled1
-        .next_unsaturated(&mut next_input)
+        .next_unsaturated(&mut next_input, &s)
         .unwrap()
         .unwrap();
     scheduled2.saturate_clone(&mut scheduled1).unwrap();

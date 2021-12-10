@@ -6,31 +6,33 @@ use futures_core::FusedFuture;
 use pin_project::pin_project;
 
 use super::{Arg, RawUpdate, StepTime, UpdateContext, UpdateResult, WrappedTransposer};
+use crate::transposer::lazy_state::LazyState;
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
 /// future to initialize a TransposerFrame
 #[pin_project]
-pub struct WrappedUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
+pub struct WrappedUpdate<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     #[pin]
-    inner: WrappedUpdateInner<T, C, A>,
+    inner: WrappedUpdateInner<'s, T, C, A>,
 }
 
 #[pin_project(project=FrameUpdateInnerProject)]
-enum WrappedUpdateInner<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
+enum WrappedUpdateInner<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     // Unpollable variants hold the references until we can create the pollable future
-    Waiting(UpdateData<T, A>),
-    Active(#[pin] RawUpdate<T, C, A>),
+    Waiting(UpdateData<'s, T, A>),
+    Active(#[pin] RawUpdate<'s, T, C, A>),
     Terminated,
 }
 
-struct UpdateData<T: Transposer, A: Arg<T>> {
+struct UpdateData<'s, T: Transposer, A: Arg<T>> {
     frame: Box<WrappedTransposer<T>>,
     args:  A::Passed,
     time:  StepTime<T::Time>,
+    state: &'s LazyState<T::InputState>,
 }
 
-impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> WrappedUpdate<T, C, A>
+impl<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> WrappedUpdate<'s, T, C, A>
 where
     T::Scheduled: Clone,
 {
@@ -38,11 +40,13 @@ where
         mut frame: Box<WrappedTransposer<T>>,
         arg: A::Stored,
         time: StepTime<T::Time>,
+        state: &'s LazyState<T::InputState>,
     ) -> Self {
         Self {
             inner: WrappedUpdateInner::Waiting(UpdateData {
                 args: A::get_arg(&mut frame, arg),
                 frame,
+                state,
                 time,
             }),
         }
@@ -86,7 +90,7 @@ where
     }
 }
 
-impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for WrappedUpdate<T, C, A> {
+impl<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for WrappedUpdate<'s, T, C, A> {
     type Output = UpdateResult<T, C, A>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -101,10 +105,13 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for WrappedUpdate<T, 
                         frame,
                         args,
                         time,
+                        state,
                     }) = core::mem::replace(inner, WrappedUpdateInner::Terminated)
                     {
                         // SAFETY: we init this immediately after placing it.
-                        *inner = WrappedUpdateInner::Active(unsafe { RawUpdate::new(frame, time) });
+                        *inner = WrappedUpdateInner::Active(unsafe {
+                            RawUpdate::new(frame, time, state)
+                        });
 
                         // init out uninit context and future.
                         if let FrameUpdateInnerProject::Active(pollable) =
@@ -149,7 +156,7 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for WrappedUpdate<T, 
     }
 }
 
-impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> FusedFuture for WrappedUpdate<T, C, A> {
+impl<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> FusedFuture for WrappedUpdate<'s, T, C, A> {
     fn is_terminated(&self) -> bool {
         matches!(self.inner, WrappedUpdateInner::Terminated)
     }

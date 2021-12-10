@@ -4,11 +4,12 @@ use core::mem::{ManuallyDrop, MaybeUninit};
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use super::{Arg, LazyState, StepTime, UpdateContext, WrappedTransposer};
+use super::{Arg, StepTime, UpdateContext, WrappedTransposer};
+use crate::transposer::lazy_state::LazyState;
 use crate::transposer::Transposer;
 use crate::util::drop_mut::{drop_mut_leave_uninit, take_mut_leave_uninit};
 
-pub struct RawUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
+pub struct RawUpdate<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     // references context, frame.transposer, and args
     future: MaybeUninit<Pin<Box<dyn Future<Output = ()>>>>,
 
@@ -16,7 +17,7 @@ pub struct RawUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     context: MaybeUninit<C>,
 
     frame: Box<WrappedTransposer<T>>,
-    state: LazyState<T::InputState>,
+    state: &'s LazyState<T::InputState>,
     time:  StepTime<T::Time>,
     args:  MaybeUninit<A::Stored>,
 
@@ -24,14 +25,18 @@ pub struct RawUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     _pin: PhantomPinned,
 }
 
-impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<T, C, A> {
+impl<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<'s, T, C, A> {
     // SAFETY: make sure to call init before doing anything with the new value, including dropping it.
-    pub unsafe fn new(frame: Box<WrappedTransposer<T>>, time: StepTime<T::Time>) -> Self {
+    pub unsafe fn new(
+        frame: Box<WrappedTransposer<T>>,
+        time: StepTime<T::Time>,
+        state: &'s LazyState<T::InputState>,
+    ) -> Self {
         Self {
             future: MaybeUninit::uninit(),
             context: MaybeUninit::uninit(),
             frame,
-            state: LazyState::new(),
+            state,
             args: MaybeUninit::uninit(),
             time,
             _pin: PhantomPinned,
@@ -44,7 +49,7 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<T, C, A> {
         let context = &mut this.context;
         let transposer = &mut this.frame.transposer;
         let metadata = &mut this.frame.metadata;
-        let input_state = &mut this.state;
+        let input_state = this.state;
 
         // SAFETY: we're storing this in context which is always dropped before metadata and input_state.
         *context = MaybeUninit::new(unsafe { C::new(this.time.clone(), metadata, input_state) });
@@ -116,7 +121,7 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<T, C, A> {
     }
 }
 
-impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Drop for RawUpdate<T, C, A> {
+impl<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> Drop for RawUpdate<'s, T, C, A> {
     fn drop(&mut self) {
         // SAFETY: everything is init before this.
         unsafe {
@@ -127,7 +132,7 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Drop for RawUpdate<T, C, A> 
     }
 }
 
-impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for RawUpdate<T, C, A> {
+impl<'s, T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for RawUpdate<'s, T, C, A> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

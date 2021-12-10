@@ -2,6 +2,7 @@ use core::cmp::Ordering;
 use core::mem::replace;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
+use std::sync::Arc;
 
 use futures_core::Future;
 
@@ -9,13 +10,15 @@ use super::args::{InitArg, InputArg, ScheduledArg};
 use super::step_update_context::StepUpdateContext;
 use super::time::StepTime;
 use super::update::{Arg, UpdateContext, UpdateResult, WrappedTransposer, WrappedUpdate};
+use crate::transposer::lazy_state::{self, LazyState};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
-pub struct Step<T: Transposer> {
+pub struct Step<'s, T: Transposer> {
     time:            StepTime<T::Time>,
-    inner:           StepInner<T>,
+    inner:           StepInner<'s, T>,
     outputs_emitted: OutputsEmitted,
+    input_state:     &'s LazyState<T::InputState>,
 
     // these are used purely for enforcing that saturate calls use the previous wrapped_transposer.
     #[cfg(debug_assertions)]
@@ -45,15 +48,20 @@ pub enum DesaturateErr {
 
 #[derive(Debug)]
 pub enum PollErr {
-    NotSaturating,
+    Unsaturated,
+    Saturated,
 }
 
-impl<T: Transposer> Step<T> {
-    pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
+impl<'s, T: Transposer> Step<'s, T> {
+    pub fn new_init(
+        transposer: T,
+        rng_seed: [u8; 32],
+        input_state: &'s LazyState<T::InputState>,
+    ) -> Self {
         let time = StepTime::new_init();
         let wrapped_transposer = WrappedTransposer::new(transposer, rng_seed);
         let wrapped_transposer = Box::new(wrapped_transposer);
-        let update = WrappedUpdate::new(wrapped_transposer, (), time.clone());
+        let update = WrappedUpdate::new(wrapped_transposer, (), time.clone(), input_state);
         let update = Box::pin(update);
         let inner = StepInner::SaturatingInit {
             update,
@@ -62,6 +70,7 @@ impl<T: Transposer> Step<T> {
             time,
             inner,
             outputs_emitted: OutputsEmitted::Pending,
+            input_state,
 
             #[cfg(debug_assertions)]
             uuid_self: uuid::Uuid::new_v4(),
@@ -73,6 +82,7 @@ impl<T: Transposer> Step<T> {
     pub fn next_unsaturated(
         &self,
         next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
+        input_state: &'s LazyState<T::InputState>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         #[cfg(debug_assertions)]
         if let Some((t, _)) = next_inputs {
@@ -122,6 +132,52 @@ impl<T: Transposer> Step<T> {
             time,
             inner,
             outputs_emitted: OutputsEmitted::Pending,
+            input_state,
+
+            #[cfg(debug_assertions)]
+            uuid_self: uuid::Uuid::new_v4(),
+            #[cfg(debug_assertions)]
+            uuid_prev: Some(self.uuid_self),
+        };
+
+        Ok(Some(item))
+    }
+
+    pub fn next_unsaturated_same_time(&self) -> Result<Option<Self>, NextUnsaturatedErr> {
+        let wrapped_transposer = match &self.inner {
+            StepInner::SaturatedInit {
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer.as_ref(),
+            StepInner::SaturatedInput {
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer.as_ref(),
+            StepInner::SaturatedScheduled {
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer.as_ref(),
+            _ => return Err(NextUnsaturatedErr::NotSaturated),
+        };
+        let next_scheduled_time = wrapped_transposer.get_next_scheduled_time();
+        let next_scheduled_time = match next_scheduled_time {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        if self.time().raw_time() != next_scheduled_time.time {
+            return Ok(None)
+        }
+
+        let next_time_index = self.time.index() + 1;
+        let time = StepTime::new_scheduled(next_time_index, next_scheduled_time.clone());
+        let inner = StepInner::OriginalUnsaturatedScheduled;
+
+        let item = Step {
+            time,
+            inner,
+            outputs_emitted: OutputsEmitted::Pending,
+            input_state: self.input_state,
 
             #[cfg(debug_assertions)]
             uuid_self: uuid::Uuid::new_v4(),
@@ -218,7 +274,12 @@ impl<T: Transposer> Step<T> {
                 StepInner::OriginalUnsaturatedInput {
                     inputs,
                 } => {
-                    let update = WrappedUpdate::new(wrapped_transposer, inputs, self.time.clone());
+                    let update = WrappedUpdate::new(
+                        wrapped_transposer,
+                        inputs,
+                        self.time.clone(),
+                        self.input_state,
+                    );
                     StepInner::OriginalSaturatingInput {
                         update: Box::pin(update),
                     }
@@ -226,19 +287,34 @@ impl<T: Transposer> Step<T> {
                 StepInner::RepeatUnsaturatedInput {
                     inputs,
                 } => {
-                    let update = WrappedUpdate::new(wrapped_transposer, inputs, self.time.clone());
+                    let update = WrappedUpdate::new(
+                        wrapped_transposer,
+                        inputs,
+                        self.time.clone(),
+                        self.input_state,
+                    );
                     StepInner::RepeatSaturatingInput {
                         update: Box::pin(update),
                     }
                 },
                 StepInner::OriginalUnsaturatedScheduled => {
-                    let update = WrappedUpdate::new(wrapped_transposer, (), self.time.clone());
+                    let update = WrappedUpdate::new(
+                        wrapped_transposer,
+                        (),
+                        self.time.clone(),
+                        self.input_state,
+                    );
                     StepInner::OriginalSaturatingScheduled {
                         update: Box::pin(update),
                     }
                 },
                 StepInner::RepeatUnsaturatedScheduled => {
-                    let update = WrappedUpdate::new(wrapped_transposer, (), self.time.clone());
+                    let update = WrappedUpdate::new(
+                        wrapped_transposer,
+                        (),
+                        self.time.clone(),
+                        self.input_state,
+                    );
                     StepInner::RepeatSaturatingScheduled {
                         update: Box::pin(update),
                     }
@@ -453,7 +529,25 @@ impl<T: Transposer> Step<T> {
                 },
                 Poll::Pending => handle_pending(update),
             },
-            _ => Err(PollErr::NotSaturating),
+            StepInner::UnsaturatedInit
+            | StepInner::OriginalUnsaturatedInput {
+                ..
+            }
+            | StepInner::OriginalUnsaturatedScheduled
+            | StepInner::RepeatUnsaturatedInput {
+                ..
+            }
+            | StepInner::RepeatUnsaturatedScheduled => Err(PollErr::Unsaturated),
+            StepInner::SaturatedInit {
+                ..
+            }
+            | StepInner::SaturatedInput {
+                ..
+            }
+            | StepInner::SaturatedScheduled {
+                ..
+            } => Err(PollErr::Saturated),
+            StepInner::Unreachable => unreachable!(),
         }
     }
 
@@ -516,16 +610,16 @@ impl OutputsEmitted {
 type OriginalContext<T> = StepUpdateContext<T, Vec<<T as Transposer>::Output>>;
 type RepeatContext<T> = StepUpdateContext<T, ()>;
 
-type InitUpdate<T> = WrappedUpdate<T, OriginalContext<T>, InitArg<T>>;
-type InputUpdate<T, C> = WrappedUpdate<T, C, InputArg<T>>;
-type ScheduledUpdate<T, C> = WrappedUpdate<T, C, ScheduledArg<T>>;
+type InitUpdate<'s, T> = WrappedUpdate<'s, T, OriginalContext<T>, InitArg<T>>;
+type InputUpdate<'s, T, C> = WrappedUpdate<'s, T, C, InputArg<T>>;
+type ScheduledUpdate<'s, T, C> = WrappedUpdate<'s, T, C, ScheduledArg<T>>;
 
-type OriginalInputUpdate<T> = InputUpdate<T, OriginalContext<T>>;
-type OriginalScheduledUpdate<T> = ScheduledUpdate<T, OriginalContext<T>>;
-type RepeatInputUpdate<T> = InputUpdate<T, RepeatContext<T>>;
-type RepeatScheduledUpdate<T> = ScheduledUpdate<T, RepeatContext<T>>;
+type OriginalInputUpdate<'s, T> = InputUpdate<'s, T, OriginalContext<T>>;
+type OriginalScheduledUpdate<'s, T> = ScheduledUpdate<'s, T, OriginalContext<T>>;
+type RepeatInputUpdate<'s, T> = InputUpdate<'s, T, RepeatContext<T>>;
+type RepeatScheduledUpdate<'s, T> = ScheduledUpdate<'s, T, RepeatContext<T>>;
 
-enum StepInner<T: Transposer> {
+enum StepInner<'s, T: Transposer> {
     // notably this can never be rehydrated because you need the preceding wrapped_transposer
     // and there isn't one, because this is init.
     UnsaturatedInit,
@@ -538,19 +632,19 @@ enum StepInner<T: Transposer> {
     },
     RepeatUnsaturatedScheduled,
     SaturatingInit {
-        update: Pin<Box<InitUpdate<T>>>,
+        update: Pin<Box<InitUpdate<'s, T>>>,
     },
     OriginalSaturatingInput {
-        update: Pin<Box<OriginalInputUpdate<T>>>,
+        update: Pin<Box<OriginalInputUpdate<'s, T>>>,
     },
     OriginalSaturatingScheduled {
-        update: Pin<Box<OriginalScheduledUpdate<T>>>,
+        update: Pin<Box<OriginalScheduledUpdate<'s, T>>>,
     },
     RepeatSaturatingInput {
-        update: Pin<Box<RepeatInputUpdate<T>>>,
+        update: Pin<Box<RepeatInputUpdate<'s, T>>>,
     },
     RepeatSaturatingScheduled {
-        update: Pin<Box<RepeatScheduledUpdate<T>>>,
+        update: Pin<Box<RepeatScheduledUpdate<'s, T>>>,
     },
     SaturatedInit {
         wrapped_transposer: Box<WrappedTransposer<T>>,
@@ -565,7 +659,7 @@ enum StepInner<T: Transposer> {
     Unreachable,
 }
 
-impl<T: Transposer> StepInner<T> {
+impl<'s, T: Transposer> StepInner<'s, T> {
     fn recover() -> Self {
         Self::Unreachable
     }

@@ -66,7 +66,8 @@ impl Transposer for TestTransposer {
         self.handle_record.push_back((record, cx.get_rng().gen()));
 
         let state = cx.get_input_state().await;
-        cx.emit_event(state);
+
+        cx.emit_event(*state);
     }
 
     async fn handle_scheduled(
@@ -79,7 +80,7 @@ impl Transposer for TestTransposer {
         self.handle_record.push_back((record, cx.get_rng().gen()));
 
         let state = cx.get_input_state().await;
-        cx.emit_event(state);
+        cx.emit_event(*state);
     }
 
     async fn interpolate(

@@ -1,9 +1,10 @@
-use super::{LazyState, StepTime, TransposerMetaData};
+use super::{StepTime, TransposerMetaData};
 use crate::transposer::context::*;
+use crate::transposer::lazy_state::LazyState;
 use crate::transposer::Transposer;
 
 pub trait UpdateContext<T: Transposer>:
-    InitContext<T> + HandleInputContext<T> + HandleScheduleContext<T>
+    InitContext<'static, T> + HandleInputContext<'static, T> + HandleScheduleContext<'static, T>
 where
     T::Scheduled: Clone,
 {
@@ -13,7 +14,7 @@ where
     unsafe fn new(
         time: StepTime<T::Time>,
         metadata: *mut TransposerMetaData<T>,
-        input_state: *mut LazyState<T::InputState>,
+        input_state: *const LazyState<T::InputState>,
     ) -> Self;
 
     fn recover_outputs(self) -> Self::Outputs;

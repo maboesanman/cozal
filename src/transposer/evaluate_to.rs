@@ -6,6 +6,7 @@ use std::task::{Context, Poll};
 use futures_core::Future;
 
 use super::context::{InputStateContext, InterpolateContext};
+use super::lazy_state::LazyState;
 use super::step::Step;
 use super::{step, Transposer};
 use crate::source::adapters::transpose::input_buffer::InputBuffer;
@@ -187,9 +188,10 @@ where
     S: Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
-    time:  T::Time,
-    state: S,
-    t:     PhantomData<T>,
+    time:     T::Time,
+    state_fn: S,
+    state:    LazyState<T::InputState>,
+    t:        PhantomData<fn() -> T>,
 }
 
 impl<T: Transposer, S, Fs> MyInterpolateContext<T, S, Fs>
@@ -197,29 +199,46 @@ where
     S: Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
-    pub fn new(time: T::Time, state: S) -> Self {
+    pub fn new(time: T::Time, state_fn: S) -> Self {
         Self {
             time,
-            state,
+            state_fn,
+            state: LazyState::new(),
             t: PhantomData,
         }
     }
+
+    pub fn reset(&mut self) {
+        self.state = LazyState::default();
+    }
 }
 
-impl<T: Transposer, S, Fs> InterpolateContext<T> for MyInterpolateContext<T, S, Fs>
+impl<'a, T: Transposer, S, Fs> InterpolateContext<'a, T> for MyInterpolateContext<T, S, Fs>
 where
     S: Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
 }
 
-impl<T: Transposer, S, Fs> InputStateContext<T> for MyInterpolateContext<T, S, Fs>
+impl<'a, T: Transposer, S, Fs> InputStateContext<'a, T> for MyInterpolateContext<T, S, Fs>
 where
     S: Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
-    fn get_input_state(&mut self) -> Pin<Box<dyn '_ + Future<Output = T::InputState>>> {
-        let state = (self.state)(self.time);
-        Box::pin(async move { state.await })
+    fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
+        let fut = async {
+            if self.state.requested() {
+                let state_fut = (self.state_fn)(self.time);
+                let _ = self.state.set(state_fut.await);
+            }
+
+            let s: *const _ = &self.state;
+            let s: &'a _ = unsafe { s.as_ref::<'a>().unwrap() };
+            s.await
+        };
+
+        let b: Pin<Box<dyn '_ + Future<Output = &'a T::InputState>>> = Box::pin(fut);
+
+        unsafe { core::mem::transmute(b) }
     }
 }

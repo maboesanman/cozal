@@ -6,13 +6,13 @@ use rand::RngCore;
 use super::expire_handle::ExpireHandle;
 use super::Transposer;
 
-pub trait InitContext<T: Transposer>:
-    InputStateContext<T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
+pub trait InitContext<'a, T: Transposer>:
+    InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
 {
 }
 
-pub trait HandleInputContext<T: Transposer>:
-    InputStateContext<T>
+pub trait HandleInputContext<'a, T: Transposer>:
+    InputStateContext<'a, T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
@@ -20,8 +20,8 @@ pub trait HandleInputContext<T: Transposer>:
 {
 }
 
-pub trait HandleScheduleContext<T: Transposer>:
-    InputStateContext<T>
+pub trait HandleScheduleContext<'a, T: Transposer>:
+    InputStateContext<'a, T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
@@ -29,10 +29,10 @@ pub trait HandleScheduleContext<T: Transposer>:
 {
 }
 
-pub trait InterpolateContext<T: Transposer>: InputStateContext<T> {}
+pub trait InterpolateContext<'a, T: Transposer>: InputStateContext<'a, T> {}
 
-pub trait InputStateContext<T: Transposer> {
-    fn get_input_state(&mut self) -> Pin<Box<dyn '_ + Future<Output = T::InputState>>>;
+pub trait InputStateContext<'a, T: Transposer> {
+    fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>>;
 }
 
 pub trait ScheduleEventContext<T: Transposer> {

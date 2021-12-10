@@ -2,9 +2,11 @@
 #![feature(map_first_last)]
 #![feature(maybe_uninit_extra)]
 #![feature(new_uninit)]
+#![feature(hash_drain_filter)]
+#![feature(generic_associated_types)]
 #![deny(unsafe_op_in_unsafe_fn)]
-#![deny(single_use_lifetimes)]
 #![allow(clippy::or_fun_call)]
+#![feature(once_cell)]
 // TODO: remove this allow
 #![allow(dead_code)]
 #![allow(clippy::module_inception)]

@@ -7,5 +7,5 @@ mod update;
 #[cfg(test)]
 mod test;
 
-pub use step::{SaturateErr, Step, StepPoll};
+pub use step::*;
 pub use time::StepTime;

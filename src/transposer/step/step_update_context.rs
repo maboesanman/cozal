@@ -2,8 +2,9 @@ use core::future::Future;
 use core::pin::Pin;
 
 use super::time::StepTime;
-use super::update::{LazyState, TransposerMetaData, UpdateContext};
+use super::update::{TransposerMetaData, UpdateContext};
 use crate::transposer::context::*;
+use crate::transposer::lazy_state::LazyState;
 use crate::transposer::{ExpireHandle, Transposer};
 
 pub trait OutputCollector<O> {
@@ -35,7 +36,7 @@ where
 {
     // these are pointers because this is stored next to the targets.
     frame_internal: *mut TransposerMetaData<T>,
-    input_state:    *mut LazyState<T::InputState>,
+    input_state:    *const LazyState<T::InputState>,
 
     time:                   StepTime<T::Time>,
     current_emission_index: usize,
@@ -44,12 +45,15 @@ where
     output_collector: C,
 }
 
-impl<T: Transposer, C: OutputCollector<T::Output>> InitContext<T> for StepUpdateContext<T, C> {}
-impl<T: Transposer, C: OutputCollector<T::Output>> HandleInputContext<T>
+impl<'a, T: Transposer, C: OutputCollector<T::Output>> InitContext<'a, T>
     for StepUpdateContext<T, C>
 {
 }
-impl<T: Transposer, C: OutputCollector<T::Output>> HandleScheduleContext<T>
+impl<'a, T: Transposer, C: OutputCollector<T::Output>> HandleInputContext<'a, T>
+    for StepUpdateContext<T, C>
+{
+}
+impl<'a, T: Transposer, C: OutputCollector<T::Output>> HandleScheduleContext<'a, T>
     for StepUpdateContext<T, C>
 {
 }
@@ -60,7 +64,7 @@ impl<T: Transposer, C: OutputCollector<T::Output>> UpdateContext<T> for StepUpda
     unsafe fn new(
         time: StepTime<T::Time>,
         frame_internal: *mut TransposerMetaData<T>,
-        input_state: *mut LazyState<T::InputState>,
+        input_state: *const LazyState<T::InputState>,
     ) -> Self {
         Self {
             frame_internal,
@@ -81,18 +85,13 @@ impl<T: Transposer, C: OutputCollector<T::Output>> StepUpdateContext<T, C> {
         // SAFETY: this is good as long as the constructor's criteria are met.
         unsafe { self.frame_internal.as_mut().unwrap() }
     }
-
-    fn get_input_state_mut(&mut self) -> &mut LazyState<T::InputState> {
-        // SAFETY: this is good as long as the constructor's criteria are met.
-        unsafe { self.input_state.as_mut().unwrap() }
-    }
 }
 
-impl<T: Transposer, C: OutputCollector<T::Output>> InputStateContext<T>
+impl<'a, T: Transposer, C: OutputCollector<T::Output>> InputStateContext<'a, T>
     for StepUpdateContext<T, C>
 {
-    fn get_input_state(&mut self) -> Pin<Box<dyn '_ + Future<Output = T::InputState>>> {
-        Box::pin(self.get_input_state_mut())
+    fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
+        Box::pin(unsafe { self.input_state.as_ref().unwrap() })
     }
 }
 
