@@ -7,6 +7,7 @@ use futures_core::Future;
 use super::pointer_interpolation::PointerInterpolation;
 use super::step::{Step, StepTime, WrappedTransposer};
 use super::step_group::{InterpolatePoll, InterpolatePollErr, NextUnsaturatedErr};
+use super::NextInputs;
 use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::Transposer;
 
@@ -20,7 +21,7 @@ pub struct StepGroupSaturated<T: Transposer> {
 impl<T: Transposer> StepGroupSaturated<T> {
     pub fn next_unsaturated(
         &mut self,
-        next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
+        next_inputs: &mut NextInputs<T>,
         input_state: *const LazyState<T::InputState>,
     ) -> Result<Option<Step<T>>, NextUnsaturatedErr> {
         // drain interpolations from self that occur after input

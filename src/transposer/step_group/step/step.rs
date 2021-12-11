@@ -10,6 +10,7 @@ use super::step_update_context::StepUpdateContext;
 use super::time::StepTime;
 use super::update::{Arg, UpdateResult, WrappedTransposer, WrappedUpdate};
 use crate::transposer::step_group::lazy_state::LazyState;
+use crate::transposer::step_group::NextInputs;
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
@@ -80,7 +81,7 @@ impl<T: Transposer> Step<T> {
 
     pub fn next_unsaturated(
         &self,
-        next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
+        next_inputs: &mut NextInputs<T>,
         input_state: *const LazyState<T::InputState>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         #[cfg(debug_assertions)]

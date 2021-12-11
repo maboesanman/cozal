@@ -22,6 +22,8 @@ pub struct StepGroup<T: Transposer> {
     uuid_prev:   Option<uuid::Uuid>,
 }
 
+pub type NextInputs<T> = Option<(<T as Transposer>::Time, Box<[<T as Transposer>::Input]>)>;
+
 impl<T: Transposer> StepGroup<T> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         let mut steps = Vec::with_capacity(1);
@@ -48,7 +50,7 @@ impl<T: Transposer> StepGroup<T> {
 
     pub fn next_unsaturated(
         &mut self,
-        next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
+        next_inputs: &mut NextInputs<T>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         if let StepGroupInner::Saturated(saturated) = &mut self.inner {
             let input_state = Box::new(LazyState::new());

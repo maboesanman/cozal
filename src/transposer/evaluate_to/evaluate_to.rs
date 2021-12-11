@@ -56,24 +56,26 @@ where
         state:     S,
         state_fut: Option<Fs>,
         until:     T::Time,
-        outputs:   Vec<(T::Time, Vec<T::Output>)>,
+        outputs:   EmittedEvents<T>,
     },
     Interpolate {
         frame:     StepGroup<T>,
         state:     S,
         state_fut: Option<Fs>,
         until:     T::Time,
-        outputs:   Vec<(T::Time, Vec<T::Output>)>,
+        outputs:   EmittedEvents<T>,
     },
     Terminated,
 }
+
+pub type EmittedEvents<T> = Vec<(<T as Transposer>::Time, Vec<<T as Transposer>::Output>)>;
 
 impl<T: Transposer, S, Fs> Future for EvaluateTo<T, S, Fs>
 where
     S: Clone + Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
-    type Output = (Vec<(T::Time, Vec<T::Output>)>, T::OutputState);
+    type Output = (EmittedEvents<T>, T::OutputState);
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
@@ -150,28 +152,27 @@ where
 
                             let mut event = events.pop_first();
 
-                            match frame.next_unsaturated(&mut event).unwrap() {
-                                Some(mut next_frame) => {
-                                    if next_frame.time() <= until {
-                                        for (time, inputs) in event {
-                                            events.extend_front(time, inputs);
-                                        }
-                                        next_frame.saturate_take(&mut frame).unwrap();
-                                        frame = next_frame;
-                                        return (
-                                            EvaluateToInner::Step {
-                                                frame,
-                                                events,
-                                                state,
-                                                state_fut,
-                                                until,
-                                                outputs,
-                                            },
-                                            Poll::Ready(None),
-                                        )
+                            if let Some(mut next_frame) =
+                                frame.next_unsaturated(&mut event).unwrap()
+                            {
+                                if next_frame.time() <= until {
+                                    if let Some((time, inputs)) = event {
+                                        events.extend_front(time, inputs);
                                     }
-                                },
-                                None => {},
+                                    next_frame.saturate_take(&mut frame).unwrap();
+                                    frame = next_frame;
+                                    return (
+                                        EvaluateToInner::Step {
+                                            frame,
+                                            events,
+                                            state,
+                                            state_fut,
+                                            until,
+                                            outputs,
+                                        },
+                                        Poll::Ready(None),
+                                    )
+                                }
                             };
 
                             // no updates or updates after "until"
