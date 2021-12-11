@@ -21,7 +21,7 @@ where
 {
     let mut input_buffer = InputBuffer::<T::Time, T::Input>::new();
     for (time, input) in events {
-        if time <= until {
+        if time <= until && T::can_handle(time, &input) {
             input_buffer.insert_back(time, input);
         }
     }
