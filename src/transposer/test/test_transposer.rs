@@ -46,7 +46,7 @@ impl Transposer for TestTransposer {
 
     type Output = usize;
 
-    async fn init(&mut self, cx: &mut dyn InitContext<Self>) {
+    async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>) {
         for (time, payload) in self.init_events.drain(..) {
             let _ = cx.schedule_event(time, payload);
         }
@@ -56,7 +56,7 @@ impl Transposer for TestTransposer {
         &mut self,
         time: Self::Time,
         inputs: &[Self::Input],
-        cx: &mut dyn HandleInputContext<Self>,
+        cx: &mut dyn HandleInputContext<'_, Self>,
     ) {
         let mut vec = Vec::new();
         for payload in inputs {
@@ -74,7 +74,7 @@ impl Transposer for TestTransposer {
         &mut self,
         time: Self::Time,
         payload: Self::Scheduled,
-        cx: &mut dyn HandleScheduleContext<Self>,
+        cx: &mut dyn HandleScheduleContext<'_, Self>,
     ) {
         let record = HandleRecord::Scheduled(time, payload);
         self.handle_record.push_back((record, cx.get_rng().gen()));
@@ -87,7 +87,7 @@ impl Transposer for TestTransposer {
         &self,
         _base_time: Self::Time,
         _interpolated_time: Self::Time,
-        _cx: &mut dyn InterpolateContext<Self>,
+        _cx: &mut dyn InterpolateContext<'_, Self>,
     ) -> Self::OutputState {
         self.handle_record.clone().into_iter().collect()
     }

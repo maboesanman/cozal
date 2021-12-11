@@ -31,7 +31,7 @@ impl Transposer for TestTransposer {
 
     type Output = usize;
 
-    async fn init(&mut self, cx: &mut dyn InitContext<Self>) {
+    async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>) {
         self.counter = 0;
         cx.schedule_event(0, ()).unwrap();
     }
@@ -40,7 +40,7 @@ impl Transposer for TestTransposer {
         &mut self,
         time: Self::Time,
         _payload: Self::Scheduled,
-        cx: &mut dyn HandleScheduleContext<Self>,
+        cx: &mut dyn HandleScheduleContext<'_, Self>,
     ) {
         cx.schedule_event(time + 1, ()).unwrap();
 
@@ -52,7 +52,7 @@ impl Transposer for TestTransposer {
         &self,
         _base_time: Self::Time,
         _interpolated_time: Self::Time,
-        _cx: &mut dyn InterpolateContext<Self>,
+        _cx: &mut dyn InterpolateContext<'_, Self>,
     ) -> Self::OutputState {
         unimplemented!()
     }

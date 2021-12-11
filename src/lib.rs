@@ -8,7 +8,7 @@
 #![allow(clippy::or_fun_call)]
 #![feature(once_cell)]
 // TODO: remove this allow
-// #![allow(dead_code)]
+#![allow(dead_code)]
 #![allow(clippy::module_inception)]
 
 pub mod source;

@@ -60,7 +60,7 @@ pub trait Transposer {
     ///
     /// `cx` is a context object for performing additional operations.
     /// For more information on `cx` see the [`InitContext`] documentation.
-    async fn init(&mut self, _cx: &mut dyn InitContext<Self>) {}
+    async fn init(&mut self, _cx: &mut dyn InitContext<'_, Self>) {}
 
     /// The function to respond to input.
     ///
@@ -75,7 +75,7 @@ pub trait Transposer {
         &mut self,
         _time: Self::Time,
         _inputs: &[Self::Input],
-        _cx: &mut dyn HandleInputContext<Self>,
+        _cx: &mut dyn HandleInputContext<'_, Self>,
     ) {
     }
 
@@ -89,7 +89,7 @@ pub trait Transposer {
         &mut self,
         _time: Self::Time,
         _payload: Self::Scheduled,
-        _cx: &mut dyn HandleScheduleContext<Self>,
+        _cx: &mut dyn HandleScheduleContext<'_, Self>,
     ) {
     }
 
@@ -105,7 +105,7 @@ pub trait Transposer {
         &self,
         base_time: Self::Time,
         interpolated_time: Self::Time,
-        cx: &mut dyn InterpolateContext<Self>,
+        cx: &mut dyn InterpolateContext<'_, Self>,
     ) -> Self::OutputState;
 
     /// Filter out events you know you can't do anything with.

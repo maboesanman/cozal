@@ -10,7 +10,7 @@ where
         let new_t = panic::catch_unwind(panic::AssertUnwindSafe(|| closure(old_t)));
         match new_t {
             Err(err) => {
-                let r = panic::catch_unwind(panic::AssertUnwindSafe(|| recover()))
+                let r = panic::catch_unwind(panic::AssertUnwindSafe(recover))
                     .unwrap_or_else(|_| std::process::abort());
                 core::ptr::write(mut_ref, r);
                 panic::resume_unwind(err);
@@ -30,7 +30,7 @@ where
         let new_t_v = panic::catch_unwind(panic::AssertUnwindSafe(|| closure(old_t)));
         match new_t_v {
             Err(err) => {
-                let r = panic::catch_unwind(panic::AssertUnwindSafe(|| recover()))
+                let r = panic::catch_unwind(panic::AssertUnwindSafe(recover))
                     .unwrap_or_else(|_| std::process::abort());
                 core::ptr::write(mut_ref, r);
                 panic::resume_unwind(err);

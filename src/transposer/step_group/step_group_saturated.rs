@@ -8,7 +8,6 @@ use super::pointer_interpolation::PointerInterpolation;
 use super::step::{Step, StepTime, WrappedTransposer};
 use super::step_group::{InterpolatePoll, InterpolatePollErr, NextUnsaturatedErr};
 use crate::transposer::step_group::lazy_state::LazyState;
-use crate::transposer::step_group::step_group::StepGroup;
 use crate::transposer::Transposer;
 
 pub struct StepGroupSaturated<T: Transposer> {
@@ -78,7 +77,6 @@ impl<T: Transposer> StepGroupSaturated<T> {
         final_step.finished_wrapped_transposer().unwrap()
     }
 
-    #[allow(dead_code)]
     pub fn poll_interpolate(
         &mut self,
         time: T::Time,
@@ -151,15 +149,13 @@ impl<T: Transposer> StepGroupSaturated<T> {
     }
 
     pub fn remove_interpolation(&mut self, channel: usize) {
-        if let Some(int) = self.interpolations.remove(&channel) {
-            int.wake();
-        }
+        self.interpolations.remove(&channel);
     }
 }
 
 impl<T: Transposer> Drop for StepGroupSaturated<T> {
     fn drop(&mut self) {
-        for (_, i) in &mut self.interpolations {
+        for i in self.interpolations.values_mut() {
             i.wake();
         }
     }

@@ -23,7 +23,6 @@ pub struct StepGroup<T: Transposer> {
 }
 
 impl<T: Transposer> StepGroup<T> {
-    #[allow(dead_code)]
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         let mut steps = Vec::with_capacity(1);
         let input_state = Box::new(LazyState::new());
@@ -46,7 +45,7 @@ impl<T: Transposer> StepGroup<T> {
     }
 
     // this only needs mut because it can remove interpolations.
-    #[allow(dead_code)]
+
     pub fn next_unsaturated(
         &mut self,
         next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
@@ -74,7 +73,6 @@ impl<T: Transposer> StepGroup<T> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn saturate_take(&mut self, prev: &mut Self) -> Result<(), SaturateTakeErr> {
         #[cfg(debug_assertions)]
         if self.uuid_prev != Some(prev.uuid_self) {
@@ -150,7 +148,6 @@ impl<T: Transposer> StepGroup<T> {
             })
     }
 
-    #[allow(dead_code)]
     pub fn saturate_clone(&mut self, prev: &Self) -> Result<(), SaturateCloneErr>
     where
         T: Clone,
@@ -236,7 +233,6 @@ impl<T: Transposer> StepGroup<T> {
         )
     }
 
-    #[allow(dead_code)]
     pub fn desaturate(&mut self) -> Result<(), DesaturateErr> {
         take_and_return_or_recover(
             &mut self.inner,
@@ -321,7 +317,6 @@ impl<T: Transposer> StepGroup<T> {
         )
     }
 
-    #[allow(dead_code)]
     pub fn poll_progress(
         &mut self,
         channel: usize,
@@ -366,7 +361,6 @@ impl<T: Transposer> StepGroup<T> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn poll_interpolate(
         &mut self,
         time: T::Time,
@@ -379,12 +373,11 @@ impl<T: Transposer> StepGroup<T> {
             Err(InterpolatePollErr::NotSaturated)
         }
     }
-    #[allow(dead_code)]
+
     pub fn set_input_state(&mut self, state: T::InputState) -> Result<(), Box<T::InputState>> {
         self.input_state.set(state)
     }
 
-    #[allow(dead_code)]
     pub fn set_interpolation_input_state(
         &mut self,
         time: T::Time,
