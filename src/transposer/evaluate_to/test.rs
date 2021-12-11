@@ -1,15 +1,9 @@
-use std::pin::Pin;
-use std::task::{Context, Poll};
-
 use async_trait::async_trait;
-use futures_core::Future;
-use matches::assert_matches;
 use rand::Rng;
 
 use super::evaluate_to;
 use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
 use crate::transposer::Transposer;
-use crate::util::dummy_waker::DummyWaker;
 
 #[derive(Clone, Debug)]
 struct TestTransposer {
