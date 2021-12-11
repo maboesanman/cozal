@@ -85,7 +85,11 @@ impl<T: Transposer> Step<T> {
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         #[cfg(debug_assertions)]
         if let Some((t, _)) = next_inputs {
-            if *t <= self.time().raw_time() {
+            let self_time = self.time().raw_time();
+            if *t < self_time {
+                return Err(NextUnsaturatedErr::InputPastOrPresent)
+            }
+            if *t == self_time && self.time().index() != 0 {
                 return Err(NextUnsaturatedErr::InputPastOrPresent)
             }
         }
@@ -143,6 +147,11 @@ impl<T: Transposer> Step<T> {
     }
 
     pub fn next_unsaturated_same_time(&self) -> Result<Option<Self>, NextUnsaturatedErr> {
+        // init is always its own time.
+        if self.time().index() == 0 {
+            return Ok(None)
+        }
+
         let wrapped_transposer = match &self.inner {
             StepInner::SaturatedInit {
                 wrapped_transposer,
@@ -158,6 +167,7 @@ impl<T: Transposer> Step<T> {
             } => wrapped_transposer.as_ref(),
             _ => return Err(NextUnsaturatedErr::NotSaturated),
         };
+
         let next_scheduled_time = wrapped_transposer.get_next_scheduled_time();
         let next_scheduled_time = match next_scheduled_time {
             Some(t) => t,

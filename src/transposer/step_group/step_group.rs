@@ -313,7 +313,7 @@ impl<T: Transposer> StepGroup<T> {
                     ),
                     Err(saturated) => (
                         StepGroupInner::Saturated(saturated),
-                        Err(DesaturateErr::ActiveWakers),
+                        Err(DesaturateErr::ActiveInterpolations),
                     ),
                 },
                 StepGroupInner::Unreachable => unreachable!(),
@@ -349,7 +349,13 @@ impl<T: Transposer> StepGroup<T> {
             })?;
 
             match poll_result {
-                Poll::Pending => break Ok(StepGroupPoll::new_pending(outputs)),
+                Poll::Pending => {
+                    break Ok(if self.input_state.requested() {
+                        StepGroupPoll::new_needs_state(outputs)
+                    } else {
+                        StepGroupPoll::new_pending(outputs)
+                    })
+                },
                 Poll::Ready(Some(mut o)) => outputs.append(&mut o),
                 Poll::Ready(None) => {},
             };
@@ -361,8 +367,35 @@ impl<T: Transposer> StepGroup<T> {
     }
 
     #[allow(dead_code)]
-    pub fn set_input_state(&mut self, state: T::InputState) -> Result<(), T::InputState> {
+    pub fn poll_interpolate(
+        &mut self,
+        time: T::Time,
+        channel: usize,
+        waker: Waker,
+    ) -> Result<InterpolatePoll<T>, InterpolatePollErr> {
+        if let StepGroupInner::Saturated(saturated) = &mut self.inner {
+            saturated.poll_interpolate(time, channel, waker)
+        } else {
+            Err(InterpolatePollErr::NotSaturated)
+        }
+    }
+    #[allow(dead_code)]
+    pub fn set_input_state(&mut self, state: T::InputState) -> Result<(), Box<T::InputState>> {
         self.input_state.set(state)
+    }
+
+    #[allow(dead_code)]
+    pub fn set_interpolation_input_state(
+        &mut self,
+        time: T::Time,
+        channel: usize,
+        state: T::InputState,
+    ) -> Result<(), Box<T::InputState>> {
+        if let StepGroupInner::Saturated(saturated) = &mut self.inner {
+            saturated.set_interpolation_input_state(time, channel, state)
+        } else {
+            Err(Box::new(state))
+        }
     }
 
     fn first_step_time(&self) -> &StepTime<T::Time> {
@@ -379,7 +412,7 @@ impl<T: Transposer> StepGroup<T> {
             StepGroupInner::RepeatSaturating {
                 steps, ..
             } => steps.first().unwrap().time(),
-            StepGroupInner::Saturated(s) => s.time(),
+            StepGroupInner::Saturated(s) => s.first_time(),
             StepGroupInner::Unreachable => unreachable!(),
         }
     }

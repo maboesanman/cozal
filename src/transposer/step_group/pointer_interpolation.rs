@@ -13,7 +13,7 @@ use crate::transposer::Transposer;
 
 pub struct PointerInterpolation<T: Transposer> {
     inner:              InterpolationInner<T>,
-    state:              *const LazyState<T::InputState>,
+    state:              LazyState<T::InputState>,
     wrapped_transposer: *const WrappedTransposer<T>,
 }
 
@@ -26,7 +26,8 @@ enum InterpolationInner<T: Transposer> {
         context: StepGroupInterpolateContext<T>,
         time:    T::Time,
         waker:   Waker,
-        pinned:  PhantomPinned,
+
+        pinned: PhantomPinned,
     },
 }
 
@@ -51,18 +52,22 @@ impl<T: Transposer> PointerInterpolation<T> {
         }
     }
 
-    pub fn new(
-        time: T::Time,
-        state: *const LazyState<T::InputState>,
-        wrapped_transposer: *const WrappedTransposer<T>,
-    ) -> Self {
+    pub fn new(time: T::Time, wrapped_transposer: *const WrappedTransposer<T>) -> Self {
         Self {
             inner: InterpolationInner::Pending {
                 time,
             },
-            state,
+            state: LazyState::new(),
             wrapped_transposer,
         }
+    }
+
+    pub fn needs_state(&self) -> bool {
+        self.state.requested()
+    }
+
+    pub fn set_state(&self, state: T::InputState) -> Result<(), Box<T::InputState>> {
+        self.state.set(state)
     }
 }
 
@@ -83,7 +88,7 @@ impl<T: Transposer> Future for PointerInterpolation<T> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
         let wrapped_transposer = this.wrapped_transposer;
-        let state = this.state;
+        let state = &this.state;
         if let InterpolationInner::Pending {
             time,
         } = this.inner

@@ -1,9 +1,12 @@
 use std::collections::HashMap;
-use std::task::Waker;
+use std::pin::Pin;
+use std::task::{Context, Poll, Waker};
+
+use futures_core::Future;
 
 use super::pointer_interpolation::PointerInterpolation;
-use super::step::{Step, StepTime};
-use super::step_group::NextUnsaturatedErr;
+use super::step::{Step, StepTime, WrappedTransposer};
+use super::step_group::{InterpolatePoll, InterpolatePollErr, NextUnsaturatedErr};
 use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::step_group::step_group::StepGroup;
 use crate::transposer::Transposer;
@@ -11,7 +14,7 @@ use crate::transposer::Transposer;
 pub struct StepGroupSaturated<T: Transposer> {
     // first because it has pointers into boxes owned by steps.
     // not phantom pinned because steps are in a box, so don't care about moves.
-    interpolations: HashMap<usize, PointerInterpolation<T>>,
+    interpolations: HashMap<usize, Pin<Box<PointerInterpolation<T>>>>,
     steps:          Box<[Step<T>]>,
 }
 
@@ -61,7 +64,7 @@ impl<T: Transposer> StepGroupSaturated<T> {
         }
     }
 
-    pub fn time(&self) -> &StepTime<T::Time> {
+    pub fn first_time(&self) -> &StepTime<T::Time> {
         self.steps.first().unwrap().time()
     }
 
@@ -70,9 +73,9 @@ impl<T: Transposer> StepGroupSaturated<T> {
     }
 
     // this lives as long as this stepgroup is alive
-    fn final_transposer(&self) -> &T {
+    fn final_wrapped_transposer(&self) -> &WrappedTransposer<T> {
         let final_step = self.final_step();
-        &final_step.finished_wrapped_transposer().unwrap().transposer
+        final_step.finished_wrapped_transposer().unwrap()
     }
 
     #[allow(dead_code)]
@@ -81,26 +84,76 @@ impl<T: Transposer> StepGroupSaturated<T> {
         time: T::Time,
         channel: usize,
         waker: Waker,
-    ) -> Result<(), InterpolatePollErr> {
-        let base_time = self.time().raw_time();
+    ) -> Result<InterpolatePoll<T>, InterpolatePollErr> {
+        let base_time = self.first_time().raw_time();
         #[cfg(debug_assertions)]
         if time < base_time {
             return Err(InterpolatePollErr::TimePast)
         }
 
-        // check if we already have an interpolation for this channel
-        // if the time matches we can keep going with this.
+        // get current interpolation for channel.
+        let mut current = self.interpolations.get_mut(&channel);
 
-        let base = self.final_step().finished_wrapped_transposer().unwrap();
-        let fut = T::interpolate(&base.transposer, base_time, time, todo!());
-        // interpolations.insert(channel, v)
+        // ignore current interpolation on channel if time doesn't match up.
+        if let Some(int) = &current {
+            if int.time() != time {
+                current = None
+            }
+        }
 
-        todo!()
+        // use current, or insert, then use.
+        let current = match current {
+            // outdated
+            Some(current) => current,
+            // not present
+            None => {
+                let interpolation =
+                    PointerInterpolation::new(time, self.final_wrapped_transposer());
+                let interpolation = Box::pin(interpolation);
+                self.interpolations.insert(channel, interpolation);
+                self.interpolations.get_mut(&channel).unwrap()
+            },
+        };
+
+        // poll and pass back results.
+        let mut cx = Context::from_waker(&waker);
+        match current.as_mut().poll(&mut cx) {
+            Poll::Ready(out) => {
+                self.interpolations.remove(&channel);
+                Ok(InterpolatePoll::Ready(out))
+            },
+            Poll::Pending => {
+                if current.needs_state() {
+                    Ok(InterpolatePoll::NeedsState)
+                } else {
+                    Ok(InterpolatePoll::Pending)
+                }
+            },
+        }
     }
 
-    #[allow(dead_code)]
+    pub fn set_interpolation_input_state(
+        &mut self,
+        time: T::Time,
+        channel: usize,
+        state: T::InputState,
+    ) -> Result<(), Box<T::InputState>> {
+        match self.interpolations.get(&channel) {
+            Some(int) => {
+                if int.time() != time {
+                    Err(Box::new(state))
+                } else {
+                    int.set_state(state)
+                }
+            },
+            None => Err(Box::new(state)),
+        }
+    }
+
     pub fn remove_interpolation(&mut self, channel: usize) {
-        self.interpolations.remove(&channel);
+        if let Some(int) = self.interpolations.remove(&channel) {
+            int.wake();
+        }
     }
 }
 
@@ -110,10 +163,4 @@ impl<T: Transposer> Drop for StepGroupSaturated<T> {
             i.wake();
         }
     }
-}
-
-pub enum InterpolatePollErr {
-    NotSaturated,
-    #[cfg(debug_assertions)]
-    TimePast,
 }

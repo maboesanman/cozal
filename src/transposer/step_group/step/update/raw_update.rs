@@ -107,18 +107,6 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<T, C, A> {
             (frame, outputs, args)
         }
     }
-
-    pub fn needs_input_state(&self) -> bool {
-        self.get_state().requested()
-    }
-
-    pub fn set_input_state(&self, state: T::InputState) -> Result<(), T::InputState> {
-        self.get_state().set(state)
-    }
-
-    fn get_state(&self) -> &LazyState<T::InputState> {
-        unsafe { self.state.as_ref().unwrap() }
-    }
 }
 
 impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Drop for RawUpdate<T, C, A> {
