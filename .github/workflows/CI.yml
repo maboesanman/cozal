@@ -24,6 +24,24 @@ jobs:
         toolchain: nightly
         override: true
 
+    - name: Build
+      run: cargo build --release
+      shell: bash
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Install nightly toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: nightly
+        override: true
+
     - name: Install llvm tools
       run: rustup component add llvm-tools-preview
       shell: bash
@@ -49,6 +67,7 @@ jobs:
         flags: Test
         name: Cargo Tests
         fail_ci_if_error: true
+
   lint:
     runs-on: ubuntu-latest
 
@@ -70,6 +89,7 @@ jobs:
     - name: Check formatting
       run: cargo fmt -- --check --verbose
       shell: bash
+
   clippy:
     runs-on: ubuntu-latest
 
