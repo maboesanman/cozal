@@ -3,10 +3,9 @@ use std::task::{Context, Poll};
 
 use futures_core::Future;
 
-use super::step_group::StepGroup;
-use super::Transposer;
 use crate::source::adapters::transpose::input_buffer::InputBuffer;
-use crate::transposer::step_group::{InterpolatePoll, StepGroupPollResult};
+use crate::transposer::step_group::{InterpolatePoll, StepGroup, StepGroupPollResult};
+use crate::transposer::Transposer;
 use crate::util::take_mut;
 
 pub fn evaluate_to<T: Transposer, S, Fs>(
