@@ -40,6 +40,8 @@ impl<T: Transposer> StepGroupSaturated<T> {
             .next_unsaturated(next_inputs, input_state)
             .map_err(|e| match e {
                 super::step::NextUnsaturatedErr::NotSaturated => unreachable!(),
+
+                #[cfg(debug_assertions)]
                 super::step::NextUnsaturatedErr::InputPastOrPresent => {
                     NextUnsaturatedErr::InputPastOrPresent
                 },
@@ -84,9 +86,8 @@ impl<T: Transposer> StepGroupSaturated<T> {
         channel: usize,
         waker: Waker,
     ) -> Result<InterpolatePoll<T>, InterpolatePollErr> {
-        let base_time = self.first_time().raw_time();
         #[cfg(debug_assertions)]
-        if time < base_time {
+        if time < self.first_time().raw_time() {
             return Err(InterpolatePollErr::TimePast)
         }
 
