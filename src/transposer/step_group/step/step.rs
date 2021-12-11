@@ -1,14 +1,14 @@
 use core::cmp::Ordering;
 use core::mem::replace;
 use core::pin::Pin;
-use core::task::{Context, Poll, Waker};
+use core::task::{Context, Poll};
 
 use futures_core::Future;
 
 use super::args::{InitArg, InputArg, ScheduledArg};
 use super::step_update_context::StepUpdateContext;
 use super::time::StepTime;
-use super::update::{Arg, UpdateContext, UpdateResult, WrappedTransposer, WrappedUpdate};
+use super::update::{Arg, UpdateResult, WrappedTransposer, WrappedUpdate};
 use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::Transposer;
 use crate::util::take_mut;
@@ -405,172 +405,6 @@ impl<T: Transposer> Step<T> {
         (self.outputs_emitted.is_some(), inputs)
     }
 
-    pub fn poll(&mut self, waker: Waker) -> Result<StepPoll<T>, PollErr> {
-        let mut cx = Context::from_waker(&waker);
-
-        fn handle_original_outputs<T: Transposer>(
-            outputs: Vec<T::Output>,
-            outputs_emitted: &mut OutputsEmitted,
-        ) -> Result<StepPoll<T>, PollErr> {
-            Ok(if outputs.is_empty() {
-                *outputs_emitted = OutputsEmitted::None;
-                StepPoll::ReadyNoOutputs
-            } else {
-                *outputs_emitted = OutputsEmitted::Some;
-                StepPoll::ReadyOutputs(outputs)
-            })
-        }
-
-        fn handle_pending<T: Transposer, C: UpdateContext<T>, A: Arg<T>>(
-            update: &WrappedUpdate<T, C, A>,
-        ) -> Result<StepPoll<T>, PollErr> {
-            Ok({
-                // this means there is an unrecoverable mismatch between update and inner.
-                if update.needs_input_state().unwrap() {
-                    StepPoll::NeedsState
-                } else {
-                    StepPoll::Pending
-                }
-            })
-        }
-
-        match &mut self.inner {
-            StepInner::SaturatingInit {
-                update,
-            } => match update.as_mut().poll(&mut cx) {
-                Poll::Ready(UpdateResult {
-                    wrapped_transposer,
-                    outputs,
-                    arg: (),
-                }) => {
-                    self.inner = {
-                        StepInner::SaturatedInit {
-                            wrapped_transposer,
-                        }
-                    };
-
-                    handle_original_outputs(outputs, &mut self.outputs_emitted)
-                },
-                Poll::Pending => handle_pending(update),
-            },
-            StepInner::OriginalSaturatingInput {
-                update,
-            } => match update.as_mut().poll(&mut cx) {
-                Poll::Ready(UpdateResult {
-                    wrapped_transposer,
-                    outputs,
-                    arg,
-                }) => {
-                    self.inner = {
-                        StepInner::SaturatedInput {
-                            wrapped_transposer,
-                            inputs: arg,
-                        }
-                    };
-
-                    handle_original_outputs(outputs, &mut self.outputs_emitted)
-                },
-                Poll::Pending => handle_pending(update),
-            },
-
-            StepInner::RepeatSaturatingInput {
-                update,
-            } => match update.as_mut().poll(&mut cx) {
-                Poll::Ready(UpdateResult {
-                    wrapped_transposer,
-                    outputs: _,
-                    arg,
-                }) => {
-                    self.inner = {
-                        StepInner::SaturatedInput {
-                            wrapped_transposer,
-                            inputs: arg,
-                        }
-                    };
-
-                    Ok(StepPoll::ReadyNoOutputs)
-                },
-                Poll::Pending => handle_pending(update),
-            },
-            StepInner::OriginalSaturatingScheduled {
-                update,
-            } => match update.as_mut().poll(&mut cx) {
-                Poll::Ready(UpdateResult {
-                    wrapped_transposer,
-                    outputs,
-                    arg: (),
-                }) => {
-                    self.inner = {
-                        StepInner::SaturatedScheduled {
-                            wrapped_transposer,
-                        }
-                    };
-
-                    handle_original_outputs(outputs, &mut self.outputs_emitted)
-                },
-                Poll::Pending => handle_pending(update),
-            },
-            StepInner::RepeatSaturatingScheduled {
-                update,
-            } => match update.as_mut().poll(&mut cx) {
-                Poll::Ready(UpdateResult {
-                    wrapped_transposer,
-                    outputs: _,
-                    arg: (),
-                }) => {
-                    self.inner = {
-                        StepInner::SaturatedScheduled {
-                            wrapped_transposer,
-                        }
-                    };
-
-                    Ok(StepPoll::ReadyNoOutputs)
-                },
-                Poll::Pending => handle_pending(update),
-            },
-            StepInner::UnsaturatedInit
-            | StepInner::OriginalUnsaturatedInput {
-                ..
-            }
-            | StepInner::OriginalUnsaturatedScheduled
-            | StepInner::RepeatUnsaturatedInput {
-                ..
-            }
-            | StepInner::RepeatUnsaturatedScheduled => Err(PollErr::Unsaturated),
-            StepInner::SaturatedInit {
-                ..
-            }
-            | StepInner::SaturatedInput {
-                ..
-            }
-            | StepInner::SaturatedScheduled {
-                ..
-            } => Err(PollErr::Saturated),
-            StepInner::Unreachable => unreachable!(),
-        }
-    }
-
-    pub fn set_input_state(&mut self, state: T::InputState) -> Result<(), T::InputState> {
-        match &mut self.inner {
-            StepInner::SaturatingInit {
-                update,
-            } => update.as_mut().set_input_state(state),
-            StepInner::OriginalSaturatingInput {
-                update,
-            } => update.as_mut().set_input_state(state),
-            StepInner::OriginalSaturatingScheduled {
-                update,
-            } => update.as_mut().set_input_state(state),
-            StepInner::RepeatSaturatingInput {
-                update,
-            } => update.as_mut().set_input_state(state),
-            StepInner::RepeatSaturatingScheduled {
-                update,
-            } => update.as_mut().set_input_state(state),
-            _ => Err(state),
-        }
-    }
-
     pub fn time(&self) -> &StepTime<T::Time> {
         &self.time
     }
@@ -590,6 +424,141 @@ impl<T: Transposer> Step<T> {
                 wrapped_transposer,
             } => Some(wrapped_transposer),
             _ => None,
+        }
+    }
+}
+
+impl<T: Transposer> Future for Step<T> {
+    type Output = Result<Option<Vec<T::Output>>, PollErr>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = unsafe { Pin::into_inner_unchecked(self) };
+        fn handle_original_outputs<O>(
+            outputs: Vec<O>,
+            outputs_emitted: &mut OutputsEmitted,
+        ) -> Poll<Result<Option<Vec<O>>, PollErr>> {
+            Poll::Ready(Ok(if outputs.is_empty() {
+                *outputs_emitted = OutputsEmitted::None;
+                None
+            } else {
+                *outputs_emitted = OutputsEmitted::Some;
+                Some(outputs)
+            }))
+        }
+
+        match &mut this.inner {
+            StepInner::SaturatingInit {
+                update,
+            } => match update.as_mut().poll(cx) {
+                Poll::Ready(UpdateResult {
+                    wrapped_transposer,
+                    outputs,
+                    arg: (),
+                }) => {
+                    this.inner = {
+                        StepInner::SaturatedInit {
+                            wrapped_transposer,
+                        }
+                    };
+
+                    handle_original_outputs(outputs, &mut this.outputs_emitted)
+                },
+                Poll::Pending => Poll::Pending,
+            },
+            StepInner::OriginalSaturatingInput {
+                update,
+            } => match update.as_mut().poll(cx) {
+                Poll::Ready(UpdateResult {
+                    wrapped_transposer,
+                    outputs,
+                    arg,
+                }) => {
+                    this.inner = {
+                        StepInner::SaturatedInput {
+                            wrapped_transposer,
+                            inputs: arg,
+                        }
+                    };
+
+                    handle_original_outputs(outputs, &mut this.outputs_emitted)
+                },
+                Poll::Pending => Poll::Pending,
+            },
+
+            StepInner::RepeatSaturatingInput {
+                update,
+            } => match update.as_mut().poll(cx) {
+                Poll::Ready(UpdateResult {
+                    wrapped_transposer,
+                    outputs: _,
+                    arg,
+                }) => {
+                    this.inner = {
+                        StepInner::SaturatedInput {
+                            wrapped_transposer,
+                            inputs: arg,
+                        }
+                    };
+
+                    Poll::Ready(Ok(None))
+                },
+                Poll::Pending => Poll::Pending,
+            },
+            StepInner::OriginalSaturatingScheduled {
+                update,
+            } => match update.as_mut().poll(cx) {
+                Poll::Ready(UpdateResult {
+                    wrapped_transposer,
+                    outputs,
+                    arg: (),
+                }) => {
+                    this.inner = {
+                        StepInner::SaturatedScheduled {
+                            wrapped_transposer,
+                        }
+                    };
+
+                    handle_original_outputs(outputs, &mut this.outputs_emitted)
+                },
+                Poll::Pending => Poll::Pending,
+            },
+            StepInner::RepeatSaturatingScheduled {
+                update,
+            } => match update.as_mut().poll(cx) {
+                Poll::Ready(UpdateResult {
+                    wrapped_transposer,
+                    outputs: _,
+                    arg: (),
+                }) => {
+                    this.inner = {
+                        StepInner::SaturatedScheduled {
+                            wrapped_transposer,
+                        }
+                    };
+
+                    Poll::Ready(Ok(None))
+                },
+                Poll::Pending => Poll::Pending,
+            },
+            StepInner::UnsaturatedInit
+            | StepInner::OriginalUnsaturatedInput {
+                ..
+            }
+            | StepInner::OriginalUnsaturatedScheduled
+            | StepInner::RepeatUnsaturatedInput {
+                ..
+            }
+            | StepInner::RepeatUnsaturatedScheduled => Poll::Ready(Err(PollErr::Unsaturated)),
+            StepInner::SaturatedInit {
+                ..
+            }
+            | StepInner::SaturatedInput {
+                ..
+            }
+            | StepInner::SaturatedScheduled {
+                ..
+            } => Poll::Ready(Err(PollErr::Saturated)),
+            StepInner::Unreachable => unreachable!(),
         }
     }
 }
@@ -681,12 +650,4 @@ impl<T: Transposer> StepInner<T> {
                 | StepInner::SaturatedScheduled { .. }
         )
     }
-}
-
-#[derive(Debug)]
-pub enum StepPoll<T: Transposer> {
-    Pending,
-    NeedsState,
-    ReadyNoOutputs,
-    ReadyOutputs(Vec<T::Output>),
 }

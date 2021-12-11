@@ -1,10 +1,14 @@
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
 use async_trait::async_trait;
+use futures_core::Future;
 use matches::assert_matches;
 use rand::Rng;
 
 use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
 use crate::transposer::step_group::lazy_state::LazyState;
-use crate::transposer::step_group::step::{Step, StepPoll};
+use crate::transposer::step_group::step::Step;
 use crate::transposer::Transposer;
 use crate::util::dummy_waker::DummyWaker;
 
@@ -66,8 +70,9 @@ fn saturate_take() {
     let mut init = Step::new_init(transposer, rng_seed, &s);
 
     let (waker, _) = DummyWaker::new();
+    let mut cx = Context::from_waker(&waker);
 
-    assert_matches!(init.poll(waker), Ok(StepPoll::ReadyNoOutputs));
+    assert_matches!(Pin::new(&mut init).poll(&mut cx), Poll::Ready(Ok(None)));
 
     let s = LazyState::new();
     let mut scheduled = init;
@@ -79,10 +84,8 @@ fn saturate_take() {
             .unwrap();
         scheduled_next.saturate_take(&mut scheduled).unwrap();
 
-        let (waker, _) = DummyWaker::new();
-
-        let poll_result = scheduled_next.poll(waker);
-        if let StepPoll::ReadyOutputs(o) = poll_result.unwrap() {
+        let poll_result = Pin::new(&mut scheduled_next).poll(&mut cx);
+        if let Poll::Ready(Ok(Some(o))) = poll_result {
             assert_eq!(o.len(), 1);
             assert_eq!(*o.first().unwrap(), i * 10);
         }
@@ -103,8 +106,9 @@ fn saturate_clone() {
     let mut init = Step::new_init(transposer, rng_seed, &s);
 
     let (waker, _) = DummyWaker::new();
+    let mut cx = Context::from_waker(&waker);
 
-    assert_matches!(init.poll(waker), Ok(StepPoll::ReadyNoOutputs));
+    assert_matches!(Pin::new(&mut init).poll(&mut cx), Poll::Ready(Ok(None)));
 
     let s = LazyState::new();
     let mut scheduled = init;
@@ -116,10 +120,8 @@ fn saturate_clone() {
             .unwrap();
         scheduled_next.saturate_clone(&mut scheduled).unwrap();
 
-        let (waker, _) = DummyWaker::new();
-
-        let poll_result = scheduled_next.poll(waker);
-        if let StepPoll::ReadyOutputs(o) = poll_result.unwrap() {
+        let poll_result = Pin::new(&mut scheduled_next).poll(&mut cx);
+        if let Poll::Ready(Ok(Some(o))) = poll_result {
             assert_eq!(o.len(), 1);
             assert_eq!(*o.first().unwrap(), i * 10);
         }
@@ -139,12 +141,15 @@ fn desaturate() {
 
     let s = LazyState::new();
     let mut init = Step::new_init(transposer, rng_seed, &s);
-    init.poll(DummyWaker::new().0).unwrap();
+    let (waker, _) = DummyWaker::new();
+    let mut cx = Context::from_waker(&waker);
+
+    let _ = Pin::new(&mut init).poll(&mut cx);
 
     let s = LazyState::new();
     let mut scheduled1 = init.next_unsaturated(&mut next_input, &s).unwrap().unwrap();
     scheduled1.saturate_clone(&mut init).unwrap();
-    scheduled1.poll(DummyWaker::new().0).unwrap();
+    assert_matches!(Pin::new(&mut scheduled1).poll(&mut cx), Poll::Ready(Ok(_)));
 
     let s = LazyState::new();
     let mut scheduled2 = scheduled1
@@ -152,15 +157,15 @@ fn desaturate() {
         .unwrap()
         .unwrap();
     scheduled2.saturate_clone(&mut scheduled1).unwrap();
-    scheduled2.poll(DummyWaker::new().0).unwrap();
+    assert_matches!(Pin::new(&mut scheduled2).poll(&mut cx), Poll::Ready(Ok(_)));
 
     scheduled1.desaturate().unwrap();
     scheduled1.saturate_clone(&mut init).unwrap();
-    scheduled1.poll(DummyWaker::new().0).unwrap();
+    assert_matches!(Pin::new(&mut scheduled1).poll(&mut cx), Poll::Ready(Ok(_)));
 
     scheduled2.desaturate().unwrap();
     scheduled2.saturate_clone(&mut scheduled1).unwrap();
-    scheduled2.poll(DummyWaker::new().0).unwrap();
+    assert_matches!(Pin::new(&mut scheduled2).poll(&mut cx), Poll::Ready(Ok(_)));
 
     init.desaturate().unwrap();
 }

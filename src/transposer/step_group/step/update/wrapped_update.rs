@@ -70,24 +70,6 @@ where
             },
         )
     }
-
-    pub fn needs_input_state(&self) -> Result<bool, ()> {
-        match &self.inner {
-            WrappedUpdateInner::Waiting(_) => Ok(false),
-            WrappedUpdateInner::Active(p) => Ok(p.needs_input_state()),
-            WrappedUpdateInner::Terminated => Err(()),
-        }
-    }
-
-    pub fn set_input_state(
-        self: Pin<&mut Self>,
-        state: T::InputState,
-    ) -> Result<(), T::InputState> {
-        match self.project().inner.project() {
-            FrameUpdateInnerProject::Active(p) => p.set_input_state(state),
-            _ => Err(state),
-        }
-    }
 }
 
 impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for WrappedUpdate<T, C, A> {
