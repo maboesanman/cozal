@@ -544,8 +544,8 @@ pub enum InterpolatePoll<T: Transposer> {
 }
 
 pub struct StepGroupPoll<T: Transposer> {
-    result:  StepGroupPollResult,
-    outputs: Vec<T::Output>,
+    pub result:  StepGroupPollResult,
+    pub outputs: Vec<T::Output>,
 }
 
 impl<T: Transposer> StepGroupPoll<T> {
@@ -569,34 +569,40 @@ impl<T: Transposer> StepGroupPoll<T> {
     }
 }
 
+#[derive(Debug)]
 pub enum StepGroupPollResult {
     NeedsState,
     Pending,
     Ready,
 }
 
+#[derive(Debug)]
 pub enum PollErr {
     Unsaturated,
     Saturated,
 }
 
+#[derive(Debug)]
 pub enum InterpolatePollErr {
     NotSaturated,
     #[cfg(debug_assertions)]
     TimePast,
 }
 
+#[derive(Debug)]
 enum CurrentSaturatingErr {
     Unsaturated,
     Saturated,
 }
 
+#[derive(Debug)]
 pub enum NextUnsaturatedErr {
     NotSaturated,
     #[cfg(debug_assertions)]
     InputPastOrPresent,
 }
 
+#[derive(Debug)]
 pub enum SaturateTakeErr {
     PreviousNotSaturated,
     SelfNotUnsaturated,
@@ -605,6 +611,7 @@ pub enum SaturateTakeErr {
     PreviousHasActiveInterpolations,
 }
 
+#[derive(Debug)]
 pub enum SaturateCloneErr {
     PreviousNotSaturated,
     SelfNotUnsaturated,
@@ -612,6 +619,7 @@ pub enum SaturateCloneErr {
     IncorrectPrevious,
 }
 
+#[derive(Debug)]
 pub enum DesaturateErr {
     AlreadyUnsaturated,
     ActiveWakers,
