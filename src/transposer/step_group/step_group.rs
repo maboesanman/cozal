@@ -1,30 +1,34 @@
-use std::collections::HashMap;
-use std::hint::unreachable_unchecked;
+use std::pin::Pin;
 use std::sync::Weak;
-use std::task::{Wake, Waker};
+use std::task::{Context, Poll, Waker};
 
 use futures_core::Future;
 
 use super::lazy_state::LazyState;
-use super::step::{Step, StepTime};
+use super::step::{PollErr as StepPollErr, Step, StepTime};
+use super::step_group_saturated::StepGroupSaturated;
+use crate::transposer::step_group::step::SaturateErr;
 use crate::transposer::Transposer;
 use crate::util::stack_waker::StackWaker;
 use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
 
 pub struct StepGroup<T: Transposer> {
     inner:       StepGroupInner<T>,
-    input_state: LazyState<T>,
+    input_state: Box<LazyState<T::InputState>>,
     // these are used purely for enforcing that saturate calls use the previous wrapped_transposer.
-    // #[cfg(debug_assertions)]
-    // uuid_self: uuid::Uuid,
-    // #[cfg(debug_assertions)]
-    // uuid_prev: Option<uuid::Uuid>,
+    #[cfg(debug_assertions)]
+    uuid_self:   uuid::Uuid,
+    #[cfg(debug_assertions)]
+    uuid_prev:   Option<uuid::Uuid>,
 }
 
 impl<T: Transposer> StepGroup<T> {
+    #[allow(dead_code)]
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         let mut steps = Vec::with_capacity(1);
-        steps.push(Step::new_init(transposer, rng_seed));
+        let input_state = Box::new(LazyState::new());
+        let input_state_ptr = input_state.as_ref();
+        steps.push(Step::new_init(transposer, rng_seed, input_state_ptr));
 
         Self {
             inner: StepGroupInner::OriginalSaturating {
@@ -32,399 +36,207 @@ impl<T: Transposer> StepGroup<T> {
                 steps,
                 waker_stack: StackWaker::new_empty(),
             },
-        }
-    }
+            input_state,
 
-    fn new_from_unsaturated(step: Step<T>) -> Self {
-        Self {
-            inner: StepGroupInner::OriginalUnsaturated {
-                steps: vec![step]
-            },
+            #[cfg(debug_assertions)]
+            uuid_self: uuid::Uuid::new_v4(),
+            #[cfg(debug_assertions)]
+            uuid_prev: None,
         }
     }
 
     // this only needs mut because it can remove interpolations.
+    #[allow(dead_code)]
     pub fn next_unsaturated(
         &mut self,
         next_inputs: &mut Option<(T::Time, Box<[T::Input]>)>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
-        let next_time: Option<T::Time> = next_inputs.as_ref().map(|(t, _)| *t);
-        if let StepGroupInner::Saturated {
-            interpolations, ..
-        } = &mut self.inner
-        {
-            if let Some(next_time) = next_time {
-                for (_, interpolation) in interpolations.drain_filter(|_, v| v.time() >= next_time)
-                {
-                    interpolation.wake();
-                }
-            }
+        if let StepGroupInner::Saturated(saturated) = &mut self.inner {
+            let input_state = Box::new(LazyState::new());
+            let input_state_ptr = input_state.as_ref();
 
-            let next = self
-                .final_step()
-                .unwrap()
-                .next_unsaturated(next_inputs)
-                .map_err(|e| match e {
-                    super::step::NextUnsaturatedErr::NotSaturated => unreachable!(),
-                    super::step::NextUnsaturatedErr::InputPastOrPresent => {
-                        NextUnsaturatedErr::InputPastOrPresent
-                    },
-                })?;
+            let next = saturated.next_unsaturated(next_inputs, input_state_ptr)?;
+            let next = next.map(|step| StepGroup {
+                inner: StepGroupInner::OriginalUnsaturated {
+                    steps: vec![step]
+                },
+                input_state,
 
-            Ok(next.map(|step| Self::new_from_unsaturated(step)))
+                #[cfg(debug_assertions)]
+                uuid_self: uuid::Uuid::new_v4(),
+                #[cfg(debug_assertions)]
+                uuid_prev: Some(self.uuid_self),
+            });
+
+            Ok(next)
         } else {
             Err(NextUnsaturatedErr::NotSaturated)
         }
     }
 
-    pub fn poll(
-        &mut self,
-        channel: usize,
-        waker: Waker,
-    ) -> Result<(StepGroupPoll, Vec<T::Output>), PollErr> {
-        let mut outputs = Vec::new();
-        loop {
-            let (step, waker_stack) = match self.current_saturating() {
-                Ok(x) => x,
-                Err(CurrentSaturatingErr::Unsaturated) => return Err(PollErr::Unsaturated),
-                Err(CurrentSaturatingErr::Saturated) => return Ok((StepGroupPoll::Ready, outputs)),
-            };
-
-            let waker = match StackWaker::register(waker_stack, channel, waker.clone()) {
-                Some(w) => Waker::from(w),
-                None => break Ok((StepGroupPoll::Pending, outputs)),
-            };
-
-            let poll_result = step.poll(waker).map_err(|e| match e {
-                StepPollErr::Unsaturated => PollErr::Unsaturated,
-                StepPollErr::Saturated => PollErr::Saturated,
-            })?;
-
-            match poll_result {
-                StepPoll::Pending => break Ok((StepGroupPoll::Pending, outputs)),
-                StepPoll::NeedsState => break Ok((StepGroupPoll::NeedsState, outputs)),
-                StepPoll::ReadyNoOutputs => {},
-                StepPoll::ReadyOutputs(mut o) => outputs.append(&mut o),
-            };
-
-            if self.advance_saturation_index().unwrap() {
-                break Ok((StepGroupPoll::Ready, outputs))
-            }
-        }
-    }
-
-    pub fn interpolate_poll(
-        &mut self,
-        time: T::Time,
-        channel: usize,
-        waker: Waker,
-    ) -> Result<InterpolatePoll<T>, InterpolatePollErr> {
-        #[cfg(debug_assertions)]
-        if time < self.time() {
-            return Err(InterpolatePollErr::TimePast)
-        }
-
-        // check if we already have an interpolation for this channel
-        // if the time matches we can keep going with this.
-
-        let (last_step, interpolations) = match &mut self.inner {
-            StepGroupInner::Saturated {
-                interpolations,
-                steps,
-            } => (steps.last().unwrap(), interpolations),
-            StepGroupInner::Unreachable => unreachable!(),
-            _ => return Err(InterpolatePollErr::NotSaturated),
-        };
-        let base_time = last_step.time().raw_time();
-        let base = last_step.finished_wrapped_transposer().unwrap();
-        let fut = T::interpolate(&base.transposer, base_time, time, todo!());
-        // interpolations.insert(channel, v)
-
-        todo!()
-    }
-
-    pub fn remove_interpolation(&mut self, channel: usize) {
-        if let StepGroupInner::Saturated {
-            interpolations, ..
-        } = &mut self.inner
-        {
-            interpolations.remove(&channel);
-        }
-    }
-
+    #[allow(dead_code)]
     pub fn saturate_take(&mut self, prev: &mut Self) -> Result<(), SaturateTakeErr> {
-        match (&mut prev.inner, &mut self.inner) {
-            (
-                StepGroupInner::OriginalUnsaturated {
-                    ..
-                }
-                | StepGroupInner::OriginalSaturating {
-                    ..
-                }
-                | StepGroupInner::RepeatUnsaturated {
-                    ..
-                }
-                | StepGroupInner::RepeatSaturating {
-                    ..
-                },
-                _,
-            ) => Err(SaturateTakeErr::PreviousNotSaturated),
-            (
-                _,
-                StepGroupInner::OriginalSaturating {
-                    ..
-                }
-                | StepGroupInner::RepeatSaturating {
-                    ..
-                }
-                | StepGroupInner::Saturated {
-                    ..
-                },
-            ) => Err(SaturateTakeErr::SelfNotUnsaturated),
-            (StepGroupInner::Unreachable, _) => unreachable!(),
-            (_, StepGroupInner::Unreachable) => unreachable!(),
-            (
-                StepGroupInner::Saturated {
-                    interpolations,
-                    steps: prev_steps,
-                },
-                StepGroupInner::OriginalUnsaturated {
-                    steps: self_steps,
-                },
-            ) => {
-                if !interpolations.is_empty() {
-                    Err(SaturateTakeErr::PreviousHasActiveInterpolations)
-                } else {
-                    self_steps
-                        .first_mut()
-                        .unwrap()
-                        .saturate_take(prev_steps.last_mut().unwrap())
-                        .map_err(|e| match e {
-                            SaturateErr::PreviousNotSaturated => {
-                                SaturateTakeErr::PreviousNotSaturated
-                            },
-                            SaturateErr::SelfNotUnsaturated => SaturateTakeErr::SelfNotUnsaturated,
-                            #[cfg(debug_assertions)]
-                            SaturateErr::IncorrectPrevious => SaturateTakeErr::IncorrectPrevious,
-                        })?;
-                    take_or_recover(
-                        &mut prev.inner,
-                        || StepGroupInner::Unreachable,
-                        |inner| {
-                            if let StepGroupInner::Saturated {
-                                interpolations: _,
-                                steps,
-                            } = inner
-                            {
-                                StepGroupInner::RepeatUnsaturated {
-                                    steps,
-                                }
-                            } else {
-                                unsafe { unreachable_unchecked() }
-                            }
-                        },
-                    );
-                    take_or_recover(
-                        &mut self.inner,
-                        || StepGroupInner::Unreachable,
-                        |inner| {
-                            if let StepGroupInner::OriginalUnsaturated {
-                                steps,
-                            } = inner
-                            {
-                                StepGroupInner::OriginalSaturating {
-                                    current_saturating_index: 0,
-                                    steps,
-                                    waker_stack: StackWaker::new_empty(),
-                                }
-                            } else {
-                                unsafe { unreachable_unchecked() }
-                            }
-                        },
-                    );
-                    Ok(())
-                }
-            },
-            (
-                StepGroupInner::Saturated {
-                    interpolations,
-                    steps: prev_steps,
-                },
-                StepGroupInner::RepeatUnsaturated {
-                    steps: self_steps,
-                },
-            ) => {
-                if !interpolations.is_empty() {
-                    Err(SaturateTakeErr::PreviousHasActiveInterpolations)
-                } else {
-                    self_steps
-                        .first_mut()
-                        .unwrap()
-                        .saturate_take(prev_steps.last_mut().unwrap())
-                        .map_err(|e| match e {
-                            SaturateErr::PreviousNotSaturated => {
-                                SaturateTakeErr::PreviousNotSaturated
-                            },
-                            SaturateErr::SelfNotUnsaturated => SaturateTakeErr::SelfNotUnsaturated,
-                            #[cfg(debug_assertions)]
-                            SaturateErr::IncorrectPrevious => SaturateTakeErr::IncorrectPrevious,
-                        })?;
-                    take_or_recover(
-                        &mut prev.inner,
-                        || StepGroupInner::Unreachable,
-                        |inner| {
-                            if let StepGroupInner::Saturated {
-                                interpolations: _,
-                                steps,
-                            } = inner
-                            {
-                                StepGroupInner::RepeatUnsaturated {
-                                    steps,
-                                }
-                            } else {
-                                unsafe { unreachable_unchecked() }
-                            }
-                        },
-                    );
-                    take_or_recover(
-                        &mut self.inner,
-                        || StepGroupInner::Unreachable,
-                        |inner| {
-                            if let StepGroupInner::RepeatUnsaturated {
-                                steps,
-                            } = inner
-                            {
-                                StepGroupInner::RepeatSaturating {
-                                    current_saturating_index: 0,
-                                    steps,
-                                    waker_stack: StackWaker::new_empty(),
-                                }
-                            } else {
-                                unsafe { unreachable_unchecked() }
-                            }
-                        },
-                    );
-                    Ok(())
-                }
-            },
+        #[cfg(debug_assertions)]
+        if self.uuid_prev != Some(prev.uuid_self) {
+            return Err(SaturateTakeErr::IncorrectPrevious)
         }
+
+        enum TakeFromPreviousErr {
+            SaturateErr(SaturateErr),
+            PreviousHasActiveInterpolations,
+        }
+
+        fn take_from_previous<T: Transposer>(
+            prev: &mut StepGroupInner<T>,
+            next: &mut Step<T>,
+        ) -> Result<(), TakeFromPreviousErr> {
+            take_and_return_or_recover(
+                prev,
+                || StepGroupInner::Unreachable,
+                |inner| {
+                    if let StepGroupInner::Saturated(saturated) = inner {
+                        match saturated.take() {
+                            Ok(mut prev_steps) => {
+                                match next.saturate_take(prev_steps.last_mut().unwrap()) {
+                                    Err(err) => {
+                                        let replacement = StepGroupInner::Saturated(
+                                            StepGroupSaturated::new(prev_steps),
+                                        );
+                                        (replacement, Err(TakeFromPreviousErr::SaturateErr(err)))
+                                    },
+                                    Ok(()) => {
+                                        let replacement = StepGroupInner::RepeatUnsaturated {
+                                            steps: prev_steps,
+                                        };
+
+                                        (replacement, Ok(()))
+                                    },
+                                }
+                            },
+                            Err(saturated) => {
+                                let replacement = StepGroupInner::Saturated(saturated);
+
+                                (
+                                    replacement,
+                                    Err(TakeFromPreviousErr::PreviousHasActiveInterpolations),
+                                )
+                            },
+                        }
+                    } else {
+                        (
+                            inner,
+                            Err(TakeFromPreviousErr::SaturateErr(
+                                SaturateErr::PreviousNotSaturated,
+                            )),
+                        )
+                    }
+                },
+            )
+        }
+
+        self.saturate(|next| take_from_previous(&mut prev.inner, next))
+            .map_err(|err| match err {
+                Some(TakeFromPreviousErr::PreviousHasActiveInterpolations) => {
+                    SaturateTakeErr::PreviousHasActiveInterpolations
+                },
+                Some(TakeFromPreviousErr::SaturateErr(e)) => match e {
+                    SaturateErr::PreviousNotSaturated => SaturateTakeErr::PreviousNotSaturated,
+                    SaturateErr::SelfNotUnsaturated => SaturateTakeErr::SelfNotUnsaturated,
+
+                    #[cfg(debug_assertions)]
+                    SaturateErr::IncorrectPrevious => SaturateTakeErr::IncorrectPrevious,
+                },
+                None => SaturateTakeErr::SelfNotUnsaturated,
+            })
     }
 
+    #[allow(dead_code)]
     pub fn saturate_clone(&mut self, prev: &Self) -> Result<(), SaturateCloneErr>
     where
         T: Clone,
     {
-        match (&prev.inner, &mut self.inner) {
-            (
-                StepGroupInner::OriginalUnsaturated {
-                    ..
-                }
-                | StepGroupInner::OriginalSaturating {
-                    ..
-                }
-                | StepGroupInner::RepeatUnsaturated {
-                    ..
-                }
-                | StepGroupInner::RepeatSaturating {
-                    ..
-                },
-                _,
-            ) => Err(SaturateCloneErr::PreviousNotSaturated),
-            (
-                _,
-                StepGroupInner::OriginalSaturating {
-                    ..
-                }
-                | StepGroupInner::RepeatSaturating {
-                    ..
-                }
-                | StepGroupInner::Saturated {
-                    ..
-                },
-            ) => Err(SaturateCloneErr::SelfNotUnsaturated),
-            (StepGroupInner::Unreachable, _) => unreachable!(),
-            (_, StepGroupInner::Unreachable) => unreachable!(),
-            (
-                StepGroupInner::Saturated {
-                    interpolations: _,
-                    steps: prev_steps,
-                },
-                StepGroupInner::OriginalUnsaturated {
-                    steps: self_steps,
-                },
-            ) => {
-                self_steps
-                    .first_mut()
-                    .unwrap()
-                    .saturate_clone(prev_steps.last().unwrap())
-                    .map_err(|e| match e {
-                        SaturateErr::PreviousNotSaturated => SaturateCloneErr::PreviousNotSaturated,
-                        SaturateErr::SelfNotUnsaturated => SaturateCloneErr::SelfNotUnsaturated,
-                        #[cfg(debug_assertions)]
-                        SaturateErr::IncorrectPrevious => SaturateCloneErr::IncorrectPrevious,
-                    })?;
-                take_or_recover(
-                    &mut self.inner,
-                    || StepGroupInner::Unreachable,
-                    |inner| {
-                        if let StepGroupInner::OriginalUnsaturated {
-                            steps,
-                        } = inner
-                        {
-                            StepGroupInner::OriginalSaturating {
-                                current_saturating_index: 0,
-                                steps,
-                                waker_stack: StackWaker::new_empty(),
-                            }
-                        } else {
-                            unsafe { unreachable_unchecked() }
-                        }
-                    },
-                );
-                Ok(())
-            },
-            (
-                StepGroupInner::Saturated {
-                    interpolations: _,
-                    steps: prev_steps,
-                },
-                StepGroupInner::RepeatUnsaturated {
-                    steps: self_steps,
-                },
-            ) => {
-                self_steps
-                    .first_mut()
-                    .unwrap()
-                    .saturate_clone(prev_steps.last().unwrap())
-                    .map_err(|e| match e {
-                        SaturateErr::PreviousNotSaturated => SaturateCloneErr::PreviousNotSaturated,
-                        SaturateErr::SelfNotUnsaturated => SaturateCloneErr::SelfNotUnsaturated,
-                        #[cfg(debug_assertions)]
-                        SaturateErr::IncorrectPrevious => SaturateCloneErr::IncorrectPrevious,
-                    })?;
-                take_or_recover(
-                    &mut self.inner,
-                    || StepGroupInner::Unreachable,
-                    |inner| {
-                        if let StepGroupInner::RepeatUnsaturated {
-                            steps,
-                        } = inner
-                        {
-                            StepGroupInner::RepeatSaturating {
-                                steps,
-                                waker_stack: StackWaker::new_empty(),
-                                current_saturating_index: 0,
-                            }
-                        } else {
-                            unsafe { unreachable_unchecked() }
-                        }
-                    },
-                );
-                Ok(())
-            },
+        #[cfg(debug_assertions)]
+        if self.uuid_prev != Some(prev.uuid_self) {
+            return Err(SaturateCloneErr::IncorrectPrevious)
         }
+
+        fn clone_from_previous<T: Transposer>(
+            prev: &StepGroupInner<T>,
+            next: &mut Step<T>,
+        ) -> Result<(), SaturateErr>
+        where
+            T: Clone,
+        {
+            if let StepGroupInner::Saturated(saturated) = prev {
+                let last_step = saturated.final_step();
+                next.saturate_clone(last_step)
+            } else {
+                Err(SaturateErr::PreviousNotSaturated)
+            }
+        }
+
+        self.saturate(|next| clone_from_previous(&prev.inner, next))
+            .map_err(|err| match err {
+                Some(SaturateErr::PreviousNotSaturated) => SaturateCloneErr::PreviousNotSaturated,
+                Some(SaturateErr::SelfNotUnsaturated) => SaturateCloneErr::SelfNotUnsaturated,
+
+                #[cfg(debug_assertions)]
+                Some(SaturateErr::IncorrectPrevious) => SaturateCloneErr::IncorrectPrevious,
+                None => SaturateCloneErr::SelfNotUnsaturated,
+            })
     }
 
+    fn saturate<F, E>(&mut self, saturate_first_step: F) -> Result<(), Option<E>>
+    where
+        F: FnOnce(&mut Step<T>) -> Result<(), E>,
+    {
+        take_and_return_or_recover(
+            &mut self.inner,
+            || StepGroupInner::Unreachable,
+            |inner| match inner {
+                StepGroupInner::OriginalUnsaturated {
+                    mut steps,
+                } => match saturate_first_step(steps.first_mut().unwrap()) {
+                    Ok(()) => {
+                        let replacement = StepGroupInner::OriginalSaturating {
+                            current_saturating_index: 0,
+                            steps,
+                            waker_stack: StackWaker::new_empty(),
+                        };
+                        (replacement, Ok(()))
+                    },
+                    Err(e) => (
+                        StepGroupInner::OriginalUnsaturated {
+                            steps,
+                        },
+                        Err(Some(e)),
+                    ),
+                },
+                StepGroupInner::RepeatUnsaturated {
+                    mut steps,
+                } => match saturate_first_step(steps.first_mut().unwrap()) {
+                    Ok(()) => {
+                        let replacement = StepGroupInner::RepeatSaturating {
+                            current_saturating_index: 0,
+                            steps,
+                            waker_stack: StackWaker::new_empty(),
+                        };
+                        (replacement, Ok(()))
+                    },
+                    Err(e) => (
+                        StepGroupInner::RepeatUnsaturated {
+                            steps,
+                        },
+                        Err(Some(e)),
+                    ),
+                },
+                StepGroupInner::Unreachable => unreachable!(),
+                _ => (inner, Err(None)),
+            },
+        )
+    }
+
+    #[allow(dead_code)]
     pub fn desaturate(&mut self) -> Result<(), DesaturateErr> {
         take_and_return_or_recover(
             &mut self.inner,
@@ -492,38 +304,65 @@ impl<T: Transposer> StepGroup<T> {
                         )
                     }
                 },
-                StepGroupInner::Saturated {
-                    interpolations,
-                    mut steps,
-                } => {
-                    steps.last_mut().unwrap().desaturate().unwrap();
-                    if interpolations.is_empty() {
-                        (
-                            StepGroupInner::RepeatUnsaturated {
-                                steps,
-                            },
-                            Ok(()),
-                        )
-                    } else {
-                        (
-                            StepGroupInner::Saturated {
-                                interpolations,
-                                steps,
-                            },
-                            Err(DesaturateErr::ActiveWakers),
-                        )
-                    }
+                StepGroupInner::Saturated(saturated) => match saturated.take() {
+                    Ok(steps) => (
+                        StepGroupInner::RepeatUnsaturated {
+                            steps,
+                        },
+                        Ok(()),
+                    ),
+                    Err(saturated) => (
+                        StepGroupInner::Saturated(saturated),
+                        Err(DesaturateErr::ActiveWakers),
+                    ),
                 },
                 StepGroupInner::Unreachable => unreachable!(),
             },
         )
     }
 
-    pub fn set_input_state(&mut self, state: T::InputState) -> Result<(), T::InputState> {
-        match self.current_saturating() {
-            Ok((step, _)) => step.set_input_state(state),
-            Err(_) => Err(state),
+    #[allow(dead_code)]
+    pub fn poll_progress(
+        &mut self,
+        channel: usize,
+        waker: Waker,
+    ) -> Result<StepGroupPoll<T>, PollErr> {
+        let mut outputs = Vec::new();
+        loop {
+            let (step, waker_stack) = match self.current_saturating() {
+                Ok(x) => x,
+                Err(CurrentSaturatingErr::Unsaturated) => return Err(PollErr::Unsaturated),
+                Err(CurrentSaturatingErr::Saturated) => {
+                    return Ok(StepGroupPoll::new_ready(outputs))
+                },
+            };
+
+            let waker = match StackWaker::register(waker_stack, channel, waker.clone()) {
+                Some(w) => Waker::from(w),
+                None => break Ok(StepGroupPoll::new_pending(outputs)),
+            };
+            let step = unsafe { Pin::new_unchecked(step) };
+            let mut cx = Context::from_waker(&waker);
+            let poll_result = step.poll(&mut cx).map_err(|e| match e {
+                StepPollErr::Unsaturated => PollErr::Unsaturated,
+                StepPollErr::Saturated => PollErr::Saturated,
+            })?;
+
+            match poll_result {
+                Poll::Pending => break Ok(StepGroupPoll::new_pending(outputs)),
+                Poll::Ready(Some(mut o)) => outputs.append(&mut o),
+                Poll::Ready(None) => {},
+            };
+
+            if self.advance_saturation_index() {
+                break Ok(StepGroupPoll::new_ready(outputs))
+            }
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn set_input_state(&mut self, state: T::InputState) -> Result<(), T::InputState> {
+        self.input_state.set(state)
     }
 
     fn first_step_time(&self) -> &StepTime<T::Time> {
@@ -540,26 +379,9 @@ impl<T: Transposer> StepGroup<T> {
             StepGroupInner::RepeatSaturating {
                 steps, ..
             } => steps.first().unwrap().time(),
-            StepGroupInner::Saturated {
-                steps, ..
-            } => steps.first().unwrap().time(),
+            StepGroupInner::Saturated(s) => s.time(),
             StepGroupInner::Unreachable => unreachable!(),
         }
-    }
-
-    fn final_step(&self) -> Result<&Step<T>, ()> {
-        match &self.inner {
-            StepGroupInner::Saturated {
-                steps, ..
-            } => Ok(&steps.last().unwrap()),
-            _ => Err(()),
-        }
-    }
-
-    // this lives as long as this stepgroup is alive
-    fn final_transposer(&self) -> Result<&T, ()> {
-        let final_step = self.final_step()?;
-        Ok(&final_step.finished_wrapped_transposer().unwrap().transposer)
     }
 
     fn current_saturating(
@@ -595,18 +417,14 @@ impl<T: Transposer> StepGroup<T> {
         }
     }
 
-    fn advance_saturation_index(&mut self) -> Result<bool, ()> {
+    fn advance_saturation_index(&mut self) -> bool {
         let (i, steps) = match &mut self.inner {
             StepGroupInner::OriginalSaturating {
                 current_saturating_index: i,
                 steps,
                 ..
             } => {
-                let next = steps
-                    .last()
-                    .unwrap()
-                    .next_unsaturated_same_time()
-                    .map_err(|_| ())?;
+                let next = steps.last().unwrap().next_unsaturated_same_time().unwrap();
 
                 if let Some(next) = next {
                     steps.push(next);
@@ -637,13 +455,10 @@ impl<T: Transposer> StepGroup<T> {
                         } => steps,
                         _ => unreachable!(),
                     };
-                    StepGroupInner::Saturated {
-                        steps,
-                        interpolations: HashMap::new(),
-                    }
+                    StepGroupInner::Saturated(StepGroupSaturated::new(steps))
                 },
             );
-            return Ok(true)
+            return true
         }
 
         *i += 1;
@@ -652,17 +467,17 @@ impl<T: Transposer> StepGroup<T> {
         let next = part2.first_mut().unwrap();
         prev.saturate_take(next).unwrap();
 
-        Ok(false)
+        false
     }
 
     fn is_saturated(&self) -> bool {
         matches!(self.inner, StepGroupInner::Saturated { .. })
     }
 
-    fn is_desaturated(&self) -> bool {
+    fn is_unsaturated(&self) -> bool {
         matches!(
             self.inner,
-            StepGroupInner::OriginalSaturating { .. } | StepGroupInner::RepeatSaturating { .. }
+            StepGroupInner::OriginalUnsaturated { .. } | StepGroupInner::RepeatUnsaturated { .. }
         )
     }
 
@@ -672,19 +487,6 @@ impl<T: Transposer> StepGroup<T> {
 
     pub fn time(&self) -> T::Time {
         self.first_step_time().raw_time()
-    }
-}
-
-impl<T: Transposer> Drop for StepGroup<T> {
-    fn drop(&mut self) {
-        if let StepGroupInner::Saturated {
-            interpolations, ..
-        } = &mut self.inner
-        {
-            for (_, i) in interpolations {
-                i.wake();
-            }
-        }
     }
 }
 
@@ -705,11 +507,7 @@ enum StepGroupInner<T: Transposer> {
         steps:                    Box<[Step<T>]>,
         waker_stack:              Weak<StackWaker<usize>>,
     },
-    Saturated {
-        // first because it has pointers into boxes owned by steps.
-        interpolations: HashMap<usize, Interpolation<T>>,
-        steps:          Box<[Step<T>]>,
-    },
+    Saturated(StepGroupSaturated<T>),
     Unreachable,
 }
 
@@ -719,7 +517,33 @@ pub enum InterpolatePoll<T: Transposer> {
     Ready(T::OutputState),
 }
 
-pub enum StepGroupPoll {
+pub struct StepGroupPoll<T: Transposer> {
+    result:  StepGroupPollResult,
+    outputs: Vec<T::Output>,
+}
+
+impl<T: Transposer> StepGroupPoll<T> {
+    pub fn new_pending(outputs: Vec<T::Output>) -> Self {
+        Self {
+            result: StepGroupPollResult::Pending,
+            outputs,
+        }
+    }
+    pub fn new_needs_state(outputs: Vec<T::Output>) -> Self {
+        Self {
+            result: StepGroupPollResult::NeedsState,
+            outputs,
+        }
+    }
+    pub fn new_ready(outputs: Vec<T::Output>) -> Self {
+        Self {
+            result: StepGroupPollResult::Ready,
+            outputs,
+        }
+    }
+}
+
+pub enum StepGroupPollResult {
     NeedsState,
     Pending,
     Ready,
