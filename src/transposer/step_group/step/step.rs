@@ -1,5 +1,4 @@
 use core::cmp::Ordering;
-use core::mem::replace;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
@@ -15,12 +14,11 @@ use crate::transposer::Transposer;
 use crate::util::take_mut;
 
 pub struct Step<T: Transposer> {
-    time:            StepTime<T::Time>,
-    inner:           StepInner<T>,
-    outputs_emitted: OutputsEmitted,
-    input_state:     *const LazyState<T::InputState>,
+    time:        StepTime<T::Time>,
+    inner:       StepInner<T>,
+    input_state: *const LazyState<T::InputState>,
 
-    // these are used purely for enforcing that saturate calls use the previous wrapped_transposer.
+    // these are used purely for enforcing that saturate calls use the previous step.
     #[cfg(debug_assertions)]
     uuid_self: uuid::Uuid,
     #[cfg(debug_assertions)]
@@ -69,7 +67,6 @@ impl<T: Transposer> Step<T> {
         Step {
             time,
             inner,
-            outputs_emitted: OutputsEmitted::Pending,
             input_state,
 
             #[cfg(debug_assertions)]
@@ -135,7 +132,6 @@ impl<T: Transposer> Step<T> {
         let item = Step {
             time,
             inner,
-            outputs_emitted: OutputsEmitted::Pending,
             input_state,
 
             #[cfg(debug_assertions)]
@@ -186,7 +182,6 @@ impl<T: Transposer> Step<T> {
         let item = Step {
             time,
             inner,
-            outputs_emitted: OutputsEmitted::Pending,
             input_state: self.input_state,
 
             #[cfg(debug_assertions)]
@@ -387,35 +382,6 @@ impl<T: Transposer> Step<T> {
         })
     }
 
-    pub fn rollback(mut self) -> (bool, Option<Box<[T::Input]>>) {
-        let inputs = match replace(&mut self.inner, StepInner::Unreachable) {
-            StepInner::OriginalUnsaturatedInput {
-                inputs,
-            } => Some(inputs),
-            StepInner::RepeatUnsaturatedInput {
-                inputs,
-            } => Some(inputs),
-            StepInner::OriginalSaturatingInput {
-                mut update,
-            } => {
-                // elevate to panic, because we should be fully saturated in this situation
-                Some(update.as_mut().reclaim().unwrap())
-            },
-            StepInner::RepeatSaturatingInput {
-                mut update,
-            } => {
-                // elevate to panic, because we should be fully saturated in this situation
-                Some(update.as_mut().reclaim().unwrap())
-            },
-            StepInner::SaturatedInput {
-                inputs, ..
-            } => Some(inputs),
-            _ => None,
-        };
-
-        (self.outputs_emitted.is_some(), inputs)
-    }
-
     pub fn time(&self) -> &StepTime<T::Time> {
         &self.time
     }
@@ -444,15 +410,10 @@ impl<T: Transposer> Future for Step<T> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { Pin::into_inner_unchecked(self) };
-        fn handle_original_outputs<O>(
-            outputs: Vec<O>,
-            outputs_emitted: &mut OutputsEmitted,
-        ) -> Poll<Result<Option<Vec<O>>, PollErr>> {
+        fn handle_original_outputs<O>(outputs: Vec<O>) -> Poll<Result<Option<Vec<O>>, PollErr>> {
             Poll::Ready(Ok(if outputs.is_empty() {
-                *outputs_emitted = OutputsEmitted::None;
                 None
             } else {
-                *outputs_emitted = OutputsEmitted::Some;
                 Some(outputs)
             }))
         }
@@ -472,7 +433,7 @@ impl<T: Transposer> Future for Step<T> {
                         }
                     };
 
-                    handle_original_outputs(outputs, &mut this.outputs_emitted)
+                    handle_original_outputs(outputs)
                 },
                 Poll::Pending => Poll::Pending,
             },
@@ -491,7 +452,7 @@ impl<T: Transposer> Future for Step<T> {
                         }
                     };
 
-                    handle_original_outputs(outputs, &mut this.outputs_emitted)
+                    handle_original_outputs(outputs)
                 },
                 Poll::Pending => Poll::Pending,
             },
@@ -529,7 +490,7 @@ impl<T: Transposer> Future for Step<T> {
                         }
                     };
 
-                    handle_original_outputs(outputs, &mut this.outputs_emitted)
+                    handle_original_outputs(outputs)
                 },
                 Poll::Pending => Poll::Pending,
             },
@@ -574,25 +535,16 @@ impl<T: Transposer> Future for Step<T> {
     }
 }
 
-enum OutputsEmitted {
-    Pending,
-    None,
-    Some,
-}
-
-impl OutputsEmitted {
-    pub fn is_some(&self) -> bool {
-        matches!(self, &OutputsEmitted::Some)
-    }
-}
-
+// context types
 type OriginalContext<T> = StepUpdateContext<T, Vec<<T as Transposer>::Output>>;
 type RepeatContext<T> = StepUpdateContext<T, ()>;
 
+// arg types
 type InitUpdate<T> = WrappedUpdate<T, OriginalContext<T>, InitArg<T>>;
 type InputUpdate<T, C> = WrappedUpdate<T, C, InputArg<T>>;
 type ScheduledUpdate<T, C> = WrappedUpdate<T, C, ScheduledArg<T>>;
 
+// arg + context types
 type OriginalInputUpdate<T> = InputUpdate<T, OriginalContext<T>>;
 type OriginalScheduledUpdate<T> = ScheduledUpdate<T, OriginalContext<T>>;
 type RepeatInputUpdate<T> = InputUpdate<T, RepeatContext<T>>;

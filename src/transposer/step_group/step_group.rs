@@ -15,11 +15,12 @@ use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
 pub struct StepGroup<T: Transposer> {
     inner:       StepGroupInner<T>,
     input_state: Box<LazyState<T::InputState>>,
-    // these are used purely for enforcing that saturate calls use the previous wrapped_transposer.
+
+    // these are used purely for enforcing that saturate calls use the previous step_group.
     #[cfg(debug_assertions)]
-    uuid_self:   uuid::Uuid,
+    uuid_self: uuid::Uuid,
     #[cfg(debug_assertions)]
-    uuid_prev:   Option<uuid::Uuid>,
+    uuid_prev: Option<uuid::Uuid>,
 }
 
 pub type NextInputs<T> = Option<(<T as Transposer>::Time, Box<[<T as Transposer>::Input]>)>;
