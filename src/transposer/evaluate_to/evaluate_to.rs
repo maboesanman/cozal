@@ -3,7 +3,7 @@ use std::task::{Context, Poll};
 
 use futures_core::Future;
 
-use crate::source::adapters::transpose::input_buffer::InputBuffer;
+use crate::transposer::input_buffer::InputBuffer;
 use crate::transposer::step_group::{InterpolatePoll, StepGroup, StepGroupPollResult};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
@@ -116,7 +116,7 @@ where
                                     },
                                 }
                             }
-                            let time = frame.time();
+                            let time = frame.raw_time();
                             let progress = frame.poll_progress(0, cx.waker().clone()).unwrap();
                             outputs.push((time, progress.outputs));
                             match progress.result {
@@ -155,7 +155,7 @@ where
                             if let Some(mut next_frame) =
                                 frame.next_unsaturated(&mut event).unwrap()
                             {
-                                if next_frame.time() <= until {
+                                if next_frame.raw_time() <= until {
                                     if let Some((time, inputs)) = event {
                                         events.extend_front(time, inputs);
                                     }

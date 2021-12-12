@@ -69,7 +69,7 @@ fn saturate_take() {
     let s = LazyState::new();
     let mut init = Step::new_init(transposer, rng_seed, &s);
 
-    let (waker, _) = DummyWaker::new();
+    let waker = DummyWaker::new();
     let mut cx = Context::from_waker(&waker);
 
     assert_matches!(Pin::new(&mut init).poll(&mut cx), Poll::Ready(Ok(None)));
@@ -105,7 +105,7 @@ fn saturate_clone() {
     let s = LazyState::new();
     let mut init = Step::new_init(transposer, rng_seed, &s);
 
-    let (waker, _) = DummyWaker::new();
+    let waker = DummyWaker::new();
     let mut cx = Context::from_waker(&waker);
 
     assert_matches!(Pin::new(&mut init).poll(&mut cx), Poll::Ready(Ok(None)));
@@ -141,7 +141,7 @@ fn desaturate() {
 
     let s = LazyState::new();
     let mut init = Step::new_init(transposer, rng_seed, &s);
-    let (waker, _) = DummyWaker::new();
+    let waker = DummyWaker::new();
     let mut cx = Context::from_waker(&waker);
 
     let _ = Pin::new(&mut init).poll(&mut cx);

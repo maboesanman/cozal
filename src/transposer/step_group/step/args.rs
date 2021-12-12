@@ -8,6 +8,7 @@ use super::update::{Arg, UpdateContext, WrappedTransposer};
 use crate::transposer::Transposer;
 
 pub struct InitArg<T: Transposer>(PhantomData<T>);
+
 impl<T: Transposer> Arg<T> for InitArg<T> {
     type Passed = ();
 
@@ -31,6 +32,7 @@ impl<T: Transposer> Arg<T> for InitArg<T> {
 }
 
 pub struct InputArg<T: Transposer>(PhantomData<T>);
+
 impl<T: Transposer> Arg<T> for InputArg<T> {
     type Passed = Box<[T::Input]>;
 
@@ -59,6 +61,7 @@ impl<T: Transposer> Arg<T> for InputArg<T> {
 }
 
 pub struct ScheduledArg<T: Transposer>(PhantomData<T>);
+
 impl<T: Transposer> Arg<T> for ScheduledArg<T> {
     type Passed = T::Scheduled;
 

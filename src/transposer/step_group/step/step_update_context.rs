@@ -30,10 +30,7 @@ impl<O> OutputCollector<O> for () {
 ///
 /// the primary features are scheduling and expiring events,
 /// though there are more methods to interact with the engine.
-pub struct StepUpdateContext<T: Transposer, C: OutputCollector<T::Output>>
-where
-    T::Scheduled: Clone,
-{
+pub struct StepUpdateContext<T: Transposer, C: OutputCollector<T::Output>> {
     // these are pointers because this is stored next to the targets.
     frame_internal: *mut TransposerMetaData<T>,
     input_state:    *const LazyState<T::InputState>,

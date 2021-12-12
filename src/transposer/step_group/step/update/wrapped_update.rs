@@ -32,10 +32,7 @@ struct UpdateData<T: Transposer, A: Arg<T>> {
     state: *const LazyState<T::InputState>,
 }
 
-impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> WrappedUpdate<T, C, A>
-where
-    T::Scheduled: Clone,
-{
+impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> WrappedUpdate<T, C, A> {
     pub fn new(
         mut frame: Box<WrappedTransposer<T>>,
         arg: A::Stored,

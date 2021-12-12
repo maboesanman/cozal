@@ -514,10 +514,51 @@ impl<T: Transposer> StepGroup<T> {
         self.first_step_time().index() == 0
     }
 
-    pub fn time(&self) -> T::Time {
+    pub fn raw_time(&self) -> T::Time {
         self.first_step_time().raw_time()
     }
+
+    pub fn time(&self) -> StepGroupTime<T::Time> {
+        let t = self.first_step_time();
+
+        if t.index() == 0 {
+            StepGroupTime::Init
+        } else {
+            StepGroupTime::Normal(t.raw_time())
+        }
+    }
 }
+
+#[derive(Clone, Copy)]
+pub enum StepGroupTime<Time: Ord + Copy> {
+    Init,
+    Normal(Time),
+}
+
+impl<Time: Ord + Copy> Ord for StepGroupTime<Time> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (Self::Init, Self::Init) => std::cmp::Ordering::Equal,
+            (Self::Init, Self::Normal(_)) => std::cmp::Ordering::Less,
+            (Self::Normal(_), Self::Init) => std::cmp::Ordering::Greater,
+            (Self::Normal(s), Self::Normal(o)) => s.cmp(o),
+        }
+    }
+}
+
+impl<Time: Ord + Copy> PartialOrd for StepGroupTime<Time> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<Time: Ord + Copy> PartialEq for StepGroupTime<Time> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+
+impl<Time: Ord + Copy> Eq for StepGroupTime<Time> {}
 
 enum StepGroupInner<T: Transposer> {
     OriginalUnsaturated {

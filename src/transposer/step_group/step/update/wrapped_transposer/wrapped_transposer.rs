@@ -3,18 +3,12 @@ use super::ScheduledTime;
 use crate::transposer::Transposer;
 
 #[derive(Clone)]
-pub struct WrappedTransposer<T: Transposer>
-where
-    T::Scheduled: Clone,
-{
+pub struct WrappedTransposer<T: Transposer> {
     pub transposer: T,
     pub metadata:   TransposerMetaData<T>,
 }
 
-impl<T: Transposer> WrappedTransposer<T>
-where
-    T::Scheduled: Clone,
-{
+impl<T: Transposer> WrappedTransposer<T> {
     pub fn new(transposer: T, rng_seed: [u8; 32]) -> Self {
         Self {
             transposer,

@@ -5,8 +5,6 @@ use crate::transposer::Transposer;
 
 pub trait UpdateContext<T: Transposer>:
     InitContext<'static, T> + HandleInputContext<'static, T> + HandleScheduleContext<'static, T>
-where
-    T::Scheduled: Clone,
 {
     type Outputs;
 

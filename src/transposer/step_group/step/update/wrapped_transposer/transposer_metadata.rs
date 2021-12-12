@@ -9,10 +9,7 @@ use crate::transposer::context::ExpireEventError;
 use crate::transposer::{ExpireHandle, Transposer};
 
 #[derive(Clone)]
-pub struct TransposerMetaData<T: Transposer>
-where
-    T::Scheduled: Clone,
-{
+pub struct TransposerMetaData<T: Transposer> {
     pub last_updated: T::Time,
 
     pub schedule: OrdMap<ScheduledTime<T::Time>, T::Scheduled>,
@@ -25,10 +22,7 @@ where
     pub rng: BlockRng<ChaCha12Core>,
 }
 
-impl<T: Transposer> TransposerMetaData<T>
-where
-    T::Scheduled: Clone,
-{
+impl<T: Transposer> TransposerMetaData<T> {
     pub fn new(rng_seed: [u8; 32]) -> Self {
         Self {
             last_updated:            T::Time::default(),

@@ -4,6 +4,7 @@ use context::{HandleInputContext, HandleScheduleContext, InitContext, Interpolat
 pub mod context;
 pub mod evaluate_to;
 mod expire_handle;
+pub mod input_buffer;
 pub mod step_group;
 mod test;
 
@@ -26,7 +27,7 @@ pub trait Transposer {
     /// by the init function.
     type Time: Copy + Ord + Default;
 
-    type InputState: Unpin;
+    type InputState;
 
     type OutputState;
 
