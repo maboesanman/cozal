@@ -137,13 +137,14 @@ impl<T: Transposer> StepGroupSaturated<T> {
         time: T::Time,
         channel: usize,
         state: T::InputState,
+        ignore_waker: &Waker,
     ) -> Result<(), Box<T::InputState>> {
         match self.interpolations.get(&channel) {
             Some(int) => {
                 if int.time() != time {
                     Err(Box::new(state))
                 } else {
-                    int.set_state(state)
+                    int.set_state(state, ignore_waker)
                 }
             },
             None => Err(Box::new(state)),

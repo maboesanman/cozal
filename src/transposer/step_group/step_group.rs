@@ -377,8 +377,12 @@ impl<T: Transposer> StepGroup<T> {
         }
     }
 
-    pub fn set_input_state(&mut self, state: T::InputState) -> Result<(), Box<T::InputState>> {
-        self.input_state.set(state)
+    pub fn set_input_state(
+        &mut self,
+        state: T::InputState,
+        ignore_waker: &Waker,
+    ) -> Result<(), Box<T::InputState>> {
+        self.input_state.set(state, ignore_waker)
     }
 
     pub fn set_interpolation_input_state(
@@ -386,9 +390,10 @@ impl<T: Transposer> StepGroup<T> {
         time: T::Time,
         channel: usize,
         state: T::InputState,
+        ignore_waker: &Waker,
     ) -> Result<(), Box<T::InputState>> {
         if let StepGroupInner::Saturated(saturated) = &mut self.inner {
-            saturated.set_interpolation_input_state(time, channel, state)
+            saturated.set_interpolation_input_state(time, channel, state, ignore_waker)
         } else {
             Err(Box::new(state))
         }

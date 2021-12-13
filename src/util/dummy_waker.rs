@@ -5,7 +5,7 @@ use std::task::Wake;
 pub struct DummyWaker;
 
 impl DummyWaker {
-    pub fn new() -> Waker {
+    pub fn dummy() -> Waker {
         Arc::new(Self).into()
     }
 }

@@ -36,8 +36,8 @@ impl WakerObserver {
 
     pub fn new_dummy() -> Self {
         let wake = ObservingWaker {
-            woken: AtomicBool::new(false),
-            waker: DummyWaker::new(),
+            woken: AtomicBool::new(true),
+            waker: DummyWaker::dummy(),
         };
         let waker = Arc::new(wake);
         Self {

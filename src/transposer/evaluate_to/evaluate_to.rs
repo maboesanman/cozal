@@ -98,7 +98,7 @@ where
                                 let fut = unsafe { Pin::new_unchecked(fut) };
                                 match fut.poll(cx) {
                                     Poll::Ready(s) => {
-                                        let _ = frame.set_input_state(s);
+                                        let _ = frame.set_input_state(s, cx.waker());
                                         state_fut = None;
                                     },
                                     Poll::Pending => {
@@ -199,7 +199,12 @@ where
                                 let fut = unsafe { Pin::new_unchecked(fut) };
                                 match fut.poll(cx) {
                                     Poll::Ready(s) => {
-                                        let _ = frame.set_interpolation_input_state(until, 0, s);
+                                        let _ = frame.set_interpolation_input_state(
+                                            until,
+                                            0,
+                                            s,
+                                            cx.waker(),
+                                        );
                                         state_fut = None;
                                     },
                                     Poll::Pending => {

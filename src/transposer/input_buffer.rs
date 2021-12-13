@@ -80,7 +80,7 @@ impl<Input> IntoIterator for InputContainer<Input> {
 
 impl<Time: Ord + Copy, Input> InputBuffer<Time, Input> {
     pub fn new() -> Self {
-        InputBuffer(BTreeMap::new())
+        Self::default()
     }
 
     pub fn insert_back(&mut self, time: Time, input: Input) {
@@ -116,5 +116,11 @@ impl<Time: Ord + Copy, Input> InputBuffer<Time, Input> {
     pub fn rollback(&mut self, time: Time) {
         let InputBuffer(inner) = self;
         inner.split_off(&time);
+    }
+}
+
+impl<Time: Ord + Copy, Input> Default for InputBuffer<Time, Input> {
+    fn default() -> Self {
+        Self(BTreeMap::new())
     }
 }

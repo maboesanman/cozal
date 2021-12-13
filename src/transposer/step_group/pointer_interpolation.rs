@@ -66,8 +66,12 @@ impl<T: Transposer> PointerInterpolation<T> {
         self.state.requested()
     }
 
-    pub fn set_state(&self, state: T::InputState) -> Result<(), Box<T::InputState>> {
-        self.state.set(state)
+    pub fn set_state(
+        &self,
+        state: T::InputState,
+        ignore_waker: &Waker,
+    ) -> Result<(), Box<T::InputState>> {
+        self.state.set(state, ignore_waker)
     }
 }
 
