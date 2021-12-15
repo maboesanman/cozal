@@ -5,18 +5,19 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 
 use super::{Arg, StepTime, UpdateContext, WrappedTransposer};
+use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::Transposer;
 use crate::util::drop_mut::{drop_mut_leave_uninit, take_mut_leave_uninit};
 
-pub struct RawUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
+pub struct RawUpdate<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> {
     // references context, frame.transposer, and args
     future: MaybeUninit<Pin<Box<dyn Future<Output = ()>>>>,
 
     // references state and frame.internal
     context: MaybeUninit<C>,
 
-    frame: Box<WrappedTransposer<T>>,
+    frame: Box<WrappedTransposer<T, S>>,
     state: *const LazyState<T::InputState>,
     time:  StepTime<T::Time>,
     args:  MaybeUninit<A::Stored>,
@@ -25,10 +26,10 @@ pub struct RawUpdate<T: Transposer, C: UpdateContext<T>, A: Arg<T>> {
     _pin: PhantomPinned,
 }
 
-impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<T, C, A> {
+impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> RawUpdate<T, S, C, A> {
     // SAFETY: make sure to call init before doing anything with the new value, including dropping it.
     pub unsafe fn new(
-        mut frame: Box<WrappedTransposer<T>>,
+        mut frame: Box<WrappedTransposer<T, S>>,
         time: StepTime<T::Time>,
         state: *const LazyState<T::InputState>,
     ) -> Self {
@@ -91,7 +92,7 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<T, C, A> {
     }
 
     // SAFETY: this must be called after this future resolves.
-    pub unsafe fn reclaim_ready(self) -> (Box<WrappedTransposer<T>>, C::Outputs, A::Stored) {
+    pub unsafe fn reclaim_ready(self) -> (Box<WrappedTransposer<T, S>>, C::Outputs, A::Stored) {
         let mut this = ManuallyDrop::new(self);
 
         // SAFETY: everything is init before this.
@@ -109,7 +110,9 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> RawUpdate<T, C, A> {
     }
 }
 
-impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Drop for RawUpdate<T, C, A> {
+impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Drop
+    for RawUpdate<T, S, C, A>
+{
     fn drop(&mut self) {
         // SAFETY: everything is init before this.
         unsafe {
@@ -120,7 +123,9 @@ impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Drop for RawUpdate<T, C, A> 
     }
 }
 
-impl<T: Transposer, C: UpdateContext<T>, A: Arg<T>> Future for RawUpdate<T, C, A> {
+impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Future
+    for RawUpdate<T, S, C, A>
+{
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

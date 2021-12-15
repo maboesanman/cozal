@@ -8,14 +8,15 @@ use super::args::{InitArg, InputArg, ScheduledArg};
 use super::step_update_context::StepUpdateContext;
 use super::time::StepTime;
 use super::update::{Arg, UpdateResult, WrappedTransposer, WrappedUpdate};
+use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::step_group::NextInputs;
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
-pub struct Step<T: Transposer> {
+pub struct Step<T: Transposer, S: StorageFamily> {
     time:        StepTime<T::Time>,
-    inner:       StepInner<T>,
+    inner:       StepInner<T, S>,
     input_state: *const LazyState<T::InputState>,
 
     // these are used purely for enforcing that saturate calls use the previous step.
@@ -50,7 +51,7 @@ pub enum PollErr {
     Saturated,
 }
 
-impl<T: Transposer> Step<T> {
+impl<T: Transposer, S: StorageFamily> Step<T, S> {
     pub fn new_init(
         transposer: T,
         rng_seed: [u8; 32],
@@ -271,7 +272,10 @@ impl<T: Transposer> Step<T> {
     }
 
     // panics if self is unsaturated.
-    fn saturate_from_wrapped_transposer(&mut self, wrapped_transposer: Box<WrappedTransposer<T>>) {
+    fn saturate_from_wrapped_transposer(
+        &mut self,
+        wrapped_transposer: Box<WrappedTransposer<T, S>>,
+    ) {
         take_mut::take_or_recover(
             &mut self.inner,
             || StepInner::Unreachable,
@@ -388,7 +392,7 @@ impl<T: Transposer> Step<T> {
 
     // this has the additional gurantee that the pointer returned lives until this is desaturated or dropped.
     // if you move self the returned pointer is still valid.
-    pub fn finished_wrapped_transposer(&self) -> Option<&WrappedTransposer<T>> {
+    pub fn finished_wrapped_transposer(&self) -> Option<&WrappedTransposer<T, S>> {
         match &self.inner {
             StepInner::SaturatedInit {
                 wrapped_transposer,
@@ -405,7 +409,7 @@ impl<T: Transposer> Step<T> {
     }
 }
 
-impl<T: Transposer> Future for Step<T> {
+impl<T: Transposer, S: StorageFamily> Future for Step<T, S> {
     type Output = Result<Option<Vec<T::Output>>, PollErr>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -536,61 +540,61 @@ impl<T: Transposer> Future for Step<T> {
 }
 
 // context types
-type OriginalContext<T> = StepUpdateContext<T, Vec<<T as Transposer>::Output>>;
-type RepeatContext<T> = StepUpdateContext<T, ()>;
+type OriginalContext<T, S> = StepUpdateContext<T, S, Vec<<T as Transposer>::Output>>;
+type RepeatContext<T, S> = StepUpdateContext<T, S, ()>;
 
 // arg types
-type InitUpdate<T> = WrappedUpdate<T, OriginalContext<T>, InitArg<T>>;
-type InputUpdate<T, C> = WrappedUpdate<T, C, InputArg<T>>;
-type ScheduledUpdate<T, C> = WrappedUpdate<T, C, ScheduledArg<T>>;
+type InitUpdate<T, S> = WrappedUpdate<T, S, OriginalContext<T, S>, InitArg<T, S>>;
+type InputUpdate<T, S, C> = WrappedUpdate<T, S, C, InputArg<T, S>>;
+type ScheduledUpdate<T, S, C> = WrappedUpdate<T, S, C, ScheduledArg<T, S>>;
 
 // arg + context types
-type OriginalInputUpdate<T> = InputUpdate<T, OriginalContext<T>>;
-type OriginalScheduledUpdate<T> = ScheduledUpdate<T, OriginalContext<T>>;
-type RepeatInputUpdate<T> = InputUpdate<T, RepeatContext<T>>;
-type RepeatScheduledUpdate<T> = ScheduledUpdate<T, RepeatContext<T>>;
+type OriginalInputUpdate<T, S> = InputUpdate<T, S, OriginalContext<T, S>>;
+type OriginalScheduledUpdate<T, S> = ScheduledUpdate<T, S, OriginalContext<T, S>>;
+type RepeatInputUpdate<T, S> = InputUpdate<T, S, RepeatContext<T, S>>;
+type RepeatScheduledUpdate<T, S> = ScheduledUpdate<T, S, RepeatContext<T, S>>;
 
-enum StepInner<T: Transposer> {
+enum StepInner<T: Transposer, S: StorageFamily> {
     // notably this can never be rehydrated because you need the preceding wrapped_transposer
     // and there isn't one, because this is init.
     UnsaturatedInit,
     OriginalUnsaturatedInput {
-        inputs: <InputArg<T> as Arg<T>>::Stored,
+        inputs: <InputArg<T, S> as Arg<T, S>>::Stored,
     },
     OriginalUnsaturatedScheduled,
     RepeatUnsaturatedInput {
-        inputs: <InputArg<T> as Arg<T>>::Stored,
+        inputs: <InputArg<T, S> as Arg<T, S>>::Stored,
     },
     RepeatUnsaturatedScheduled,
     SaturatingInit {
-        update: Pin<Box<InitUpdate<T>>>,
+        update: Pin<Box<InitUpdate<T, S>>>,
     },
     OriginalSaturatingInput {
-        update: Pin<Box<OriginalInputUpdate<T>>>,
+        update: Pin<Box<OriginalInputUpdate<T, S>>>,
     },
     OriginalSaturatingScheduled {
-        update: Pin<Box<OriginalScheduledUpdate<T>>>,
+        update: Pin<Box<OriginalScheduledUpdate<T, S>>>,
     },
     RepeatSaturatingInput {
-        update: Pin<Box<RepeatInputUpdate<T>>>,
+        update: Pin<Box<RepeatInputUpdate<T, S>>>,
     },
     RepeatSaturatingScheduled {
-        update: Pin<Box<RepeatScheduledUpdate<T>>>,
+        update: Pin<Box<RepeatScheduledUpdate<T, S>>>,
     },
     SaturatedInit {
-        wrapped_transposer: Box<WrappedTransposer<T>>,
+        wrapped_transposer: Box<WrappedTransposer<T, S>>,
     },
     SaturatedInput {
-        inputs:             <InputArg<T> as Arg<T>>::Stored,
-        wrapped_transposer: Box<WrappedTransposer<T>>,
+        inputs:             <InputArg<T, S> as Arg<T, S>>::Stored,
+        wrapped_transposer: Box<WrappedTransposer<T, S>>,
     },
     SaturatedScheduled {
-        wrapped_transposer: Box<WrappedTransposer<T>>,
+        wrapped_transposer: Box<WrappedTransposer<T, S>>,
     },
     Unreachable,
 }
 
-impl<T: Transposer> StepInner<T> {
+impl<T: Transposer, S: StorageFamily> StepInner<T, S> {
     fn recover() -> Self {
         Self::Unreachable
     }

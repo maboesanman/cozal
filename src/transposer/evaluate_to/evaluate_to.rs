@@ -4,6 +4,7 @@ use std::task::{Context, Poll};
 use futures_core::Future;
 
 use crate::transposer::input_buffer::InputBuffer;
+use crate::transposer::schedule_storage::ImArcStorage;
 use crate::transposer::step_group::{InterpolatePoll, StepGroup, StepGroupPollResult};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
@@ -51,7 +52,7 @@ where
     Fs: Future<Output = T::InputState>,
 {
     Step {
-        frame:     StepGroup<T>,
+        frame:     StepGroup<T, ImArcStorage>,
         events:    InputBuffer<T::Time, T::Input>,
         state:     S,
         state_fut: Option<Fs>,
@@ -59,7 +60,7 @@ where
         outputs:   EmittedEvents<T>,
     },
     Interpolate {
-        frame:     StepGroup<T>,
+        frame:     StepGroup<T, ImArcStorage>,
         state:     S,
         state_fut: Option<Fs>,
         until:     T::Time,

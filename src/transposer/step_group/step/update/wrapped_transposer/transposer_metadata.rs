@@ -1,4 +1,3 @@
-use im::{HashMap, OrdMap};
 use rand::SeedableRng;
 use rand_chacha::rand_core::block::BlockRng;
 use rand_chacha::ChaCha12Core;
@@ -6,29 +5,30 @@ use rand_chacha::ChaCha12Core;
 use super::expire_handle_factory::ExpireHandleFactory;
 use super::ScheduledTime;
 use crate::transposer::context::ExpireEventError;
+use crate::transposer::schedule_storage::{HashMapStorage, OrdMapStorage, StorageFamily};
 use crate::transposer::{ExpireHandle, Transposer};
 
 #[derive(Clone)]
-pub struct TransposerMetaData<T: Transposer> {
+pub struct TransposerMetaData<T: Transposer, S: StorageFamily> {
     pub last_updated: T::Time,
 
-    pub schedule: OrdMap<ScheduledTime<T::Time>, T::Scheduled>,
+    pub schedule: S::OrdMap<ScheduledTime<T::Time>, T::Scheduled>,
 
-    pub expire_handles_forward:  HashMap<ExpireHandle, ScheduledTime<T::Time>>,
-    pub expire_handles_backward: OrdMap<ScheduledTime<T::Time>, ExpireHandle>,
+    pub expire_handles_forward:  S::HashMap<ExpireHandle, ScheduledTime<T::Time>>,
+    pub expire_handles_backward: S::OrdMap<ScheduledTime<T::Time>, ExpireHandle>,
 
     pub expire_handle_factory: ExpireHandleFactory,
 
     pub rng: BlockRng<ChaCha12Core>,
 }
 
-impl<T: Transposer> TransposerMetaData<T> {
+impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
     pub fn new(rng_seed: [u8; 32]) -> Self {
         Self {
             last_updated:            T::Time::default(),
-            schedule:                OrdMap::new(),
-            expire_handles_forward:  HashMap::new(),
-            expire_handles_backward: OrdMap::new(),
+            schedule:                S::OrdMap::new(),
+            expire_handles_forward:  S::HashMap::new(),
+            expire_handles_backward: S::OrdMap::new(),
             expire_handle_factory:   ExpireHandleFactory::new(),
             rng:                     BlockRng::new(ChaCha12Core::from_seed(rng_seed)),
         }
@@ -72,13 +72,11 @@ impl<T: Transposer> TransposerMetaData<T> {
     }
 
     pub fn get_next_scheduled_time(&self) -> Option<&ScheduledTime<T::Time>> {
-        self.schedule.get_min().map(|(k, _)| k)
+        self.schedule.get_first().map(|(k, _)| k)
     }
 
     pub fn pop_first_event(&mut self) -> Option<(ScheduledTime<T::Time>, T::Scheduled)> {
-        if let (Some((k, v)), new) = self.schedule.without_min_with_key() {
-            self.schedule = new;
-
+        if let Some((k, v)) = self.schedule.pop_first() {
             if let Some(h) = self.expire_handles_backward.remove(&k) {
                 self.expire_handles_forward.remove(&h);
             }

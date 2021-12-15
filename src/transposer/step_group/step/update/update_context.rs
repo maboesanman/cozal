@@ -1,9 +1,10 @@
 use super::{StepTime, TransposerMetaData};
 use crate::transposer::context::*;
+use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::Transposer;
 
-pub trait UpdateContext<T: Transposer>:
+pub trait UpdateContext<T: Transposer, S: StorageFamily>:
     InitContext<'static, T> + HandleInputContext<'static, T> + HandleScheduleContext<'static, T>
 {
     type Outputs;
@@ -11,7 +12,7 @@ pub trait UpdateContext<T: Transposer>:
     // SAFETY: ensure this UpdateContext is dropped before frame_internal and input_state.
     unsafe fn new(
         time: StepTime<T::Time>,
-        metadata: *mut TransposerMetaData<T>,
+        metadata: *mut TransposerMetaData<T, S>,
         input_state: *const LazyState<T::InputState>,
     ) -> Self;
 

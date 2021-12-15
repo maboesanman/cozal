@@ -106,4 +106,9 @@ impl<Src: Source, E, S> Source for Map<Src, E, S> {
     fn max_channel(&self) -> NonZeroUsize {
         self.source.max_channel()
     }
+
+    fn release_channel(self: Pin<&mut Self>, channel: usize) {
+        let this = self.project();
+        this.source.release_channel(channel)
+    }
 }

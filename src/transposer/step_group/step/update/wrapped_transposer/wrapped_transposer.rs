@@ -1,14 +1,15 @@
 use super::transposer_metadata::TransposerMetaData;
 use super::ScheduledTime;
+use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::Transposer;
 
 #[derive(Clone)]
-pub struct WrappedTransposer<T: Transposer> {
+pub struct WrappedTransposer<T: Transposer, S: StorageFamily> {
     pub transposer: T,
-    pub metadata:   TransposerMetaData<T>,
+    pub metadata:   TransposerMetaData<T, S>,
 }
 
-impl<T: Transposer> WrappedTransposer<T> {
+impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
     pub fn new(transposer: T, rng_seed: [u8; 32]) -> Self {
         Self {
             transposer,

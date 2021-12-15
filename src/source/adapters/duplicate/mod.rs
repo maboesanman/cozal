@@ -85,6 +85,10 @@ where
     fn max_channel(&self) -> NonZeroUsize {
         self.inner.max_channel()
     }
+
+    fn release_channel(self: Pin<&mut Self>, channel: usize) {
+        todo!()
+    }
 }
 
 pub type PollFn<Src, State> =

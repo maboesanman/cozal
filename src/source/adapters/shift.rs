@@ -110,4 +110,9 @@ impl<Src: Source, T: Ord + Copy> Source for Shift<Src, T> {
     fn max_channel(&self) -> NonZeroUsize {
         self.source.max_channel()
     }
+
+    fn release_channel(self: Pin<&mut Self>, channel: usize) {
+        let this = self.project();
+        this.source.release_channel(channel)
+    }
 }

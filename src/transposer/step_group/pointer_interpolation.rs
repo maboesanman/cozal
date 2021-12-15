@@ -9,12 +9,13 @@ use futures_core::Future;
 use super::interpolate_context::StepGroupInterpolateContext;
 use super::lazy_state::LazyState;
 use super::step::WrappedTransposer;
+use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::Transposer;
 
-pub struct PointerInterpolation<T: Transposer> {
+pub struct PointerInterpolation<T: Transposer, S: StorageFamily> {
     inner:              InterpolationInner<T>,
     state:              LazyState<T::InputState>,
-    wrapped_transposer: *const WrappedTransposer<T>,
+    wrapped_transposer: *const WrappedTransposer<T, S>,
 }
 
 enum InterpolationInner<T: Transposer> {
@@ -31,7 +32,7 @@ enum InterpolationInner<T: Transposer> {
     },
 }
 
-impl<T: Transposer> PointerInterpolation<T> {
+impl<T: Transposer, S: StorageFamily> PointerInterpolation<T, S> {
     pub fn wake(&self) {
         if let InterpolationInner::Active {
             waker, ..
@@ -52,7 +53,7 @@ impl<T: Transposer> PointerInterpolation<T> {
         }
     }
 
-    pub fn new(time: T::Time, wrapped_transposer: *const WrappedTransposer<T>) -> Self {
+    pub fn new(time: T::Time, wrapped_transposer: *const WrappedTransposer<T, S>) -> Self {
         Self {
             inner: InterpolationInner::Pending {
                 time,
@@ -86,7 +87,7 @@ impl<T: Transposer> Drop for InterpolationInner<T> {
     }
 }
 
-impl<T: Transposer> Future for PointerInterpolation<T> {
+impl<T: Transposer, S: StorageFamily> Future for PointerInterpolation<T, S> {
     type Output = T::OutputState;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

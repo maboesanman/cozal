@@ -1,5 +1,5 @@
 use super::Source;
-use crate::source::adapters::{Duplicate, Map, Multiplex, Shift, Transpose};
+use crate::source::adapters::{Duplicate, Map, Multiplex, Shift};
 use crate::transposer::Transposer;
 
 impl<S> SourceExt for S where S: Source {}
@@ -26,14 +26,14 @@ pub trait SourceExt: Source + Sized {
     //     realtime(self, reference, sleep_fn)
     // }
 
-    /// Adapter for converting a source into another via a transposer.
-    fn transpose<T>(self, initial: T, rng_seed: [u8; 32]) -> Transpose<Self, T>
-    where
-        T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State>,
-        T: Clone,
-    {
-        Transpose::new(self, initial, rng_seed)
-    }
+    // /// Adapter for converting a source into another via a transposer.
+    // fn transpose<T>(self, initial: T, rng_seed: [u8; 32]) -> Transpose<Self, T>
+    // where
+    //     T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State>,
+    //     T: Clone,
+    // {
+    //     Transpose::new(self, initial, rng_seed)
+    // }
 
     /// Adapter for converting the events and states of a source.
     fn map<E, S>(

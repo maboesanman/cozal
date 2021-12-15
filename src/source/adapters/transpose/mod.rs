@@ -1,8 +1,10 @@
 use std::collections::{HashMap, VecDeque};
+use std::pin::Pin;
 
 use pin_project::pin_project;
 
 use crate::source::Source;
+use crate::transposer::schedule_storage::ImRcStorage;
 use crate::transposer::step_group::StepGroup;
 use crate::transposer::Transposer;
 use crate::util::observing_waker::WakerObserver;
@@ -17,7 +19,7 @@ pub struct Transpose<Src: Source, T: Transposer> {
 }
 
 struct StepGroupWrapper<T: Transposer> {
-    step_group: StepGroup<T>,
+    step_group: StepGroup<T, ImRcStorage>,
 }
 
 impl<T: Transposer> StepGroupWrapper<T> {
@@ -66,7 +68,7 @@ where
     type Error = Src::Error;
 
     fn poll(
-        self: std::pin::Pin<&mut Self>,
+        self: Pin<&mut Self>,
         time: Self::Time,
         cx: crate::source::traits::SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
@@ -74,7 +76,7 @@ where
     }
 
     fn poll_forget(
-        self: std::pin::Pin<&mut Self>,
+        self: Pin<&mut Self>,
         time: Self::Time,
         cx: crate::source::traits::SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
@@ -82,18 +84,23 @@ where
     }
 
     fn poll_events(
-        self: std::pin::Pin<&mut Self>,
+        self: Pin<&mut Self>,
         time: Self::Time,
         cx: crate::source::traits::SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, (), Self::Error> {
         todo!()
     }
 
-    fn advance(self: std::pin::Pin<&mut Self>, time: Self::Time) {
+    fn advance(self: Pin<&mut Self>, time: Self::Time) {
         todo!()
     }
 
     fn max_channel(&self) -> std::num::NonZeroUsize {
         todo!()
+    }
+
+    fn release_channel(self: Pin<&mut Self>, channel: usize) {
+        let this = self.project();
+        this.source.release_channel(channel)
     }
 }

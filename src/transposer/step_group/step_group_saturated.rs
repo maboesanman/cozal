@@ -8,22 +8,23 @@ use super::pointer_interpolation::PointerInterpolation;
 use super::step::{Step, StepTime, WrappedTransposer};
 use super::step_group::{InterpolatePoll, InterpolatePollErr, NextUnsaturatedErr};
 use super::NextInputs;
+use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::Transposer;
 
-pub struct StepGroupSaturated<T: Transposer> {
+pub struct StepGroupSaturated<T: Transposer, S: StorageFamily> {
     // first because it has pointers into boxes owned by steps.
     // not phantom pinned because steps are in a box, so don't care about moves.
-    interpolations: HashMap<usize, Pin<Box<PointerInterpolation<T>>>>,
-    steps:          Box<[Step<T>]>,
+    interpolations: HashMap<usize, Pin<Box<PointerInterpolation<T, S>>>>,
+    steps:          Box<[Step<T, S>]>,
 }
 
-impl<T: Transposer> StepGroupSaturated<T> {
+impl<T: Transposer, S: StorageFamily> StepGroupSaturated<T, S> {
     pub fn next_unsaturated(
         &mut self,
         next_inputs: &mut NextInputs<T>,
         input_state: *const LazyState<T::InputState>,
-    ) -> Result<Option<Step<T>>, NextUnsaturatedErr> {
+    ) -> Result<Option<Step<T, S>>, NextUnsaturatedErr> {
         // drain interpolations from self that occur after input
         let next_time: Option<T::Time> = next_inputs.as_ref().map(|(t, _)| *t);
         if let Some(next_time) = next_time {
@@ -51,7 +52,7 @@ impl<T: Transposer> StepGroupSaturated<T> {
     }
 
     // last step is always saturated.
-    pub fn take(mut self) -> Result<Box<[Step<T>]>, Self> {
+    pub fn take(mut self) -> Result<Box<[Step<T, S>]>, Self> {
         if self.interpolations.is_empty() {
             Ok(core::mem::take(&mut self.steps))
         } else {
@@ -59,7 +60,7 @@ impl<T: Transposer> StepGroupSaturated<T> {
         }
     }
 
-    pub fn new(steps: Box<[Step<T>]>) -> Self {
+    pub fn new(steps: Box<[Step<T, S>]>) -> Self {
         Self {
             steps,
             interpolations: HashMap::new(),
@@ -70,12 +71,12 @@ impl<T: Transposer> StepGroupSaturated<T> {
         self.steps.first().unwrap().time()
     }
 
-    pub fn final_step(&self) -> &Step<T> {
+    pub fn final_step(&self) -> &Step<T, S> {
         self.steps.last().unwrap()
     }
 
     // this lives as long as this stepgroup is alive
-    fn final_wrapped_transposer(&self) -> &WrappedTransposer<T> {
+    fn final_wrapped_transposer(&self) -> &WrappedTransposer<T, S> {
         let final_step = self.final_step();
         final_step.finished_wrapped_transposer().unwrap()
     }
@@ -156,7 +157,7 @@ impl<T: Transposer> StepGroupSaturated<T> {
     }
 }
 
-impl<T: Transposer> Drop for StepGroupSaturated<T> {
+impl<T: Transposer, S: StorageFamily> Drop for StepGroupSaturated<T, S> {
     fn drop(&mut self) {
         for i in self.interpolations.values_mut() {
             i.wake();

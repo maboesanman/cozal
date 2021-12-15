@@ -93,6 +93,8 @@ pub trait Source {
         }
     }
 
+    fn release_channel(self: Pin<&mut Self>, channel: usize);
+
     /// Inform the source that you will never poll before `time` again on any channel.
     ///
     /// Calling poll before this time should result in `SourcePollError::PollAfterAdvance`

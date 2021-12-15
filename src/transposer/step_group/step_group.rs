@@ -7,13 +7,14 @@ use futures_core::Future;
 use super::lazy_state::LazyState;
 use super::step::{PollErr as StepPollErr, Step, StepTime};
 use super::step_group_saturated::StepGroupSaturated;
+use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::step_group::step::SaturateErr;
 use crate::transposer::Transposer;
 use crate::util::stack_waker::StackWaker;
 use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
 
-pub struct StepGroup<T: Transposer> {
-    inner:       StepGroupInner<T>,
+pub struct StepGroup<T: Transposer, S: StorageFamily> {
+    inner:       StepGroupInner<T, S>,
     input_state: Box<LazyState<T::InputState>>,
 
     // these are used purely for enforcing that saturate calls use the previous step_group.
@@ -25,7 +26,7 @@ pub struct StepGroup<T: Transposer> {
 
 pub type NextInputs<T> = Option<(<T as Transposer>::Time, Box<[<T as Transposer>::Input]>)>;
 
-impl<T: Transposer> StepGroup<T> {
+impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         let mut steps = Vec::with_capacity(1);
         let input_state = Box::new(LazyState::new());
@@ -87,9 +88,9 @@ impl<T: Transposer> StepGroup<T> {
             PreviousHasActiveInterpolations,
         }
 
-        fn take_from_previous<T: Transposer>(
-            prev: &mut StepGroupInner<T>,
-            next: &mut Step<T>,
+        fn take_from_previous<T: Transposer, S: StorageFamily>(
+            prev: &mut StepGroupInner<T, S>,
+            next: &mut Step<T, S>,
         ) -> Result<(), TakeFromPreviousErr> {
             take_and_return_or_recover(
                 prev,
@@ -160,9 +161,9 @@ impl<T: Transposer> StepGroup<T> {
             return Err(SaturateCloneErr::IncorrectPrevious)
         }
 
-        fn clone_from_previous<T: Transposer>(
-            prev: &StepGroupInner<T>,
-            next: &mut Step<T>,
+        fn clone_from_previous<T: Transposer, S: StorageFamily>(
+            prev: &StepGroupInner<T, S>,
+            next: &mut Step<T, S>,
         ) -> Result<(), SaturateErr>
         where
             T: Clone,
@@ -188,7 +189,7 @@ impl<T: Transposer> StepGroup<T> {
 
     fn saturate<F, E>(&mut self, saturate_first_step: F) -> Result<(), Option<E>>
     where
-        F: FnOnce(&mut Step<T>) -> Result<(), E>,
+        F: FnOnce(&mut Step<T, S>) -> Result<(), E>,
     {
         take_and_return_or_recover(
             &mut self.inner,
@@ -420,7 +421,7 @@ impl<T: Transposer> StepGroup<T> {
 
     fn current_saturating(
         &mut self,
-    ) -> Result<(&mut Step<T>, &mut Weak<StackWaker<usize>>), CurrentSaturatingErr> {
+    ) -> Result<(&mut Step<T, S>, &mut Weak<StackWaker<usize>>), CurrentSaturatingErr> {
         match &mut self.inner {
             StepGroupInner::OriginalSaturating {
                 current_saturating_index,
@@ -480,7 +481,7 @@ impl<T: Transposer> StepGroup<T> {
                 &mut self.inner,
                 || StepGroupInner::Unreachable,
                 |inner| {
-                    let steps: Box<[Step<T>]> = match inner {
+                    let steps: Box<[Step<T, S>]> = match inner {
                         StepGroupInner::OriginalSaturating {
                             steps, ..
                         } => steps.into_boxed_slice(),
@@ -565,24 +566,24 @@ impl<Time: Ord + Copy> PartialEq for StepGroupTime<Time> {
 
 impl<Time: Ord + Copy> Eq for StepGroupTime<Time> {}
 
-enum StepGroupInner<T: Transposer> {
+enum StepGroupInner<T: Transposer, S: StorageFamily> {
     OriginalUnsaturated {
-        steps: Vec<Step<T>>,
+        steps: Vec<Step<T, S>>,
     },
     OriginalSaturating {
         current_saturating_index: usize,
-        steps:                    Vec<Step<T>>,
+        steps:                    Vec<Step<T, S>>,
         waker_stack:              Weak<StackWaker<usize>>,
     },
     RepeatUnsaturated {
-        steps: Box<[Step<T>]>,
+        steps: Box<[Step<T, S>]>,
     },
     RepeatSaturating {
         current_saturating_index: usize,
-        steps:                    Box<[Step<T>]>,
+        steps:                    Box<[Step<T, S>]>,
         waker_stack:              Weak<StackWaker<usize>>,
     },
-    Saturated(StepGroupSaturated<T>),
+    Saturated(StepGroupSaturated<T, S>),
     Unreachable,
 }
 
