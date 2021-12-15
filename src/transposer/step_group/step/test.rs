@@ -7,6 +7,7 @@ use matches::assert_matches;
 use rand::Rng;
 
 use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
+use crate::transposer::schedule_storage::ImArcStorage;
 use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::step_group::step::Step;
 use crate::transposer::Transposer;
@@ -67,7 +68,7 @@ fn saturate_take() {
     let mut next_input = None;
 
     let s = LazyState::new();
-    let mut init = Step::new_init(transposer, rng_seed, &s);
+    let mut init = Step::<_, ImArcStorage>::new_init(transposer, rng_seed, &s);
 
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
@@ -103,7 +104,7 @@ fn saturate_clone() {
     let mut next_input = None;
 
     let s = LazyState::new();
-    let mut init = Step::new_init(transposer, rng_seed, &s);
+    let mut init = Step::<_, ImArcStorage>::new_init(transposer, rng_seed, &s);
 
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
@@ -140,7 +141,7 @@ fn desaturate() {
     let mut next_input = None;
 
     let s = LazyState::new();
-    let mut init = Step::new_init(transposer, rng_seed, &s);
+    let mut init = Step::<_, ImArcStorage>::new_init(transposer, rng_seed, &s);
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
 
