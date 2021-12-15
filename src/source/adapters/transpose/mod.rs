@@ -41,16 +41,16 @@ where
     T: Transposer<Time = Src::Time, Input = Src::Event, InputState = Src::State>,
     T: Clone,
 {
-    pub fn new(source: Src, transposer: T, rng_seed: [u8; 32]) -> Self {
-        let mut steps = VecDeque::new();
-        steps.push_back(StepGroupWrapper::new_init(transposer, rng_seed));
-        Self {
-            source,
-            source_waker_observer: WakerObserver::new_dummy(),
-            steps,
-            current_channels: HashMap::new(),
-        }
-    }
+    // pub fn new(source: Src, transposer: T, rng_seed: [u8; 32]) -> Self {
+    //     let mut steps = VecDeque::new();
+    //     steps.push_back(StepGroupWrapper::new_init(transposer, rng_seed));
+    //     Self {
+    //         source,
+    //         source_waker_observer: WakerObserver::new_dummy(),
+    //         steps,
+    //         current_channels: HashMap::new(),
+    //     }
+    // }
 }
 
 impl<Src, T> Source for Transpose<Src, T>

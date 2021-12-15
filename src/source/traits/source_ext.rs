@@ -1,5 +1,5 @@
 use super::Source;
-use crate::source::adapters::{Duplicate, Map, Multiplex, Shift};
+use crate::source::adapters::{Duplicate, Map, Multiplex, Shift, Transpose};
 use crate::transposer::Transposer;
 
 impl<S> SourceExt for S where S: Source {}
