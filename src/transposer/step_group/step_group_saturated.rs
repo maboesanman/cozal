@@ -8,11 +8,11 @@ use super::pointer_interpolation::PointerInterpolation;
 use super::step::{Step, StepTime, WrappedTransposer};
 use super::step_group::{InterpolatePoll, InterpolatePollErr, NextUnsaturatedErr};
 use super::NextInputs;
-use crate::transposer::schedule_storage::{ImArcStorage, StorageFamily};
+use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::step_group::lazy_state::LazyState;
 use crate::transposer::Transposer;
 
-pub struct StepGroupSaturated<T: Transposer, S: StorageFamily = ImArcStorage> {
+pub struct StepGroupSaturated<T: Transposer, S: StorageFamily> {
     // first because it has pointers into boxes owned by steps.
     // not phantom pinned because steps are in a box, so don't care about moves.
     interpolations: HashMap<usize, Pin<Box<PointerInterpolation<T, S>>>>,

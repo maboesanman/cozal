@@ -7,13 +7,13 @@ use futures_core::Future;
 use super::lazy_state::LazyState;
 use super::step::{PollErr as StepPollErr, Step, StepTime};
 use super::step_group_saturated::StepGroupSaturated;
-use crate::transposer::schedule_storage::StorageFamily;
+use crate::transposer::schedule_storage::{ImArcStorage, StorageFamily};
 use crate::transposer::step_group::step::SaturateErr;
 use crate::transposer::Transposer;
 use crate::util::stack_waker::StackWaker;
 use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
 
-pub struct StepGroup<T: Transposer, S: StorageFamily> {
+pub struct StepGroup<T: Transposer, S: StorageFamily = ImArcStorage> {
     inner:       StepGroupInner<T, S>,
     input_state: Box<LazyState<T::InputState>>,
 
