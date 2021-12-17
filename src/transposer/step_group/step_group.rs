@@ -31,7 +31,9 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
         let mut steps = Vec::with_capacity(1);
         let input_state = Box::new(LazyState::new());
         let input_state_ptr = input_state.as_ref();
-        steps.push(Step::new_init(transposer, rng_seed, input_state_ptr));
+
+        // SAFETY: steps are dropped before input_state.
+        steps.push(unsafe { Step::new_init(transposer, rng_seed, input_state_ptr) });
 
         Self {
             inner: StepGroupInner::OriginalSaturating {
@@ -49,7 +51,6 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
     }
 
     // this only needs mut because it can remove interpolations.
-
     pub fn next_unsaturated(
         &mut self,
         next_inputs: &mut NextInputs<T>,
@@ -340,7 +341,7 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
                 Some(w) => Waker::from(w),
                 None => break Ok(StepGroupPoll::new_pending(outputs)),
             };
-            let step = unsafe { Pin::new_unchecked(step) };
+            let step = Pin::new(step);
             let mut cx = Context::from_waker(&waker);
             let poll_result = step.poll(&mut cx).map_err(|e| match e {
                 StepPollErr::Unsaturated => PollErr::Unsaturated,

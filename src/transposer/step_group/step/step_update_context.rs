@@ -91,6 +91,7 @@ impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> InputSt
     for StepUpdateContext<T, S, C>
 {
     fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
+        // SAFETY: this is good as long as the constructor's criteria are met.
         Box::pin(unsafe { self.input_state.as_ref().unwrap() })
     }
 }

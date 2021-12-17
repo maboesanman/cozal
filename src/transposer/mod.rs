@@ -26,7 +26,7 @@ pub trait Transposer {
     /// The type used as the 'time' for events. This must be Ord and Copy because it is frequently used for comparisons,
     /// and it must be [`Default`] because the default value is used for the timestamp of events emitted.
     /// by the init function.
-    type Time: Copy + Ord + Default;
+    type Time: Copy + Ord + Default + Unpin;
 
     type InputState;
 

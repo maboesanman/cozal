@@ -1,4 +1,3 @@
-pub mod drop_mut;
 pub mod dummy_waker;
 pub mod observing_waker;
 pub mod stack_waker;

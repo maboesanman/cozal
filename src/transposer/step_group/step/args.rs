@@ -1,4 +1,3 @@
-use core::mem::MaybeUninit;
 use core::pin::Pin;
 use std::marker::PhantomData;
 
@@ -13,25 +12,29 @@ pub struct InitArg<T: Transposer, S: StorageFamily> {
 }
 
 impl<T: Transposer, S: StorageFamily> Arg<T, S> for InitArg<T, S> {
-    type Passed = ();
-
     type Stored = ();
+    type Passed<'a>
+    where
+        T::Input: 'a,
+    = ();
 
-    fn get_fut<'a, C: UpdateContext<T, S>>(
+    fn get_future<'a, C: UpdateContext<T, S>>(
         transposer: &'a mut T,
         context: &'a mut C,
         _time: T::Time,
-        _value: Self::Passed,
-        storage_slot: &'a mut MaybeUninit<Self::Stored>,
+        _value: Self::Passed<'a>,
     ) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
-        *storage_slot = MaybeUninit::new(());
-
         transposer.init(context)
     }
 
-    fn get_arg(_frame: &mut WrappedTransposer<T, S>, _in_arg: Self::Stored) -> Self::Passed {}
-
-    fn get_stored(_: Self::Passed) -> Self::Stored {}
+    fn get_passed<'a>(
+        _frame: &mut WrappedTransposer<T, S>,
+        _in_arg: &'a mut Self::Stored,
+    ) -> Self::Passed<'a>
+    where
+        T::Input: 'a,
+    {
+    }
 }
 
 pub struct InputArg<T: Transposer, S: StorageFamily> {
@@ -39,29 +42,29 @@ pub struct InputArg<T: Transposer, S: StorageFamily> {
 }
 
 impl<T: Transposer, S: StorageFamily> Arg<T, S> for InputArg<T, S> {
-    type Passed = Box<[T::Input]>;
-
     type Stored = Box<[T::Input]>;
+    type Passed<'a>
+    where
+        T::Input: 'a,
+    = &'a mut [T::Input];
 
-    fn get_fut<'a, C: UpdateContext<T, S>>(
+    fn get_future<'a, C: UpdateContext<T, S>>(
         transposer: &'a mut T,
         context: &'a mut C,
         time: T::Time,
-        value: Self::Passed,
-        storage_slot: &'a mut MaybeUninit<Self::Stored>,
+        arg: Self::Passed<'a>,
     ) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
-        *storage_slot = MaybeUninit::new(value);
-
-        // SAFETY: we just assigned this
-        let inputs_ref = unsafe { storage_slot.assume_init_ref() }.as_ref();
-        transposer.handle_input(time, inputs_ref, context)
+        transposer.handle_input(time, arg, context)
     }
 
-    fn get_arg(_frame: &mut WrappedTransposer<T, S>, in_arg: Self::Stored) -> Self::Passed {
+    fn get_passed<'a>(
+        _frame: &mut WrappedTransposer<T, S>,
+        in_arg: &'a mut Self::Stored,
+    ) -> Self::Passed<'a>
+    where
+        T::Input: 'a,
+    {
         in_arg
-    }
-    fn get_stored(passed: Self::Passed) -> Self::Stored {
-        passed
     }
 }
 
@@ -70,23 +73,28 @@ pub struct ScheduledArg<T: Transposer, S: StorageFamily> {
 }
 
 impl<T: Transposer, S: StorageFamily> Arg<T, S> for ScheduledArg<T, S> {
-    type Passed = T::Scheduled;
-
     type Stored = ();
+    type Passed<'a>
+    where
+        T::Input: 'a,
+    = T::Scheduled;
 
-    fn get_fut<'a, C: UpdateContext<T, S>>(
+    fn get_future<'a, C: UpdateContext<T, S>>(
         transposer: &'a mut T,
         context: &'a mut C,
         time: T::Time,
-        value: Self::Passed,
-        storage_slot: &'a mut MaybeUninit<Self::Stored>,
+        arg: Self::Passed<'a>,
     ) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
-        *storage_slot = MaybeUninit::new(());
-
-        transposer.handle_scheduled(time, value, context)
+        transposer.handle_scheduled(time, arg, context)
     }
 
-    fn get_arg(frame: &mut WrappedTransposer<T, S>, _in_arg: Self::Stored) -> Self::Passed {
+    fn get_passed<'a>(
+        frame: &mut WrappedTransposer<T, S>,
+        _in_arg: &'a mut Self::Stored,
+    ) -> Self::Passed<'a>
+    where
+        T::Input: 'a,
+    {
         let val = frame.pop_schedule_event();
 
         debug_assert!(val.is_some());
@@ -95,6 +103,4 @@ impl<T: Transposer, S: StorageFamily> Arg<T, S> for ScheduledArg<T, S> {
 
         payload
     }
-
-    fn get_stored(_: Self::Passed) -> Self::Stored {}
 }

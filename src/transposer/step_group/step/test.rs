@@ -68,7 +68,7 @@ fn saturate_take() {
     let mut next_input = None;
 
     let s = LazyState::new();
-    let mut init = Step::<_, ImArcStorage>::new_init(transposer, rng_seed, &s);
+    let mut init = unsafe { Step::<_, ImArcStorage>::new_init(transposer, rng_seed, &s) };
 
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
@@ -104,7 +104,7 @@ fn saturate_clone() {
     let mut next_input = None;
 
     let s = LazyState::new();
-    let mut init = Step::<_, ImArcStorage>::new_init(transposer, rng_seed, &s);
+    let mut init = unsafe { Step::<_, ImArcStorage>::new_init(transposer, rng_seed, &s) };
 
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
@@ -141,7 +141,7 @@ fn desaturate() {
     let mut next_input = None;
 
     let s = LazyState::new();
-    let mut init = Step::<_, ImArcStorage>::new_init(transposer, rng_seed, &s);
+    let mut init = unsafe { Step::<_, ImArcStorage>::new_init(transposer, rng_seed, &s) };
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
 
