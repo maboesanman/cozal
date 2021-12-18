@@ -4,7 +4,7 @@ use std::task::{Context, Poll, Waker};
 
 use futures_core::Future;
 
-use super::pointer_interpolation::PointerInterpolation;
+use super::interpolation::Interpolation;
 use super::step::{Step, StepTime, WrappedTransposer};
 use super::step_group::{InterpolatePoll, InterpolatePollErr, NextUnsaturatedErr};
 use super::NextInputs;
@@ -15,7 +15,7 @@ use crate::transposer::Transposer;
 pub struct StepGroupSaturated<T: Transposer, S: StorageFamily> {
     // first because it has pointers into boxes owned by steps.
     // not phantom pinned because steps are in a box, so don't care about moves.
-    interpolations: HashMap<usize, Pin<Box<PointerInterpolation<T, S>>>>,
+    interpolations: HashMap<usize, Pin<Box<Interpolation<T>>>>,
     steps:          Box<[Step<T, S>]>,
 }
 
@@ -108,8 +108,7 @@ impl<T: Transposer, S: StorageFamily> StepGroupSaturated<T, S> {
             Some(current) => current,
             // not present
             None => {
-                let interpolation =
-                    PointerInterpolation::new(time, self.final_wrapped_transposer());
+                let interpolation = Interpolation::new(time, self.final_wrapped_transposer());
                 let interpolation = Box::pin(interpolation);
                 self.interpolations.insert(channel, interpolation);
                 self.interpolations.get_mut(&channel).unwrap()

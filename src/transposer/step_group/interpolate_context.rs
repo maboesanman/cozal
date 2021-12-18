@@ -7,13 +7,13 @@ use crate::transposer::context::{InputStateContext, InterpolateContext};
 use crate::transposer::Transposer;
 
 pub struct StepGroupInterpolateContext<T: Transposer> {
-    state: *const LazyState<T::InputState>,
+    pub state: LazyState<T::InputState>,
 }
 
 impl<T: Transposer> StepGroupInterpolateContext<T> {
-    pub fn new(state: *const LazyState<T::InputState>) -> Self {
+    pub fn new() -> Self {
         Self {
-            state,
+            state: LazyState::new(),
         }
     }
 }
@@ -22,6 +22,7 @@ impl<'a, T: Transposer> InterpolateContext<'a, T> for StepGroupInterpolateContex
 
 impl<'a, T: Transposer> InputStateContext<'a, T> for StepGroupInterpolateContext<T> {
     fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
-        Box::pin(unsafe { self.state.as_ref().unwrap() })
+        let state_ptr: *const _ = &self.state;
+        Box::pin(unsafe { state_ptr.as_ref().unwrap() })
     }
 }
