@@ -390,21 +390,22 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
             StepGroupInner::Saturated {
                 steps,
             } => {
+                #[cfg(debug_assertions)]
                 if self.raw_time() > time {
-                    Err(InterpolateErr::TimePast)
-                } else {
-                    Ok(unsafe {
-                        PointerInterpolation::new(
-                            time,
-                            steps
-                                .as_ref()
-                                .last()
-                                .unwrap()
-                                .finished_wrapped_transposer()
-                                .unwrap(),
-                        )
-                    })
+                    return Err(InterpolateErr::TimePast)
                 }
+
+                Ok(unsafe {
+                    PointerInterpolation::new(
+                        time,
+                        steps
+                            .as_ref()
+                            .last()
+                            .unwrap()
+                            .finished_wrapped_transposer()
+                            .unwrap(),
+                    )
+                })
             },
             _ => Err(InterpolateErr::NotSaturated),
         }
@@ -415,21 +416,22 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
             StepGroupInner::Saturated {
                 steps,
             } => {
+                #[cfg(debug_assertions)]
                 if self.raw_time() > time {
-                    Err(InterpolateErr::TimePast)
-                } else {
-                    Ok(unsafe {
-                        Interpolation::new(
-                            time,
-                            steps
-                                .as_ref()
-                                .last()
-                                .unwrap()
-                                .finished_wrapped_transposer()
-                                .unwrap(),
-                        )
-                    })
+                    return Err(InterpolateErr::TimePast)
                 }
+
+                Ok(unsafe {
+                    Interpolation::new(
+                        time,
+                        steps
+                            .as_ref()
+                            .last()
+                            .unwrap()
+                            .finished_wrapped_transposer()
+                            .unwrap(),
+                    )
+                })
             },
             _ => Err(InterpolateErr::NotSaturated),
         }
