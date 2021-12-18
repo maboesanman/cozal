@@ -19,13 +19,15 @@ pub struct Transpose<Src: Source, T: Transposer> {
 }
 
 struct StepGroupWrapper<T: Transposer> {
-    step_group: StepGroup<T, ImRcStorage>,
+    step_group:     StepGroup<T, ImRcStorage>,
+    events_emitted: bool,
 }
 
 impl<T: Transposer> StepGroupWrapper<T> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         Self {
-            step_group: StepGroup::new_init(transposer, rng_seed),
+            step_group:     StepGroup::new_init(transposer, rng_seed),
+            events_emitted: false,
         }
     }
 }
@@ -38,7 +40,7 @@ struct ChannelData<T: Transposer> {
 impl<Src, T> Transpose<Src, T>
 where
     Src: Source,
-    T::Time: Copy + Ord + Default + Unpin,
+    T::Time: Copy + Ord + Default + Unpin, // TODO remove once https://github.com/rust-lang/rust/issues/91985 is resolved.
     T: Transposer<Time = Src::Time, Input = Src::Event, InputState = Src::State>,
     T: Clone,
 {

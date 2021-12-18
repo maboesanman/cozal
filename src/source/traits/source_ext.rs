@@ -29,7 +29,7 @@ pub trait SourceExt: Source + Sized {
     /// Adapter for converting a source into another via a transposer.
     fn transpose<T>(self, initial: T, rng_seed: [u8; 32]) -> Transpose<Self, T>
     where
-        T::Time: Copy + Ord + Default + Unpin,
+        T::Time: Copy + Ord + Default + Unpin, // TODO remove once https://github.com/rust-lang/rust/issues/91985 is resolved.
         T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State>,
         T: Clone,
     {

@@ -51,7 +51,7 @@ impl<T: Ord + Copy> Advanced<T> {
     }
 
     fn current_aggregate_advancement(&self) -> Option<T> {
-        self.time_count.first_key_value().map(|(&k, _)| k).flatten()
+        self.time_count.first_key_value().and_then(|(&k, _)| k)
     }
 
     fn increment_time(&mut self, time: Option<T>) {
