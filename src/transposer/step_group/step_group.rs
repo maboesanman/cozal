@@ -4,9 +4,10 @@ use std::task::{Context, Poll, Waker};
 
 use futures_core::Future;
 
+use super::interpolation::Interpolation;
 use super::lazy_state::LazyState;
+use super::pointer_interpolation::PointerInterpolation;
 use super::step::{PollErr as StepPollErr, Step, StepTime};
-use super::step_group_saturated::StepGroupSaturated;
 use crate::transposer::schedule_storage::{ImArcStorage, StorageFamily};
 use crate::transposer::step_group::step::SaturateErr;
 use crate::transposer::Transposer;
@@ -55,11 +56,26 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
         &mut self,
         next_inputs: &mut NextInputs<T>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
-        if let StepGroupInner::Saturated(saturated) = &mut self.inner {
+        if let StepGroupInner::Saturated {
+            steps,
+        } = &mut self.inner
+        {
             let input_state = Box::new(LazyState::new());
             let input_state_ptr = input_state.as_ref();
 
-            let next = saturated.next_unsaturated(next_inputs, input_state_ptr)?;
+            let next = steps
+                .last()
+                .unwrap()
+                .next_unsaturated(next_inputs, input_state_ptr)
+                .map_err(|e| match e {
+                    super::step::NextUnsaturatedErr::NotSaturated => unreachable!(),
+
+                    #[cfg(debug_assertions)]
+                    super::step::NextUnsaturatedErr::InputPastOrPresent => {
+                        NextUnsaturatedErr::InputPastOrPresent
+                    },
+                })?;
+
             let next = next.map(|step| StepGroup {
                 inner: StepGroupInner::OriginalUnsaturated {
                     steps: vec![step]
@@ -97,32 +113,23 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
                 prev,
                 || StepGroupInner::Unreachable,
                 |inner| {
-                    if let StepGroupInner::Saturated(saturated) = inner {
-                        match saturated.take() {
-                            Ok(mut prev_steps) => {
-                                match next.saturate_take(prev_steps.last_mut().unwrap()) {
-                                    Err(err) => {
-                                        let replacement = StepGroupInner::Saturated(
-                                            StepGroupSaturated::new(prev_steps),
-                                        );
-                                        (replacement, Err(TakeFromPreviousErr::SaturateErr(err)))
-                                    },
-                                    Ok(()) => {
-                                        let replacement = StepGroupInner::RepeatUnsaturated {
-                                            steps: prev_steps,
-                                        };
-
-                                        (replacement, Ok(()))
-                                    },
-                                }
+                    if let StepGroupInner::Saturated {
+                        mut steps,
+                    } = inner
+                    {
+                        match next.saturate_take(steps.last_mut().unwrap()) {
+                            Err(err) => {
+                                let replacement = StepGroupInner::Saturated {
+                                    steps,
+                                };
+                                (replacement, Err(TakeFromPreviousErr::SaturateErr(err)))
                             },
-                            Err(saturated) => {
-                                let replacement = StepGroupInner::Saturated(saturated);
+                            Ok(()) => {
+                                let replacement = StepGroupInner::RepeatUnsaturated {
+                                    steps,
+                                };
 
-                                (
-                                    replacement,
-                                    Err(TakeFromPreviousErr::PreviousHasActiveInterpolations),
-                                )
+                                (replacement, Ok(()))
                             },
                         }
                     } else {
@@ -169,9 +176,11 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
         where
             T: Clone,
         {
-            if let StepGroupInner::Saturated(saturated) = prev {
-                let last_step = saturated.final_step();
-                next.saturate_clone(last_step)
+            if let StepGroupInner::Saturated {
+                steps,
+            } = prev
+            {
+                next.saturate_clone(steps.last().unwrap())
             } else {
                 Err(SaturateErr::PreviousNotSaturated)
             }
@@ -305,18 +314,14 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
                         )
                     }
                 },
-                StepGroupInner::Saturated(saturated) => match saturated.take() {
-                    Ok(steps) => (
-                        StepGroupInner::RepeatUnsaturated {
-                            steps,
-                        },
-                        Ok(()),
-                    ),
-                    Err(saturated) => (
-                        StepGroupInner::Saturated(saturated),
-                        Err(DesaturateErr::ActiveInterpolations),
-                    ),
-                },
+                StepGroupInner::Saturated {
+                    steps,
+                } => (
+                    StepGroupInner::RepeatUnsaturated {
+                        steps,
+                    },
+                    Ok(()),
+                ),
                 StepGroupInner::Unreachable => unreachable!(),
             },
         )
@@ -369,19 +374,6 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
         }
     }
 
-    pub fn poll_interpolate(
-        &mut self,
-        time: T::Time,
-        channel: usize,
-        waker: Waker,
-    ) -> Result<InterpolatePoll<T>, InterpolatePollErr> {
-        if let StepGroupInner::Saturated(saturated) = &mut self.inner {
-            saturated.poll_interpolate(time, channel, waker)
-        } else {
-            Err(InterpolatePollErr::NotSaturated)
-        }
-    }
-
     pub fn set_input_state(
         &mut self,
         state: T::InputState,
@@ -390,17 +382,56 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
         self.input_state.set(state, ignore_waker)
     }
 
-    pub fn set_interpolation_input_state(
-        &mut self,
+    pub(crate) fn interpolate_pointer(
+        &self,
         time: T::Time,
-        channel: usize,
-        state: T::InputState,
-        ignore_waker: &Waker,
-    ) -> Result<(), Box<T::InputState>> {
-        if let StepGroupInner::Saturated(saturated) = &mut self.inner {
-            saturated.set_interpolation_input_state(time, channel, state, ignore_waker)
-        } else {
-            Err(Box::new(state))
+    ) -> Result<PointerInterpolation<T>, InterpolateErr> {
+        match &self.inner {
+            StepGroupInner::Saturated {
+                steps,
+            } => {
+                if self.raw_time() > time {
+                    Err(InterpolateErr::TimePast)
+                } else {
+                    Ok(unsafe {
+                        PointerInterpolation::new(
+                            time,
+                            steps
+                                .as_ref()
+                                .last()
+                                .unwrap()
+                                .finished_wrapped_transposer()
+                                .unwrap(),
+                        )
+                    })
+                }
+            },
+            _ => Err(InterpolateErr::NotSaturated),
+        }
+    }
+
+    pub fn interpolate(&self, time: T::Time) -> Result<Interpolation<'_, T, S>, InterpolateErr> {
+        match &self.inner {
+            StepGroupInner::Saturated {
+                steps,
+            } => {
+                if self.raw_time() > time {
+                    Err(InterpolateErr::TimePast)
+                } else {
+                    Ok(unsafe {
+                        Interpolation::new(
+                            time,
+                            steps
+                                .as_ref()
+                                .last()
+                                .unwrap()
+                                .finished_wrapped_transposer()
+                                .unwrap(),
+                        )
+                    })
+                }
+            },
+            _ => Err(InterpolateErr::NotSaturated),
         }
     }
 
@@ -418,7 +449,9 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
             StepGroupInner::RepeatSaturating {
                 steps, ..
             } => steps.first().unwrap().time(),
-            StepGroupInner::Saturated(s) => s.first_time(),
+            StepGroupInner::Saturated {
+                steps,
+            } => steps.first().unwrap().time(),
             StepGroupInner::Unreachable => unreachable!(),
         }
     }
@@ -492,7 +525,9 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
                         } => steps,
                         _ => unreachable!(),
                     };
-                    StepGroupInner::Saturated(StepGroupSaturated::new(steps))
+                    StepGroupInner::Saturated {
+                        steps,
+                    }
                 },
             );
             return true
@@ -590,7 +625,9 @@ enum StepGroupInner<T: Transposer, S: StorageFamily> {
         steps:                    Box<[Step<T, S>]>,
         waker_stack:              Weak<StackWaker<usize>>,
     },
-    Saturated(StepGroupSaturated<T, S>),
+    Saturated {
+        steps: Box<[Step<T, S>]>,
+    },
     Unreachable,
 }
 
@@ -640,7 +677,7 @@ pub enum PollErr {
 }
 
 #[derive(Debug)]
-pub enum InterpolatePollErr {
+pub enum InterpolateErr {
     NotSaturated,
     #[cfg(debug_assertions)]
     TimePast,

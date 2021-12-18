@@ -11,7 +11,6 @@ pub struct ImArcStorage;
 
 impl StorageFamily for ImArcStorage {
     type OrdMap<K: Ord + Eq + Clone, V: Clone> = im::OrdMap<K, V>;
-
     type HashMap<K: Hash + Eq + Clone, V: Clone> = im::HashMap<K, V>;
 }
 
@@ -20,7 +19,6 @@ pub struct ImRcStorage;
 
 impl StorageFamily for ImRcStorage {
     type OrdMap<K: Ord + Eq + Clone, V: Clone> = im_rc::OrdMap<K, V>;
-
     type HashMap<K: Hash + Eq + Clone, V: Clone> = im_rc::HashMap<K, V>;
 }
 
@@ -29,7 +27,6 @@ pub struct StdStorage;
 
 impl StorageFamily for StdStorage {
     type OrdMap<K: Ord + Eq + Clone, V: Clone> = std::collections::BTreeMap<K, V>;
-
     type HashMap<K: Hash + Eq + Clone, V: Clone> = std::collections::HashMap<K, V>;
 }
 

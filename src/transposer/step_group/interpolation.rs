@@ -1,54 +1,39 @@
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
 use futures_core::Future;
 
-use super::interpolate_context::StepGroupInterpolateContext;
+use super::pointer_interpolation::PointerInterpolation;
 use super::step::WrappedTransposer;
 use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::Transposer;
-use crate::util::dummy_waker::DummyWaker;
 
-pub struct Interpolation<T: Transposer> {
-    future:  Pin<Box<dyn Future<Output = T::OutputState>>>,
-    context: Box<StepGroupInterpolateContext<T>>,
-    time:    T::Time,
-    waker:   Waker,
+pub struct Interpolation<'t, T: Transposer, S: StorageFamily> {
+    inner: PointerInterpolation<T>,
+
+    // this forces the lifetime to be valid
+    phantom: PhantomData<&'t WrappedTransposer<T, S>>,
 }
 
-impl<T: Transposer> Interpolation<T> {
-    pub fn wake(&self) {
-        self.waker.wake_by_ref()
-    }
-
+impl<'t, T: Transposer, S: StorageFamily> Interpolation<'t, T, S> {
     pub fn time(&self) -> T::Time {
-        self.time
+        self.inner.time()
     }
 
-    pub fn new<S: StorageFamily>(
+    // SAFETY: wrapped transposer must outlive this object.
+    pub(crate) unsafe fn new(
         time: T::Time,
-        wrapped_transposer: &WrappedTransposer<T, S>,
+        wrapped_transposer: &'t WrappedTransposer<T, S>,
     ) -> Self {
-        let mut context = Box::new(StepGroupInterpolateContext::new());
-        let context_ptr: *mut _ = context.as_mut();
-        let context_ref = unsafe { context_ptr.as_mut().unwrap() };
-
-        let base_time = wrapped_transposer.metadata.last_updated;
-        let transposer = &wrapped_transposer.transposer;
-        let future = T::interpolate(transposer, base_time, time, context_ref);
-        let future: Pin<Box<dyn Future<Output = T::OutputState>>> =
-            unsafe { core::mem::transmute(future) };
-
         Self {
-            time,
-            context,
-            future,
-            waker: DummyWaker::dummy(),
+            inner:   unsafe { PointerInterpolation::new(time, wrapped_transposer) },
+            phantom: PhantomData,
         }
     }
 
     pub fn needs_state(&self) -> bool {
-        self.context.state.requested()
+        self.inner.context.state.requested()
     }
 
     pub fn set_state(
@@ -56,14 +41,14 @@ impl<T: Transposer> Interpolation<T> {
         state: T::InputState,
         ignore_waker: &Waker,
     ) -> Result<(), Box<T::InputState>> {
-        self.context.state.set(state, ignore_waker)
+        self.inner.context.state.set(state, ignore_waker)
     }
 }
 
-impl<T: Transposer> Future for Interpolation<T> {
+impl<'t, T: Transposer, S: StorageFamily> Future for Interpolation<'t, T, S> {
     type Output = T::OutputState;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.future.as_mut().poll(cx)
+        self.inner.future.as_mut().poll(cx)
     }
 }

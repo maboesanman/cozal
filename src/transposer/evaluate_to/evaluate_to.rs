@@ -5,7 +5,7 @@ use futures_core::Future;
 
 use crate::transposer::input_buffer::InputBuffer;
 use crate::transposer::schedule_storage::StdStorage;
-use crate::transposer::step_group::{InterpolatePoll, StepGroup, StepGroupPollResult};
+use crate::transposer::step_group::{PointerInterpolation, StepGroup, StepGroupPollResult};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
@@ -28,7 +28,7 @@ where
     }
     EvaluateTo {
         inner: EvaluateToInner::Step {
-            frame: StepGroup::new_init(transposer, seed),
+            frame: Box::new(StepGroup::new_init(transposer, seed)),
             events: input_buffer,
             state,
             state_fut: None,
@@ -52,7 +52,7 @@ where
     Fs: Future<Output = T::InputState>,
 {
     Step {
-        frame:     StepGroup<T, StdStorage>,
+        frame:     Box<StepGroup<T, StdStorage>>,
         events:    InputBuffer<T::Time, T::Input>,
         state:     S,
         state_fut: Option<Fs>,
@@ -60,11 +60,12 @@ where
         outputs:   EmittedEvents<T>,
     },
     Interpolate {
-        frame:     StepGroup<T, StdStorage>,
-        state:     S,
-        state_fut: Option<Fs>,
-        until:     T::Time,
-        outputs:   EmittedEvents<T>,
+        frame:       Box<StepGroup<T, StdStorage>>,
+        interpolate: Pin<Box<PointerInterpolation<T>>>,
+        state:       S,
+        state_fut:   Option<Fs>,
+        until:       T::Time,
+        outputs:     EmittedEvents<T>,
     },
     Terminated,
 }
@@ -161,7 +162,7 @@ where
                                         events.extend_front(time, inputs);
                                     }
                                     next_frame.saturate_take(&mut frame).unwrap();
-                                    frame = next_frame;
+                                    *frame = next_frame;
                                     return (
                                         EvaluateToInner::Step {
                                             frame,
@@ -178,9 +179,12 @@ where
 
                             // no updates or updates after "until"
 
+                            let interpolate = Box::pin(frame.interpolate_pointer(until).unwrap());
+
                             (
                                 EvaluateToInner::Interpolate {
                                     frame,
+                                    interpolate,
                                     state,
                                     state_fut: None,
                                     until,
@@ -190,7 +194,8 @@ where
                             )
                         },
                         EvaluateToInner::Interpolate {
-                            mut frame,
+                            frame,
+                            mut interpolate,
                             state,
                             mut state_fut,
                             until,
@@ -200,18 +205,16 @@ where
                                 let fut = unsafe { Pin::new_unchecked(fut) };
                                 match fut.poll(cx) {
                                     Poll::Ready(s) => {
-                                        let _ = frame.set_interpolation_input_state(
-                                            until,
-                                            0,
-                                            s,
-                                            cx.waker(),
-                                        );
+                                        if interpolate.set_state(s, cx.waker()).is_err() {
+                                            panic!()
+                                        };
                                         state_fut = None;
                                     },
                                     Poll::Pending => {
                                         return (
                                             EvaluateToInner::Interpolate {
                                                 frame,
+                                                interpolate,
                                                 state,
                                                 state_fut,
                                                 until,
@@ -223,35 +226,29 @@ where
                                 }
                             }
 
-                            let poll = frame
-                                .poll_interpolate(until, 0, cx.waker().clone())
-                                .unwrap();
+                            let poll = interpolate.as_mut().poll(cx);
 
                             match poll {
-                                InterpolatePoll::NeedsState => {
-                                    state_fut = Some((state)(until));
+                                Poll::Pending => {
+                                    let result = if interpolate.needs_state() {
+                                        state_fut = Some((state)(until));
+                                        Poll::Ready(None)
+                                    } else {
+                                        Poll::Pending
+                                    };
                                     (
                                         EvaluateToInner::Interpolate {
                                             frame,
+                                            interpolate,
                                             state,
                                             state_fut,
                                             until,
                                             outputs,
                                         },
-                                        Poll::Ready(None),
+                                        result,
                                     )
                                 },
-                                InterpolatePoll::Pending => (
-                                    EvaluateToInner::Interpolate {
-                                        frame,
-                                        state,
-                                        state_fut,
-                                        until,
-                                        outputs,
-                                    },
-                                    Poll::Pending,
-                                ),
-                                InterpolatePoll::Ready(s) => {
+                                Poll::Ready(s) => {
                                     (EvaluateToInner::Terminated, Poll::Ready(Some((outputs, s))))
                                 },
                             }

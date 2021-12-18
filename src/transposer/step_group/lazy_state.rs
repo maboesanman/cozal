@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::lazy::SyncOnceCell;
 
 pub struct LazyState<S> {
-    value:  SyncOnceCell<S>,
+    value:  SyncOnceCell<Box<S>>,
     status: RefCell<LazyStateStatus>,
 }
 pub enum LazyStateStatus {
@@ -39,7 +39,7 @@ impl<S> LazyState<S> {
     }
 
     pub fn set(&self, state: S, ignore_waker: &Waker) -> Result<(), Box<S>> {
-        self.value.set(state).map_err(|s| Box::new(s))?;
+        self.value.set(Box::new(state))?;
         if let LazyStateStatus::Requested(w) = self.status.replace(LazyStateStatus::Pending) {
             if !w.will_wake(ignore_waker) {
                 w.wake();
