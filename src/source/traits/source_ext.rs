@@ -26,14 +26,15 @@ pub trait SourceExt: Source + Sized {
     //     realtime(self, reference, sleep_fn)
     // }
 
-    // /// Adapter for converting a source into another via a transposer.
-    // fn transpose<T>(self, initial: T, rng_seed: [u8; 32]) -> Transpose<Self, T>
-    // where
-    //     T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State>,
-    //     T: Clone,
-    // {
-    //     Transpose::new(self, initial, rng_seed)
-    // }
+    /// Adapter for converting a source into another via a transposer.
+    fn transpose<T>(self, initial: T, rng_seed: [u8; 32]) -> Transpose<Self, T>
+    where
+        T::Time: Copy + Ord + Default + Unpin,
+        T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State>,
+        T: Clone,
+    {
+        Transpose::new(self, initial, rng_seed)
+    }
 
     /// Adapter for converting the events and states of a source.
     fn map<E, S>(

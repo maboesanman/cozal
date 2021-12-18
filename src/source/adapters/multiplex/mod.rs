@@ -236,7 +236,7 @@ impl<Src: Source> Source for Multiplex<Src> {
         unsafe { NonZeroUsize::new_unchecked(usize::MAX) }
     }
 
-    fn release_channel(self: Pin<&mut Self>, channel: usize) {
+    fn release_channel(self: Pin<&mut Self>, _channel: usize) {
         todo!()
     }
 }

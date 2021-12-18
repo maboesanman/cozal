@@ -329,7 +329,10 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
     ) -> Result<StepGroupPoll<T>, PollErr> {
         let mut outputs = Vec::new();
         loop {
-            let (step, waker_stack) = match self.current_saturating() {
+            let CurrentSaturating {
+                step,
+                waker_stack,
+            } = match self.current_saturating() {
                 Ok(x) => x,
                 Err(CurrentSaturatingErr::Unsaturated) => return Err(PollErr::Unsaturated),
                 Err(CurrentSaturatingErr::Saturated) => {
@@ -420,26 +423,24 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
         }
     }
 
-    fn current_saturating(
-        &mut self,
-    ) -> Result<(&mut Step<T, S>, &mut Weak<StackWaker<usize>>), CurrentSaturatingErr> {
+    fn current_saturating(&mut self) -> Result<CurrentSaturating<T, S>, CurrentSaturatingErr> {
         match &mut self.inner {
             StepGroupInner::OriginalSaturating {
                 current_saturating_index,
                 steps,
                 waker_stack,
-            } => Ok((
-                steps.get_mut(*current_saturating_index).unwrap(),
+            } => Ok(CurrentSaturating {
+                step: steps.get_mut(*current_saturating_index).unwrap(),
                 waker_stack,
-            )),
+            }),
             StepGroupInner::RepeatSaturating {
                 current_saturating_index,
                 steps,
                 waker_stack,
-            } => Ok((
-                steps.get_mut(*current_saturating_index).unwrap(),
+            } => Ok(CurrentSaturating {
+                step: steps.get_mut(*current_saturating_index).unwrap(),
                 waker_stack,
-            )),
+            }),
             StepGroupInner::OriginalUnsaturated {
                 ..
             } => Err(CurrentSaturatingErr::Unsaturated),
@@ -534,6 +535,11 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
             StepGroupTime::Normal(t.raw_time())
         }
     }
+}
+
+struct CurrentSaturating<'a, T: Transposer, S: StorageFamily> {
+    step:        &'a mut Step<T, S>,
+    waker_stack: &'a mut Weak<StackWaker<usize>>,
 }
 
 #[derive(Clone, Copy)]

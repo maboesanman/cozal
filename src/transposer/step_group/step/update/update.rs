@@ -41,7 +41,7 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
         let metadata = &mut wrapped_transposer.metadata;
 
         // SAFETY: metadata outlives context by drop order, input_state outlives because new is unsafe and the caller must uphold.
-        let context = unsafe { C::new(time.clone(), metadata, input_state) };
+        let context = unsafe { C::new(time, metadata, input_state) };
         let mut context = Box::new(context);
         let context_mut: *mut _ = context.as_mut();
 

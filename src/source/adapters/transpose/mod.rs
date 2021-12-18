@@ -38,19 +38,20 @@ struct ChannelData<T: Transposer> {
 impl<Src, T> Transpose<Src, T>
 where
     Src: Source,
+    T::Time: Copy + Ord + Default + Unpin,
     T: Transposer<Time = Src::Time, Input = Src::Event, InputState = Src::State>,
     T: Clone,
 {
-    // pub fn new(source: Src, transposer: T, rng_seed: [u8; 32]) -> Self {
-    //     let mut steps = VecDeque::new();
-    //     steps.push_back(StepGroupWrapper::new_init(transposer, rng_seed));
-    //     Self {
-    //         source,
-    //         source_waker_observer: WakerObserver::new_dummy(),
-    //         steps,
-    //         current_channels: HashMap::new(),
-    //     }
-    // }
+    pub fn new(source: Src, transposer: T, rng_seed: [u8; 32]) -> Self {
+        let mut steps = VecDeque::new();
+        steps.push_back(StepGroupWrapper::new_init(transposer, rng_seed));
+        Self {
+            source,
+            source_waker_observer: WakerObserver::new_dummy(),
+            steps,
+            current_channels: HashMap::new(),
+        }
+    }
 }
 
 impl<Src, T> Source for Transpose<Src, T>
@@ -69,29 +70,29 @@ where
 
     fn poll(
         self: Pin<&mut Self>,
-        time: Self::Time,
-        cx: crate::source::traits::SourceContext,
+        _time: Self::Time,
+        _cx: crate::source::traits::SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         todo!()
     }
 
     fn poll_forget(
         self: Pin<&mut Self>,
-        time: Self::Time,
-        cx: crate::source::traits::SourceContext,
+        _time: Self::Time,
+        _cx: crate::source::traits::SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         todo!()
     }
 
     fn poll_events(
         self: Pin<&mut Self>,
-        time: Self::Time,
-        cx: crate::source::traits::SourceContext,
+        _time: Self::Time,
+        _cx: crate::source::traits::SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, (), Self::Error> {
         todo!()
     }
 
-    fn advance(self: Pin<&mut Self>, time: Self::Time) {
+    fn advance(self: Pin<&mut Self>, _time: Self::Time) {
         todo!()
     }
 

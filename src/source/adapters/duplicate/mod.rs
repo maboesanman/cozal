@@ -86,7 +86,7 @@ where
         self.inner.max_channel()
     }
 
-    fn release_channel(self: Pin<&mut Self>, channel: usize) {
+    fn release_channel(self: Pin<&mut Self>, _channel: usize) {
         todo!()
     }
 }
