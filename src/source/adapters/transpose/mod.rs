@@ -5,22 +5,32 @@ use pin_project::pin_project;
 
 use crate::source::Source;
 use crate::transposer::schedule_storage::ImRcStorage;
-use crate::transposer::step_group::StepGroup;
+use crate::transposer::step_group::{PointerInterpolation, StepGroup};
 use crate::transposer::Transposer;
-use crate::util::observing_waker::WakerObserver;
+use crate::util::replace_waker::ReplaceWaker;
+use crate::util::stack_waker::StackWaker;
 
 #[pin_project]
 pub struct Transpose<Src: Source, T: Transposer> {
     #[pin]
     source:                Src,
-    source_waker_observer: WakerObserver,
+    source_waker_observer: ReplaceWaker,
     steps:                 VecDeque<StepGroupWrapper<T>>,
-    current_channels:      HashMap<usize, ChannelData<T>>,
+    active_channels:       HashMap<usize, ChannelData<T>>,
 }
 
 struct StepGroupWrapper<T: Transposer> {
     step_group:     StepGroup<T, ImRcStorage>,
     events_emitted: bool,
+}
+
+enum ChannelStatus<T: Transposer> {
+    Saturating {
+        stack_waker: StackWaker,
+    },
+    Interpolating {
+        interpolation: PointerInterpolation<T>,
+    },
 }
 
 impl<T: Transposer> StepGroupWrapper<T> {
@@ -33,8 +43,10 @@ impl<T: Transposer> StepGroupWrapper<T> {
 }
 
 struct ChannelData<T: Transposer> {
-    channel:   usize,
-    last_time: T::Time,
+    channel:    usize,
+    last_time:  T::Time,
+    step_index: usize,
+    status:     ChannelStatus<T>,
 }
 
 impl<Src, T> Transpose<Src, T>
@@ -44,15 +56,17 @@ where
     T: Transposer<Time = Src::Time, Input = Src::Event, InputState = Src::State>,
     T: Clone,
 {
-    pub fn new(source: Src, transposer: T, rng_seed: [u8; 32]) -> Self {
-        let mut steps = VecDeque::new();
-        steps.push_back(StepGroupWrapper::new_init(transposer, rng_seed));
-        Self {
-            source,
-            source_waker_observer: WakerObserver::new_dummy(),
-            steps,
-            current_channels: HashMap::new(),
-        }
+    pub fn new(_source: Src, _transposer: T, _rng_seed: [u8; 32]) -> Self {
+        // let mut steps = VecDeque::new();
+        // steps.push_back(StepGroupWrapper::new_init(transposer, rng_seed));
+        // Self {
+        //     source,
+        //     source_waker_observer: WakerObserver::new_dummy(),
+        //     steps,
+        //     current_channels: HashMap::new(),
+        // }
+
+        todo!()
     }
 }
 

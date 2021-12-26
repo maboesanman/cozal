@@ -1,5 +1,4 @@
 use std::pin::Pin;
-use std::sync::Weak;
 use std::task::{Context, Poll, Waker};
 
 use futures_core::Future;
@@ -11,7 +10,6 @@ use super::step::{PollErr as StepPollErr, Step, StepTime};
 use crate::transposer::schedule_storage::{ImArcStorage, StorageFamily};
 use crate::transposer::step_group::step::SaturateErr;
 use crate::transposer::Transposer;
-use crate::util::stack_waker::StackWaker;
 use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
 
 pub struct StepGroup<T: Transposer, S: StorageFamily = ImArcStorage> {
@@ -40,7 +38,6 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
             inner: StepGroupInner::OriginalSaturating {
                 current_saturating_index: 0,
                 steps,
-                waker_stack: StackWaker::new_empty(),
             },
             input_state,
 
@@ -212,7 +209,6 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
                         let replacement = StepGroupInner::OriginalSaturating {
                             current_saturating_index: 0,
                             steps,
-                            waker_stack: StackWaker::new_empty(),
                         };
                         (replacement, Ok(()))
                     },
@@ -230,7 +226,6 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
                         let replacement = StepGroupInner::RepeatSaturating {
                             current_saturating_index: 0,
                             steps,
-                            waker_stack: StackWaker::new_empty(),
                         };
                         (replacement, Ok(()))
                     },
@@ -261,58 +256,34 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
                 StepGroupInner::OriginalSaturating {
                     current_saturating_index,
                     mut steps,
-                    waker_stack,
                 } => {
                     steps
                         .get_mut(current_saturating_index)
                         .unwrap()
                         .desaturate()
                         .unwrap();
-                    if StackWaker::is_empty(&waker_stack) {
-                        (
-                            StepGroupInner::OriginalUnsaturated {
-                                steps,
-                            },
-                            Ok(()),
-                        )
-                    } else {
-                        (
-                            StepGroupInner::OriginalSaturating {
-                                current_saturating_index,
-                                steps,
-                                waker_stack,
-                            },
-                            Err(DesaturateErr::ActiveWakers),
-                        )
-                    }
+                    (
+                        StepGroupInner::OriginalUnsaturated {
+                            steps,
+                        },
+                        Ok(()),
+                    )
                 },
                 StepGroupInner::RepeatSaturating {
                     current_saturating_index,
                     mut steps,
-                    waker_stack,
                 } => {
                     steps
                         .get_mut(current_saturating_index)
                         .unwrap()
                         .desaturate()
                         .unwrap();
-                    if StackWaker::is_empty(&waker_stack) {
-                        (
-                            StepGroupInner::RepeatUnsaturated {
-                                steps,
-                            },
-                            Ok(()),
-                        )
-                    } else {
-                        (
-                            StepGroupInner::RepeatSaturating {
-                                current_saturating_index,
-                                steps,
-                                waker_stack,
-                            },
-                            Err(DesaturateErr::ActiveWakers),
-                        )
-                    }
+                    (
+                        StepGroupInner::RepeatUnsaturated {
+                            steps,
+                        },
+                        Ok(()),
+                    )
                 },
                 StepGroupInner::Saturated {
                     steps,
@@ -329,25 +300,19 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
 
     pub fn poll_progress(
         &mut self,
-        channel: usize,
+        _channel: usize,
         waker: Waker,
     ) -> Result<StepGroupPoll<T>, PollErr> {
         let mut outputs = Vec::new();
         loop {
             let CurrentSaturating {
                 step,
-                waker_stack,
             } = match self.current_saturating() {
                 Ok(x) => x,
                 Err(CurrentSaturatingErr::Unsaturated) => return Err(PollErr::Unsaturated),
                 Err(CurrentSaturatingErr::Saturated) => {
                     return Ok(StepGroupPoll::new_ready(outputs))
                 },
-            };
-
-            let waker = match StackWaker::register(waker_stack, channel, waker.clone()) {
-                Some(w) => Waker::from(w),
-                None => break Ok(StepGroupPoll::new_pending(outputs)),
             };
             let step = Pin::new(step);
             let mut cx = Context::from_waker(&waker);
@@ -463,18 +428,14 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
             StepGroupInner::OriginalSaturating {
                 current_saturating_index,
                 steps,
-                waker_stack,
             } => Ok(CurrentSaturating {
                 step: steps.get_mut(*current_saturating_index).unwrap(),
-                waker_stack,
             }),
             StepGroupInner::RepeatSaturating {
                 current_saturating_index,
                 steps,
-                waker_stack,
             } => Ok(CurrentSaturating {
                 step: steps.get_mut(*current_saturating_index).unwrap(),
-                waker_stack,
             }),
             StepGroupInner::OriginalUnsaturated {
                 ..
@@ -575,8 +536,7 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
 }
 
 struct CurrentSaturating<'a, T: Transposer, S: StorageFamily> {
-    step:        &'a mut Step<T, S>,
-    waker_stack: &'a mut Weak<StackWaker<usize>>,
+    step: &'a mut Step<T, S>,
 }
 
 #[derive(Clone, Copy)]
@@ -617,7 +577,6 @@ enum StepGroupInner<T: Transposer, S: StorageFamily> {
     OriginalSaturating {
         current_saturating_index: usize,
         steps:                    Vec<Step<T, S>>,
-        waker_stack:              Weak<StackWaker<usize>>,
     },
     RepeatUnsaturated {
         steps: Box<[Step<T, S>]>,
@@ -625,7 +584,6 @@ enum StepGroupInner<T: Transposer, S: StorageFamily> {
     RepeatSaturating {
         current_saturating_index: usize,
         steps:                    Box<[Step<T, S>]>,
-        waker_stack:              Weak<StackWaker<usize>>,
     },
     Saturated {
         steps: Box<[Step<T, S>]>,
