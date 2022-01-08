@@ -29,6 +29,7 @@ impl Transposer for TestTransposer {
         async {
             self.counter = 0;
             cx.schedule_event(0, ()).unwrap();
+            let _s = cx.get_input_state().await;
         }
         .pending_once()
         .await
@@ -45,6 +46,7 @@ impl Transposer for TestTransposer {
 
             self.counter += 1;
             cx.emit_event(self.counter * 10);
+            let _s = cx.get_input_state().await;
         }
         .pending_once()
         .await
@@ -54,8 +56,9 @@ impl Transposer for TestTransposer {
         &self,
         _base_time: Self::Time,
         _interpolated_time: Self::Time,
-        _cx: &mut dyn InterpolateContext<'_, Self>,
+        cx: &mut dyn InterpolateContext<'_, Self>,
     ) -> Self::OutputState {
+        let _s = cx.get_input_state().await;
         async { self.counter }.pending_once().await
     }
 }
