@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use futures_test::future::FutureTestExt;
 use rand::Rng;
 
 use super::evaluate_to;
@@ -25,8 +26,12 @@ impl Transposer for TestTransposer {
     type Output = usize;
 
     async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>) {
-        self.counter = 0;
-        cx.schedule_event(0, ()).unwrap();
+        async {
+            self.counter = 0;
+            cx.schedule_event(0, ()).unwrap();
+        }
+        .pending_once()
+        .await
     }
 
     async fn handle_scheduled(
@@ -35,10 +40,14 @@ impl Transposer for TestTransposer {
         _payload: Self::Scheduled,
         cx: &mut dyn HandleScheduleContext<'_, Self>,
     ) {
-        cx.schedule_event(time + 1, ()).unwrap();
+        async {
+            cx.schedule_event(time + 1, ()).unwrap();
 
-        self.counter += 1;
-        cx.emit_event(self.counter * 10);
+            self.counter += 1;
+            cx.emit_event(self.counter * 10);
+        }
+        .pending_once()
+        .await
     }
 
     async fn interpolate(
@@ -47,7 +56,7 @@ impl Transposer for TestTransposer {
         _interpolated_time: Self::Time,
         _cx: &mut dyn InterpolateContext<'_, Self>,
     ) -> Self::OutputState {
-        self.counter
+        async { self.counter }.pending_once().await
     }
 }
 
