@@ -71,7 +71,7 @@ fn basic() {
         transposer,
         100,
         Vec::new(),
-        |_| core::future::ready(()),
+        |_| core::future::ready(()).pending_once(),
         rng_seed,
     );
 
