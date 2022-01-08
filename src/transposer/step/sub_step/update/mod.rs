@@ -8,4 +8,4 @@ pub use update::{Update, UpdateResult};
 pub use update_context::UpdateContext;
 pub use wrapped_transposer::{TransposerMetaData, WrappedTransposer};
 
-pub(self) use super::time::StepTime;
+pub use super::time::{ScheduledTime, SubStepTime};

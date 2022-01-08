@@ -7,4 +7,4 @@ pub(self) mod wrapped_transposer;
 pub use transposer_metadata::TransposerMetaData;
 pub use wrapped_transposer::WrappedTransposer;
 
-pub(self) use super::super::time::ScheduledTime;
+pub(self) use super::ScheduledTime;

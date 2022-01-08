@@ -1,5 +1,5 @@
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct StepTime<T: Ord + Copy + Default> {
+pub struct SubStepTime<T: Ord + Copy + Default> {
     index: usize,
     time:  T,
 }
@@ -11,27 +11,27 @@ pub struct ScheduledTime<T: Ord + Copy + Default> {
     pub emission_index: usize,
 }
 
-impl<T: Ord + Copy + Default> StepTime<T> {
+impl<T: Ord + Copy + Default> SubStepTime<T> {
     pub fn index(&self) -> usize {
         self.index
     }
 
     pub fn new_init() -> Self {
-        StepTime {
+        SubStepTime {
             index: 0,
             time:  T::default(),
         }
     }
 
     pub fn new_input(index: usize, time: T) -> Self {
-        StepTime {
+        SubStepTime {
             index,
             time,
         }
     }
 
     pub fn new_scheduled(index: usize, time: ScheduledTime<T>) -> Self {
-        StepTime {
+        SubStepTime {
             index,
             time: time.time,
         }

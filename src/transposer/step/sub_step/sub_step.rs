@@ -5,17 +5,17 @@ use core::task::{Context, Poll};
 use futures_core::Future;
 
 use super::args::{InitArg, InputArg, ScheduledArg};
-use super::step_update_context::StepUpdateContext;
-use super::time::StepTime;
+use super::sub_step_update_context::SubStepUpdateContext;
+use super::time::SubStepTime;
 use super::update::{Arg, Update, UpdateResult, WrappedTransposer};
 use crate::transposer::schedule_storage::StorageFamily;
-use crate::transposer::step_group::lazy_state::LazyState;
-use crate::transposer::step_group::NextInputs;
+use crate::transposer::step::lazy_state::LazyState;
+use crate::transposer::step::NextInputs;
 use crate::transposer::Transposer;
 use crate::util::take_mut::{self, take_and_return_or_recover};
 
-pub struct Step<T: Transposer, S: StorageFamily> {
-    time:        StepTime<T::Time>,
+pub struct SubStep<T: Transposer, S: StorageFamily> {
+    time:        SubStepTime<T::Time>,
     inner:       StepInner<T, S>,
     input_state: *const LazyState<T::InputState>,
 
@@ -51,21 +51,21 @@ pub enum PollErr {
     Saturated,
 }
 
-impl<T: Transposer, S: StorageFamily> Step<T, S> {
+impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
     // SAFETY: input_state must outlive returned value and all values created from `next_unsaturated_same_time`
     pub unsafe fn new_init(
         transposer: T,
         rng_seed: [u8; 32],
         input_state: *const LazyState<T::InputState>,
     ) -> Self {
-        let time = StepTime::new_init();
+        let time = SubStepTime::new_init();
         let wrapped_transposer = WrappedTransposer::new(transposer, rng_seed);
         let wrapped_transposer = Box::new(wrapped_transposer);
         let update = unsafe { Update::new(wrapped_transposer, (), time.clone(), input_state) };
         let inner = StepInner::SaturatingInit {
             update,
         };
-        Step {
+        SubStep {
             time,
             inner,
             input_state,
@@ -114,11 +114,17 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
 
         let (time, is_input) = match (&next_inputs, next_scheduled_time) {
             (None, None) => return Ok(None),
-            (None, Some(t)) => (StepTime::new_scheduled(next_time_index, t.clone()), false),
-            (Some((t, _)), None) => (StepTime::new_input(next_time_index, *t), true),
+            (None, Some(t)) => (
+                SubStepTime::new_scheduled(next_time_index, t.clone()),
+                false,
+            ),
+            (Some((t, _)), None) => (SubStepTime::new_input(next_time_index, *t), true),
             (Some((t_i, _)), Some(t_s)) => match t_i.cmp(&t_s.time) {
-                Ordering::Greater => (StepTime::new_scheduled(next_time_index, t_s.clone()), false),
-                _ => (StepTime::new_input(next_time_index, *t_i), true),
+                Ordering::Greater => (
+                    SubStepTime::new_scheduled(next_time_index, t_s.clone()),
+                    false,
+                ),
+                _ => (SubStepTime::new_input(next_time_index, *t_i), true),
             },
         };
 
@@ -130,7 +136,7 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
             StepInner::OriginalUnsaturatedScheduled
         };
 
-        let item = Step {
+        let item = SubStep {
             time,
             inner,
             input_state,
@@ -177,10 +183,10 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
         }
 
         let next_time_index = self.time.index() + 1;
-        let time = StepTime::new_scheduled(next_time_index, next_scheduled_time.clone());
+        let time = SubStepTime::new_scheduled(next_time_index, next_scheduled_time.clone());
         let inner = StepInner::OriginalUnsaturatedScheduled;
 
-        let item = Step {
+        let item = SubStep {
             time,
             inner,
             input_state: self.input_state,
@@ -384,7 +390,7 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
         })
     }
 
-    pub fn time(&self) -> &StepTime<T::Time> {
+    pub fn time(&self) -> &SubStepTime<T::Time> {
         &self.time
     }
 
@@ -407,7 +413,7 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
     }
 }
 
-impl<T: Transposer, S: StorageFamily> Future for Step<T, S> {
+impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
     type Output = Result<Option<Vec<T::Output>>, PollErr>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -563,8 +569,8 @@ impl<T: Transposer, S: StorageFamily> Future for Step<T, S> {
 }
 
 // context types
-type OriginalContext<T, S> = StepUpdateContext<T, S, Vec<<T as Transposer>::Output>>;
-type RepeatContext<T, S> = StepUpdateContext<T, S, ()>;
+type OriginalContext<T, S> = SubStepUpdateContext<T, S, Vec<<T as Transposer>::Output>>;
+type RepeatContext<T, S> = SubStepUpdateContext<T, S, ()>;
 
 // arg types
 type InitUpdate<T, S> = Update<T, S, OriginalContext<T, S>, InitArg<T, S>>;

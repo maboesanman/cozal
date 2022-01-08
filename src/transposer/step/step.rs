@@ -6,13 +6,13 @@ use futures_core::Future;
 use super::interpolation::Interpolation;
 use super::lazy_state::LazyState;
 use super::pointer_interpolation::PointerInterpolation;
-use super::step::{PollErr as StepPollErr, Step, StepTime};
+use super::sub_step::{PollErr as StepPollErr, SubStep, SubStepTime};
 use crate::transposer::schedule_storage::{ImArcStorage, StorageFamily};
-use crate::transposer::step_group::step::SaturateErr;
+use crate::transposer::step::sub_step::SaturateErr;
 use crate::transposer::Transposer;
 use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
 
-pub struct StepGroup<T: Transposer, S: StorageFamily = ImArcStorage> {
+pub struct Step<T: Transposer, S: StorageFamily = ImArcStorage> {
     inner:       StepGroupInner<T, S>,
     input_state: Box<LazyState<T::InputState>>,
 
@@ -25,14 +25,14 @@ pub struct StepGroup<T: Transposer, S: StorageFamily = ImArcStorage> {
 
 pub type NextInputs<T> = Option<(<T as Transposer>::Time, Box<[<T as Transposer>::Input]>)>;
 
-impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
+impl<T: Transposer, S: StorageFamily> Step<T, S> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         let mut steps = Vec::with_capacity(1);
         let input_state = Box::new(LazyState::new());
         let input_state_ptr = input_state.as_ref();
 
         // SAFETY: steps are dropped before input_state.
-        steps.push(unsafe { Step::new_init(transposer, rng_seed, input_state_ptr) });
+        steps.push(unsafe { SubStep::new_init(transposer, rng_seed, input_state_ptr) });
 
         Self {
             inner: StepGroupInner::OriginalSaturating {
@@ -65,15 +65,15 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
                 .unwrap()
                 .next_unsaturated(next_inputs, input_state_ptr)
                 .map_err(|e| match e {
-                    super::step::NextUnsaturatedErr::NotSaturated => unreachable!(),
+                    super::sub_step::NextUnsaturatedErr::NotSaturated => unreachable!(),
 
                     #[cfg(debug_assertions)]
-                    super::step::NextUnsaturatedErr::InputPastOrPresent => {
+                    super::sub_step::NextUnsaturatedErr::InputPastOrPresent => {
                         NextUnsaturatedErr::InputPastOrPresent
                     },
                 })?;
 
-            let next = next.map(|step| StepGroup {
+            let next = next.map(|step| Step {
                 inner: StepGroupInner::OriginalUnsaturated {
                     steps: vec![step]
                 },
@@ -104,7 +104,7 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
 
         fn take_from_previous<T: Transposer, S: StorageFamily>(
             prev: &mut StepGroupInner<T, S>,
-            next: &mut Step<T, S>,
+            next: &mut SubStep<T, S>,
         ) -> Result<(), TakeFromPreviousErr> {
             take_and_return_or_recover(
                 prev,
@@ -168,7 +168,7 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
 
         fn clone_from_previous<T: Transposer, S: StorageFamily>(
             prev: &StepGroupInner<T, S>,
-            next: &mut Step<T, S>,
+            next: &mut SubStep<T, S>,
         ) -> Result<(), SaturateErr>
         where
             T: Clone,
@@ -196,7 +196,7 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
 
     fn saturate<F, E>(&mut self, saturate_first_step: F) -> Result<(), Option<E>>
     where
-        F: FnOnce(&mut Step<T, S>) -> Result<(), E>,
+        F: FnOnce(&mut SubStep<T, S>) -> Result<(), E>,
     {
         take_and_return_or_recover(
             &mut self.inner,
@@ -402,7 +402,7 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
         }
     }
 
-    fn first_step_time(&self) -> &StepTime<T::Time> {
+    fn first_step_time(&self) -> &SubStepTime<T::Time> {
         match &self.inner {
             StepGroupInner::OriginalUnsaturated {
                 steps, ..
@@ -479,7 +479,7 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
                 &mut self.inner,
                 || StepGroupInner::Unreachable,
                 |inner| {
-                    let steps: Box<[Step<T, S>]> = match inner {
+                    let steps: Box<[SubStep<T, S>]> = match inner {
                         StepGroupInner::OriginalSaturating {
                             steps, ..
                         } => steps.into_boxed_slice(),
@@ -536,7 +536,7 @@ impl<T: Transposer, S: StorageFamily> StepGroup<T, S> {
 }
 
 struct CurrentSaturating<'a, T: Transposer, S: StorageFamily> {
-    step: &'a mut Step<T, S>,
+    step: &'a mut SubStep<T, S>,
 }
 
 #[derive(Clone, Copy)]
@@ -572,21 +572,21 @@ impl<Time: Ord + Copy> Eq for StepGroupTime<Time> {}
 
 enum StepGroupInner<T: Transposer, S: StorageFamily> {
     OriginalUnsaturated {
-        steps: Vec<Step<T, S>>,
+        steps: Vec<SubStep<T, S>>,
     },
     OriginalSaturating {
         current_saturating_index: usize,
-        steps:                    Vec<Step<T, S>>,
+        steps:                    Vec<SubStep<T, S>>,
     },
     RepeatUnsaturated {
-        steps: Box<[Step<T, S>]>,
+        steps: Box<[SubStep<T, S>]>,
     },
     RepeatSaturating {
         current_saturating_index: usize,
-        steps:                    Box<[Step<T, S>]>,
+        steps:                    Box<[SubStep<T, S>]>,
     },
     Saturated {
-        steps: Box<[Step<T, S>]>,
+        steps: Box<[SubStep<T, S>]>,
     },
     Unreachable,
 }

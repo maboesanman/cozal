@@ -5,7 +5,7 @@ use std::task::{Context, Poll, Waker};
 use futures_core::Future;
 
 use super::pointer_interpolation::PointerInterpolation;
-use super::step::WrappedTransposer;
+use super::sub_step::WrappedTransposer;
 use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::Transposer;
 

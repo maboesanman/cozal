@@ -5,7 +5,7 @@ use futures_core::Future;
 
 use crate::transposer::input_buffer::InputBuffer;
 use crate::transposer::schedule_storage::StdStorage;
-use crate::transposer::step_group::{PointerInterpolation, StepGroup, StepGroupPollResult};
+use crate::transposer::step::{PointerInterpolation, Step, StepGroupPollResult};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
@@ -28,7 +28,7 @@ where
     }
     EvaluateTo {
         inner: EvaluateToInner::Step {
-            frame: Box::new(StepGroup::new_init(transposer, seed)),
+            frame: Box::new(Step::new_init(transposer, seed)),
             events: input_buffer,
             state,
             state_fut: None,
@@ -52,7 +52,7 @@ where
     Fs: Future<Output = T::InputState>,
 {
     Step {
-        frame:     Box<StepGroup<T, StdStorage>>,
+        frame:     Box<Step<T, StdStorage>>,
         events:    InputBuffer<T::Time, T::Input>,
         state:     S,
         state_fut: Option<Fs>,
@@ -60,7 +60,7 @@ where
         outputs:   EmittedEvents<T>,
     },
     Interpolate {
-        frame:       Box<StepGroup<T, StdStorage>>,
+        frame:       Box<Step<T, StdStorage>>,
         interpolate: Pin<Box<PointerInterpolation<T>>>,
         state:       S,
         state_fut:   Option<Fs>,

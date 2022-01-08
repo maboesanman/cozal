@@ -2,9 +2,9 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use super::{Arg, StepTime, UpdateContext, WrappedTransposer};
+use super::{Arg, SubStepTime, UpdateContext, WrappedTransposer};
 use crate::transposer::schedule_storage::StorageFamily;
-use crate::transposer::step_group::lazy_state::LazyState;
+use crate::transposer::step::lazy_state::LazyState;
 use crate::transposer::Transposer;
 
 pub struct Update<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> {
@@ -26,7 +26,7 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
     pub unsafe fn new(
         mut wrapped_transposer: Box<WrappedTransposer<T, S>>,
         mut arg: A::Stored,
-        time: StepTime<T::Time>,
+        time: SubStepTime<T::Time>,
         input_state: *const LazyState<T::InputState>,
     ) -> Self {
         // update 'current time'

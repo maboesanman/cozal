@@ -1,7 +1,7 @@
-use super::{StepTime, TransposerMetaData};
+use super::{SubStepTime, TransposerMetaData};
 use crate::transposer::context::*;
 use crate::transposer::schedule_storage::StorageFamily;
-use crate::transposer::step_group::lazy_state::LazyState;
+use crate::transposer::step::lazy_state::LazyState;
 use crate::transposer::Transposer;
 
 pub trait UpdateContext<T: Transposer, S: StorageFamily>:
@@ -11,7 +11,7 @@ pub trait UpdateContext<T: Transposer, S: StorageFamily>:
 
     // SAFETY: ensure this UpdateContext is dropped before frame_internal and input_state.
     unsafe fn new(
-        time: StepTime<T::Time>,
+        time: SubStepTime<T::Time>,
         metadata: *mut TransposerMetaData<T, S>,
         input_state: *const LazyState<T::InputState>,
     ) -> Self;

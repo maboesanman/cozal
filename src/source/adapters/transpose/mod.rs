@@ -5,7 +5,7 @@ use pin_project::pin_project;
 
 use crate::source::Source;
 use crate::transposer::schedule_storage::ImRcStorage;
-use crate::transposer::step_group::{PointerInterpolation, StepGroup};
+use crate::transposer::step::{PointerInterpolation, Step};
 use crate::transposer::Transposer;
 use crate::util::replace_waker::ReplaceWaker;
 use crate::util::stack_waker::StackWaker;
@@ -15,12 +15,12 @@ pub struct Transpose<Src: Source, T: Transposer> {
     #[pin]
     source:                Src,
     source_waker_observer: ReplaceWaker,
-    steps:                 VecDeque<StepGroupWrapper<T>>,
+    steps:                 VecDeque<StepWrapper<T>>,
     active_channels:       HashMap<usize, ChannelData<T>>,
 }
 
-struct StepGroupWrapper<T: Transposer> {
-    step_group:     StepGroup<T, ImRcStorage>,
+struct StepWrapper<T: Transposer> {
+    step:           Step<T, ImRcStorage>,
     events_emitted: bool,
 }
 
@@ -33,10 +33,10 @@ enum ChannelStatus<T: Transposer> {
     },
 }
 
-impl<T: Transposer> StepGroupWrapper<T> {
+impl<T: Transposer> StepWrapper<T> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         Self {
-            step_group:     StepGroup::new_init(transposer, rng_seed),
+            step:           Step::new_init(transposer, rng_seed),
             events_emitted: false,
         }
     }
@@ -58,7 +58,7 @@ where
 {
     pub fn new(_source: Src, _transposer: T, _rng_seed: [u8; 32]) -> Self {
         // let mut steps = VecDeque::new();
-        // steps.push_back(StepGroupWrapper::new_init(transposer, rng_seed));
+        // steps.push_back(StepWrapper::new_init(transposer, rng_seed));
         // Self {
         //     source,
         //     source_waker_observer: WakerObserver::new_dummy(),
