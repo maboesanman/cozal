@@ -1,8 +1,6 @@
 use std::pin::Pin;
-use std::task::{Context, Poll};
 
 use async_trait::async_trait;
-use matches::assert_matches;
 use rand::Rng;
 
 use super::{StepPoll, StepPollResult};
@@ -12,7 +10,6 @@ use crate::transposer::context::{
     InitContext,
     InterpolateContext,
 };
-use crate::transposer::schedule_storage::ImArcStorage;
 use crate::transposer::step::Step;
 use crate::transposer::Transposer;
 use crate::util::dummy_waker::DummyWaker;
@@ -81,7 +78,7 @@ fn next_unsaturated_same_time() {
     let rng_seed = rand::thread_rng().gen();
     let mut next_input = Some((1, vec![()].into_boxed_slice()));
 
-    let mut step = Step::<_, ImArcStorage>::new_init(transposer, rng_seed);
+    let mut step = Step::<_>::new_init(transposer, rng_seed);
 
     Pin::new(&mut step)
         .poll_progress(DummyWaker::dummy())
