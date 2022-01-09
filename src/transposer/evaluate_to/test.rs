@@ -94,7 +94,7 @@ fn basic() {
         transposer,
         100,
         vec![(10, ()), (15, ()), (27, ()), (200, ())],
-        |_| core::future::ready(()),
+        |_| core::future::ready(()).pending_once(),
         rng_seed,
     );
 
