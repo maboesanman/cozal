@@ -1,5 +1,5 @@
 # cozal
-[![codecov](https://codecov.io/gh/maboesanman/cozal/branch/master/graph/badge.svg?token=QOC2EOMEXI)](https://codecov.io/gh/maboesanman/cozal)
+[![codecov](https://codecov.io/gh/maboesanman/cozal/branch/main/graph/badge.svg?token=QOC2EOMEXI)](https://codecov.io/gh/maboesanman/cozal)
 
 deterministic game event pipeline with isolated configurable components.
 
