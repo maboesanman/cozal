@@ -15,8 +15,8 @@ parsers:
       macro: yes
 
 ignore:
-  **/test.rs
-  **/test/**/*.rs
+  - "**/test.rs"
+  - "**/test/**/*.rs"
 
 comment:
   layout: "reach,diff,flags,files,footer"
