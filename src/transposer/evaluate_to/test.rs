@@ -3,7 +3,12 @@ use futures_test::future::FutureTestExt;
 use rand::Rng;
 
 use super::evaluate_to;
-use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
+use crate::transposer::context::{
+    HandleInputContext,
+    HandleScheduleContext,
+    InitContext,
+    InterpolateContext,
+};
 use crate::transposer::Transposer;
 
 #[derive(Clone, Debug)]
@@ -28,10 +33,25 @@ impl Transposer for TestTransposer {
     async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>) {
         async {
             self.counter = 0;
-            cx.schedule_event(0, ()).unwrap();
-            let _s = cx.get_input_state().await;
+            cx.schedule_event(1, ()).unwrap();
+            // let _s = cx.get_input_state().await;
         }
-        .pending_once()
+        // .pending_once()
+        .await
+    }
+
+    async fn handle_input(
+        &mut self,
+        time: Self::Time,
+        inputs: &[Self::Input],
+        cx: &mut dyn HandleInputContext<'_, Self>,
+    ) {
+        async {
+            self.counter += inputs.len();
+            cx.emit_event(self.counter * 10);
+            // let _s = cx.get_input_state().await;
+        }
+        // .pending_once()
         .await
     }
 
@@ -46,9 +66,9 @@ impl Transposer for TestTransposer {
 
             self.counter += 1;
             cx.emit_event(self.counter * 10);
-            let _s = cx.get_input_state().await;
+            // let _s = cx.get_input_state().await;
         }
-        .pending_once()
+        // .pending_once()
         .await
     }
 
@@ -58,7 +78,7 @@ impl Transposer for TestTransposer {
         _interpolated_time: Self::Time,
         cx: &mut dyn InterpolateContext<'_, Self>,
     ) -> Self::OutputState {
-        let _s = cx.get_input_state().await;
+        // let _s = cx.get_input_state().await;
         async { self.counter }.pending_once().await
     }
 }
@@ -73,12 +93,13 @@ fn basic() {
     let fut = evaluate_to(
         transposer,
         100,
-        Vec::new(),
-        |_| core::future::ready(()).pending_once(),
+        vec![(10, ()), (15, ()), (27, ()), (200, ())],
+        |_| core::future::ready(()),
         rng_seed,
     );
 
     let (_, value) = futures_executor::block_on(fut);
 
-    assert_eq!(value, 101)
+    // 100 from scheduled events, 3 from input events
+    assert_eq!(value, 100 + 3)
 }

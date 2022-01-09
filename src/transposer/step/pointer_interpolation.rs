@@ -3,14 +3,14 @@ use std::task::{Context, Poll, Waker};
 
 use futures_core::Future;
 
-use super::interpolate_context::StepGroupInterpolateContext;
+use super::interpolate_context::StepInterpolateContext;
 use super::sub_step::WrappedTransposer;
 use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::Transposer;
 
 pub struct PointerInterpolation<T: Transposer> {
     pub(crate) future:  Pin<Box<dyn Future<Output = T::OutputState>>>,
-    pub(crate) context: Box<StepGroupInterpolateContext<T>>,
+    pub(crate) context: Box<StepInterpolateContext<T>>,
     time:               T::Time,
 }
 
@@ -24,7 +24,7 @@ impl<T: Transposer> PointerInterpolation<T> {
         time: T::Time,
         wrapped_transposer: &WrappedTransposer<T, S>,
     ) -> Self {
-        let mut context = Box::new(StepGroupInterpolateContext::new());
+        let mut context = Box::new(StepInterpolateContext::new());
         let context_ptr: *mut _ = context.as_mut();
         let context_ref = unsafe { context_ptr.as_mut().unwrap() };
 

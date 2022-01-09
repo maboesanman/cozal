@@ -170,3 +170,69 @@ fn desaturate() {
 
     init.desaturate().unwrap();
 }
+
+#[test]
+fn next_unsaturated_same_time() {
+    let transposer = TestTransposer {
+        counter: 17
+    };
+    let rng_seed = rand::thread_rng().gen();
+    let mut next_input = Some((1, vec![()].into_boxed_slice()));
+
+    let s = LazyState::new();
+    let mut step = unsafe { SubStep::<_, ImArcStorage>::new_init(transposer, rng_seed, &s) };
+
+    let waker = DummyWaker::dummy();
+    let mut cx = Context::from_waker(&waker);
+
+    assert_matches!(Pin::new(&mut step).poll(&mut cx), Poll::Ready(Ok(None)));
+
+    let s = LazyState::new();
+
+    // let next = step.next_unsaturated(&mut next_input, &s).unwrap();
+
+    {
+        let mut next = step.next_unsaturated(&mut next_input, &s).unwrap().unwrap();
+        next.saturate_take(&mut step).unwrap();
+
+        let poll_result = Pin::new(&mut next).poll(&mut cx);
+        if let Poll::Ready(Ok(Some(o))) = poll_result {
+            assert_eq!(o.len(), 1);
+        }
+
+        step = next;
+    }
+    {
+        let mut next = step.next_unsaturated(&mut next_input, &s).unwrap().unwrap();
+        next.saturate_take(&mut step).unwrap();
+
+        let poll_result = Pin::new(&mut next).poll(&mut cx);
+        if let Poll::Ready(Ok(Some(o))) = poll_result {
+            assert_eq!(o.len(), 1);
+        }
+
+        step = next;
+    }
+    {
+        let mut next = step.next_unsaturated_same_time().unwrap().unwrap();
+        next.saturate_take(&mut step).unwrap();
+
+        let poll_result = Pin::new(&mut next).poll(&mut cx);
+        if let Poll::Ready(Ok(Some(o))) = poll_result {
+            assert_eq!(o.len(), 1);
+        }
+
+        step = next;
+    }
+    {
+        let mut next = step.next_unsaturated(&mut next_input, &s).unwrap().unwrap();
+        next.saturate_take(&mut step).unwrap();
+
+        let poll_result = Pin::new(&mut next).poll(&mut cx);
+        if let Poll::Ready(Ok(Some(o))) = poll_result {
+            assert_eq!(o.len(), 1);
+        }
+
+        step = next;
+    }
+}

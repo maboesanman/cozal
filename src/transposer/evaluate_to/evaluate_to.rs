@@ -5,7 +5,7 @@ use futures_core::Future;
 
 use crate::transposer::input_buffer::InputBuffer;
 use crate::transposer::schedule_storage::StdStorage;
-use crate::transposer::step::{PointerInterpolation, Step, StepGroupPollResult};
+use crate::transposer::step::{PointerInterpolation, Step, StepPollResult};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
@@ -119,10 +119,10 @@ where
                                 }
                             }
                             let time = frame.raw_time();
-                            let progress = frame.poll_progress(0, cx.waker().clone()).unwrap();
+                            let progress = frame.poll_progress(cx.waker().clone()).unwrap();
                             outputs.push((time, progress.outputs));
                             match progress.result {
-                                StepGroupPollResult::NeedsState => {
+                                StepPollResult::NeedsState => {
                                     state_fut = Some((state)(time));
                                     return (
                                         EvaluateToInner::Step {
@@ -136,7 +136,7 @@ where
                                         Poll::Ready(None),
                                     )
                                 },
-                                StepGroupPollResult::Pending => {
+                                StepPollResult::Pending => {
                                     return (
                                         EvaluateToInner::Step {
                                             frame,
@@ -149,18 +149,21 @@ where
                                         Poll::Pending,
                                     )
                                 },
-                                StepGroupPollResult::Ready => {},
+                                StepPollResult::Ready => {},
                             }
 
-                            let mut event = events.pop_first();
+                            let next = {
+                                let mut event = events.pop_first();
+                                let next = frame.next_unsaturated(&mut event).unwrap();
+                                if let Some((time, inputs)) = event {
+                                    events.extend_front(time, inputs);
+                                }
 
-                            if let Some(mut next_frame) =
-                                frame.next_unsaturated(&mut event).unwrap()
-                            {
+                                next
+                            };
+
+                            if let Some(mut next_frame) = next {
                                 if next_frame.raw_time() <= until {
-                                    if let Some((time, inputs)) = event {
-                                        events.extend_front(time, inputs);
-                                    }
                                     next_frame.saturate_take(&mut frame).unwrap();
                                     *frame = next_frame;
                                     return (

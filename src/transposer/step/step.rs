@@ -13,7 +13,7 @@ use crate::transposer::Transposer;
 use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
 
 pub struct Step<T: Transposer, S: StorageFamily = ImArcStorage> {
-    inner:       StepGroupInner<T, S>,
+    inner:       StepInner<T, S>,
     input_state: Box<LazyState<T::InputState>>,
 
     // these are used purely for enforcing that saturate calls use the previous step_group.
@@ -35,7 +35,7 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
         steps.push(unsafe { SubStep::new_init(transposer, rng_seed, input_state_ptr) });
 
         Self {
-            inner: StepGroupInner::OriginalSaturating {
+            inner: StepInner::OriginalSaturating {
                 current_saturating_index: 0,
                 steps,
             },
@@ -53,7 +53,7 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
         &mut self,
         next_inputs: &mut NextInputs<T>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
-        if let StepGroupInner::Saturated {
+        if let StepInner::Saturated {
             steps,
         } = &mut self.inner
         {
@@ -74,7 +74,7 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
                 })?;
 
             let next = next.map(|step| Step {
-                inner: StepGroupInner::OriginalUnsaturated {
+                inner: StepInner::OriginalUnsaturated {
                     steps: vec![step]
                 },
                 input_state,
@@ -103,26 +103,26 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
         }
 
         fn take_from_previous<T: Transposer, S: StorageFamily>(
-            prev: &mut StepGroupInner<T, S>,
+            prev: &mut StepInner<T, S>,
             next: &mut SubStep<T, S>,
         ) -> Result<(), TakeFromPreviousErr> {
             take_and_return_or_recover(
                 prev,
-                || StepGroupInner::Unreachable,
+                || StepInner::Unreachable,
                 |inner| {
-                    if let StepGroupInner::Saturated {
+                    if let StepInner::Saturated {
                         mut steps,
                     } = inner
                     {
                         match next.saturate_take(steps.last_mut().unwrap()) {
                             Err(err) => {
-                                let replacement = StepGroupInner::Saturated {
+                                let replacement = StepInner::Saturated {
                                     steps,
                                 };
                                 (replacement, Err(TakeFromPreviousErr::SaturateErr(err)))
                             },
                             Ok(()) => {
-                                let replacement = StepGroupInner::RepeatUnsaturated {
+                                let replacement = StepInner::RepeatUnsaturated {
                                     steps,
                                 };
 
@@ -167,13 +167,13 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
         }
 
         fn clone_from_previous<T: Transposer, S: StorageFamily>(
-            prev: &StepGroupInner<T, S>,
+            prev: &StepInner<T, S>,
             next: &mut SubStep<T, S>,
         ) -> Result<(), SaturateErr>
         where
             T: Clone,
         {
-            if let StepGroupInner::Saturated {
+            if let StepInner::Saturated {
                 steps,
             } = prev
             {
@@ -200,43 +200,43 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
     {
         take_and_return_or_recover(
             &mut self.inner,
-            || StepGroupInner::Unreachable,
+            || StepInner::Unreachable,
             |inner| match inner {
-                StepGroupInner::OriginalUnsaturated {
+                StepInner::OriginalUnsaturated {
                     mut steps,
                 } => match saturate_first_step(steps.first_mut().unwrap()) {
                     Ok(()) => {
-                        let replacement = StepGroupInner::OriginalSaturating {
+                        let replacement = StepInner::OriginalSaturating {
                             current_saturating_index: 0,
                             steps,
                         };
                         (replacement, Ok(()))
                     },
                     Err(e) => (
-                        StepGroupInner::OriginalUnsaturated {
+                        StepInner::OriginalUnsaturated {
                             steps,
                         },
                         Err(Some(e)),
                     ),
                 },
-                StepGroupInner::RepeatUnsaturated {
+                StepInner::RepeatUnsaturated {
                     mut steps,
                 } => match saturate_first_step(steps.first_mut().unwrap()) {
                     Ok(()) => {
-                        let replacement = StepGroupInner::RepeatSaturating {
+                        let replacement = StepInner::RepeatSaturating {
                             current_saturating_index: 0,
                             steps,
                         };
                         (replacement, Ok(()))
                     },
                     Err(e) => (
-                        StepGroupInner::RepeatUnsaturated {
+                        StepInner::RepeatUnsaturated {
                             steps,
                         },
                         Err(Some(e)),
                     ),
                 },
-                StepGroupInner::Unreachable => unreachable!(),
+                StepInner::Unreachable => unreachable!(),
                 _ => (inner, Err(None)),
             },
         )
@@ -245,15 +245,15 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
     pub fn desaturate(&mut self) -> Result<(), DesaturateErr> {
         take_and_return_or_recover(
             &mut self.inner,
-            || StepGroupInner::Unreachable,
+            || StepInner::Unreachable,
             |inner| match inner {
-                StepGroupInner::OriginalUnsaturated {
+                StepInner::OriginalUnsaturated {
                     ..
                 }
-                | StepGroupInner::RepeatUnsaturated {
+                | StepInner::RepeatUnsaturated {
                     ..
                 } => (inner, Err(DesaturateErr::AlreadyUnsaturated)),
-                StepGroupInner::OriginalSaturating {
+                StepInner::OriginalSaturating {
                     current_saturating_index,
                     mut steps,
                 } => {
@@ -263,13 +263,13 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
                         .desaturate()
                         .unwrap();
                     (
-                        StepGroupInner::OriginalUnsaturated {
+                        StepInner::OriginalUnsaturated {
                             steps,
                         },
                         Ok(()),
                     )
                 },
-                StepGroupInner::RepeatSaturating {
+                StepInner::RepeatSaturating {
                     current_saturating_index,
                     mut steps,
                 } => {
@@ -279,30 +279,26 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
                         .desaturate()
                         .unwrap();
                     (
-                        StepGroupInner::RepeatUnsaturated {
+                        StepInner::RepeatUnsaturated {
                             steps,
                         },
                         Ok(()),
                     )
                 },
-                StepGroupInner::Saturated {
+                StepInner::Saturated {
                     steps,
                 } => (
-                    StepGroupInner::RepeatUnsaturated {
+                    StepInner::RepeatUnsaturated {
                         steps,
                     },
                     Ok(()),
                 ),
-                StepGroupInner::Unreachable => unreachable!(),
+                StepInner::Unreachable => unreachable!(),
             },
         )
     }
 
-    pub fn poll_progress(
-        &mut self,
-        _channel: usize,
-        waker: Waker,
-    ) -> Result<StepGroupPoll<T>, PollErr> {
+    pub fn poll_progress(&mut self, waker: Waker) -> Result<StepPoll<T>, PollErr> {
         let mut outputs = Vec::new();
         loop {
             let CurrentSaturating {
@@ -310,9 +306,7 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
             } = match self.current_saturating() {
                 Ok(x) => x,
                 Err(CurrentSaturatingErr::Unsaturated) => return Err(PollErr::Unsaturated),
-                Err(CurrentSaturatingErr::Saturated) => {
-                    return Ok(StepGroupPoll::new_ready(outputs))
-                },
+                Err(CurrentSaturatingErr::Saturated) => return Ok(StepPoll::new_ready(outputs)),
             };
             let step = Pin::new(step);
             let mut cx = Context::from_waker(&waker);
@@ -324,17 +318,18 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
             match poll_result {
                 Poll::Pending => {
                     break Ok(if self.input_state.requested() {
-                        StepGroupPoll::new_needs_state(outputs)
+                        StepPoll::new_needs_state(outputs)
                     } else {
-                        StepGroupPoll::new_pending(outputs)
+                        StepPoll::new_pending(outputs)
                     })
                 },
                 Poll::Ready(Some(mut o)) => outputs.append(&mut o),
                 Poll::Ready(None) => {},
             };
 
-            if self.advance_saturation_index() {
-                break Ok(StepGroupPoll::new_ready(outputs))
+            // now we are ready, we need to advance to the next sub-step.
+            if self.advance_saturation_index().is_saturated() {
+                break Ok(StepPoll::new_ready(outputs))
             }
         }
     }
@@ -352,7 +347,7 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
         time: T::Time,
     ) -> Result<PointerInterpolation<T>, InterpolateErr> {
         match &self.inner {
-            StepGroupInner::Saturated {
+            StepInner::Saturated {
                 steps,
             } => {
                 #[cfg(debug_assertions)]
@@ -378,7 +373,7 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
 
     pub fn interpolate(&self, time: T::Time) -> Result<Interpolation<'_, T, S>, InterpolateErr> {
         match &self.inner {
-            StepGroupInner::Saturated {
+            StepInner::Saturated {
                 steps,
             } => {
                 #[cfg(debug_assertions)]
@@ -404,68 +399,69 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
 
     fn first_step_time(&self) -> &SubStepTime<T::Time> {
         match &self.inner {
-            StepGroupInner::OriginalUnsaturated {
+            StepInner::OriginalUnsaturated {
                 steps, ..
             } => steps.first().unwrap().time(),
-            StepGroupInner::RepeatUnsaturated {
+            StepInner::RepeatUnsaturated {
                 steps,
             } => steps.first().unwrap().time(),
-            StepGroupInner::OriginalSaturating {
+            StepInner::OriginalSaturating {
                 steps, ..
             } => steps.first().unwrap().time(),
-            StepGroupInner::RepeatSaturating {
+            StepInner::RepeatSaturating {
                 steps, ..
             } => steps.first().unwrap().time(),
-            StepGroupInner::Saturated {
+            StepInner::Saturated {
                 steps,
             } => steps.first().unwrap().time(),
-            StepGroupInner::Unreachable => unreachable!(),
+            StepInner::Unreachable => unreachable!(),
         }
     }
 
     fn current_saturating(&mut self) -> Result<CurrentSaturating<T, S>, CurrentSaturatingErr> {
         match &mut self.inner {
-            StepGroupInner::OriginalSaturating {
+            StepInner::OriginalSaturating {
                 current_saturating_index,
                 steps,
             } => Ok(CurrentSaturating {
                 step: steps.get_mut(*current_saturating_index).unwrap(),
             }),
-            StepGroupInner::RepeatSaturating {
+            StepInner::RepeatSaturating {
                 current_saturating_index,
                 steps,
             } => Ok(CurrentSaturating {
                 step: steps.get_mut(*current_saturating_index).unwrap(),
             }),
-            StepGroupInner::OriginalUnsaturated {
+            StepInner::OriginalUnsaturated {
                 ..
             } => Err(CurrentSaturatingErr::Unsaturated),
-            StepGroupInner::RepeatUnsaturated {
+            StepInner::RepeatUnsaturated {
                 ..
             } => Err(CurrentSaturatingErr::Unsaturated),
-            StepGroupInner::Saturated {
+            StepInner::Saturated {
                 ..
             } => Err(CurrentSaturatingErr::Saturated),
-            StepGroupInner::Unreachable => unreachable!(),
+            StepInner::Unreachable => unreachable!(),
         }
     }
 
-    fn advance_saturation_index(&mut self) -> bool {
+    fn advance_saturation_index(&mut self) -> AdvanceSaturationIndex {
         let (i, steps) = match &mut self.inner {
-            StepGroupInner::OriginalSaturating {
+            StepInner::OriginalSaturating {
                 current_saturating_index: i,
                 steps,
                 ..
             } => {
-                let next = steps.last().unwrap().next_unsaturated_same_time().unwrap();
-
-                if let Some(next) = next {
-                    steps.push(next);
+                if *i == steps.len() - 1 {
+                    let next = steps.last().unwrap().next_unsaturated_same_time().unwrap();
+                    if let Some(next) = next {
+                        steps.push(next);
+                    }
                 }
 
                 (i, steps.as_mut_slice())
             },
-            StepGroupInner::RepeatSaturating {
+            StepInner::RepeatSaturating {
                 current_saturating_index: i,
                 steps,
                 ..
@@ -477,42 +473,42 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
             // convert self to saturated
             take_or_recover(
                 &mut self.inner,
-                || StepGroupInner::Unreachable,
+                || StepInner::Unreachable,
                 |inner| {
                     let steps: Box<[SubStep<T, S>]> = match inner {
-                        StepGroupInner::OriginalSaturating {
+                        StepInner::OriginalSaturating {
                             steps, ..
                         } => steps.into_boxed_slice(),
-                        StepGroupInner::RepeatSaturating {
+                        StepInner::RepeatSaturating {
                             steps, ..
                         } => steps,
                         _ => unreachable!(),
                     };
-                    StepGroupInner::Saturated {
+                    StepInner::Saturated {
                         steps,
                     }
                 },
             );
-            return true
+            return AdvanceSaturationIndex::Saturated
         }
 
         *i += 1;
         let (part1, part2) = steps.split_at_mut(*i);
         let prev = part1.last_mut().unwrap();
         let next = part2.first_mut().unwrap();
-        prev.saturate_take(next).unwrap();
+        next.saturate_take(prev).unwrap();
 
-        false
+        AdvanceSaturationIndex::Saturating
     }
 
     fn is_saturated(&self) -> bool {
-        matches!(self.inner, StepGroupInner::Saturated { .. })
+        matches!(self.inner, StepInner::Saturated { .. })
     }
 
     fn is_unsaturated(&self) -> bool {
         matches!(
             self.inner,
-            StepGroupInner::OriginalUnsaturated { .. } | StepGroupInner::RepeatUnsaturated { .. }
+            StepInner::OriginalUnsaturated { .. } | StepInner::RepeatUnsaturated { .. }
         )
     }
 
@@ -524,13 +520,27 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
         self.first_step_time().raw_time()
     }
 
-    pub fn time(&self) -> StepGroupTime<T::Time> {
+    pub fn time(&self) -> StepTime<T::Time> {
         let t = self.first_step_time();
 
         if t.index() == 0 {
-            StepGroupTime::Init
+            StepTime::Init
         } else {
-            StepGroupTime::Normal(t.raw_time())
+            StepTime::Normal(t.raw_time())
+        }
+    }
+}
+
+enum AdvanceSaturationIndex {
+    Saturating,
+    Saturated,
+}
+
+impl AdvanceSaturationIndex {
+    pub fn is_saturated(&self) -> bool {
+        match self {
+            Self::Saturating => false,
+            Self::Saturated => true,
         }
     }
 }
@@ -540,12 +550,12 @@ struct CurrentSaturating<'a, T: Transposer, S: StorageFamily> {
 }
 
 #[derive(Clone, Copy)]
-pub enum StepGroupTime<Time: Ord + Copy> {
+pub enum StepTime<Time: Ord + Copy> {
     Init,
     Normal(Time),
 }
 
-impl<Time: Ord + Copy> Ord for StepGroupTime<Time> {
+impl<Time: Ord + Copy> Ord for StepTime<Time> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
             (Self::Init, Self::Init) => std::cmp::Ordering::Equal,
@@ -556,21 +566,21 @@ impl<Time: Ord + Copy> Ord for StepGroupTime<Time> {
     }
 }
 
-impl<Time: Ord + Copy> PartialOrd for StepGroupTime<Time> {
+impl<Time: Ord + Copy> PartialOrd for StepTime<Time> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<Time: Ord + Copy> PartialEq for StepGroupTime<Time> {
+impl<Time: Ord + Copy> PartialEq for StepTime<Time> {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other).is_eq()
     }
 }
 
-impl<Time: Ord + Copy> Eq for StepGroupTime<Time> {}
+impl<Time: Ord + Copy> Eq for StepTime<Time> {}
 
-enum StepGroupInner<T: Transposer, S: StorageFamily> {
+enum StepInner<T: Transposer, S: StorageFamily> {
     OriginalUnsaturated {
         steps: Vec<SubStep<T, S>>,
     },
@@ -591,40 +601,34 @@ enum StepGroupInner<T: Transposer, S: StorageFamily> {
     Unreachable,
 }
 
-pub enum InterpolatePoll<T: Transposer> {
-    Pending,
-    NeedsState,
-    Ready(T::OutputState),
-}
-
-pub struct StepGroupPoll<T: Transposer> {
-    pub result:  StepGroupPollResult,
+pub struct StepPoll<T: Transposer> {
+    pub result:  StepPollResult,
     pub outputs: Vec<T::Output>,
 }
 
-impl<T: Transposer> StepGroupPoll<T> {
+impl<T: Transposer> StepPoll<T> {
     pub fn new_pending(outputs: Vec<T::Output>) -> Self {
         Self {
-            result: StepGroupPollResult::Pending,
+            result: StepPollResult::Pending,
             outputs,
         }
     }
     pub fn new_needs_state(outputs: Vec<T::Output>) -> Self {
         Self {
-            result: StepGroupPollResult::NeedsState,
+            result: StepPollResult::NeedsState,
             outputs,
         }
     }
     pub fn new_ready(outputs: Vec<T::Output>) -> Self {
         Self {
-            result: StepGroupPollResult::Ready,
+            result: StepPollResult::Ready,
             outputs,
         }
     }
 }
 
 #[derive(Debug)]
-pub enum StepGroupPollResult {
+pub enum StepPollResult {
     NeedsState,
     Pending,
     Ready,
