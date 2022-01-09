@@ -235,4 +235,6 @@ fn next_unsaturated_same_time() {
 
         step = next;
     }
+
+    let _step = step;
 }

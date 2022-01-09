@@ -34,24 +34,24 @@ impl Transposer for TestTransposer {
         async {
             self.counter = 0;
             cx.schedule_event(1, ()).unwrap();
-            // let _s = cx.get_input_state().await;
+            let _s = cx.get_input_state().await;
         }
-        // .pending_once()
+        .pending_once()
         .await
     }
 
     async fn handle_input(
         &mut self,
-        time: Self::Time,
+        _time: Self::Time,
         inputs: &[Self::Input],
         cx: &mut dyn HandleInputContext<'_, Self>,
     ) {
         async {
             self.counter += inputs.len();
             cx.emit_event(self.counter * 10);
-            // let _s = cx.get_input_state().await;
+            let _s = cx.get_input_state().await;
         }
-        // .pending_once()
+        .pending_once()
         .await
     }
 
@@ -66,9 +66,9 @@ impl Transposer for TestTransposer {
 
             self.counter += 1;
             cx.emit_event(self.counter * 10);
-            // let _s = cx.get_input_state().await;
+            let _s = cx.get_input_state().await;
         }
-        // .pending_once()
+        .pending_once()
         .await
     }
 
@@ -78,7 +78,7 @@ impl Transposer for TestTransposer {
         _interpolated_time: Self::Time,
         cx: &mut dyn InterpolateContext<'_, Self>,
     ) -> Self::OutputState {
-        // let _s = cx.get_input_state().await;
+        let _s = cx.get_input_state().await;
         async { self.counter }.pending_once().await
     }
 }
