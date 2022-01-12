@@ -119,7 +119,7 @@ where
                                 }
                             }
                             let time = frame.raw_time();
-                            let progress = frame.poll_progress(cx.waker().clone()).unwrap();
+                            let progress = frame.poll(cx.waker().clone()).unwrap();
                             outputs.push((time, progress.outputs));
                             match progress.result {
                                 StepPollResult::NeedsState => {

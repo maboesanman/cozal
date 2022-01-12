@@ -13,7 +13,9 @@ use crate::transposer::Transposer;
 use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
 
 pub struct Step<T: Transposer, S: StorageFamily = ImArcStorage> {
-    inner:       StepInner<T, S>,
+    inner: StepInner<T, S>,
+
+    // boxed to make self reference easier.
     input_state: Box<LazyState<T::InputState>>,
 
     // these are used purely for enforcing that saturate calls use the previous step_group.
@@ -298,7 +300,7 @@ impl<T: Transposer, S: StorageFamily> Step<T, S> {
         )
     }
 
-    pub fn poll_progress(&mut self, waker: Waker) -> Result<StepPoll<T>, PollErr> {
+    pub fn poll(&mut self, waker: Waker) -> Result<StepPoll<T>, PollErr> {
         let mut outputs = Vec::new();
         loop {
             let CurrentSaturating {
