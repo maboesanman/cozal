@@ -122,7 +122,9 @@ where
                             let progress = frame.poll(cx.waker().clone()).unwrap();
                             outputs.push((time, progress.outputs));
                             match progress.result {
-                                StepPollResult::NeedsState => {
+                                StepPollResult::NeedsState {
+                                    ..
+                                } => {
                                     state_fut = Some((state)(time));
                                     return (
                                         EvaluateToInner::Step {
@@ -136,7 +138,9 @@ where
                                         Poll::Ready(None),
                                     )
                                 },
-                                StepPollResult::Pending => {
+                                StepPollResult::Pending {
+                                    ..
+                                } => {
                                     return (
                                         EvaluateToInner::Step {
                                             frame,
@@ -149,7 +153,9 @@ where
                                         Poll::Pending,
                                     )
                                 },
-                                StepPollResult::Ready => {},
+                                StepPollResult::Ready {
+                                    ..
+                                } => {},
                             }
 
                             let next = {

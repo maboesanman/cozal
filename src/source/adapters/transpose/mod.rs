@@ -1,11 +1,13 @@
 use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
+use std::sync::Weak;
+use std::task::Wake;
 
 use pin_project::pin_project;
 
 use crate::source::Source;
 use crate::transposer::schedule_storage::ImRcStorage;
-use crate::transposer::step::{PointerInterpolation, Step};
+use crate::transposer::step::{PointerInterpolation, Step, StepMetadata};
 use crate::transposer::Transposer;
 use crate::util::replace_waker::ReplaceWaker;
 use crate::util::stack_waker::StackWaker;
@@ -13,15 +15,37 @@ use crate::util::stack_waker::StackWaker;
 #[pin_project]
 pub struct Transpose<Src: Source, T: Transposer> {
     #[pin]
-    source:                Src,
-    source_waker_observer: ReplaceWaker,
-    steps:                 VecDeque<StepWrapper<T>>,
-    active_channels:       HashMap<usize, ChannelData<T>>,
+    source:          Src,
+    source_waker:    ReplaceWaker,
+    steps:           VecDeque<StepWrapper<T>>,
+    active_channels: HashMap<usize, ChannelData<T>>,
 }
 
 struct StepWrapper<T: Transposer> {
-    step:           Step<T, ImRcStorage>,
+    step:           Step<T, ImRcStorage, Metadata>,
     events_emitted: bool,
+}
+
+struct Metadata;
+
+impl<T: Transposer> StepMetadata<T, ImRcStorage> for Metadata {
+    type Unsaturated = ();
+
+    type Saturating = Weak<StackWaker>;
+
+    type Saturated = ();
+
+    fn new_unsaturated() -> Self::Unsaturated {}
+
+    fn to_saturating(_metadata: Self::Unsaturated) -> Self::Saturating {
+        Default::default()
+    }
+
+    fn to_saturated(metadata: Self::Saturating, _transposer: &T) -> Self::Saturated {
+        if let Some(w) = metadata.upgrade() {
+            w.wake_by_ref();
+        }
+    }
 }
 
 enum ChannelStatus<T: Transposer> {

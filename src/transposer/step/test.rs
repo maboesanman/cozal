@@ -86,9 +86,12 @@ fn next_unsaturated_same_time() {
         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
         next.saturate_take(&mut step).unwrap();
 
-        let poll_result = Pin::new(&mut next).poll(DummyWaker::dummy());
+        let mut pin = Pin::new(&mut next);
+        let poll_result = pin.poll(DummyWaker::dummy());
         if let Ok(StepPoll {
-            result: StepPollResult::Ready,
+            result: StepPollResult::Ready {
+                ..
+            },
             outputs,
         }) = poll_result
         {
@@ -101,9 +104,12 @@ fn next_unsaturated_same_time() {
         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
         next.saturate_take(&mut step).unwrap();
 
-        let poll_result = Pin::new(&mut next).poll(DummyWaker::dummy());
+        let mut pin = Pin::new(&mut next);
+        let poll_result = pin.poll(DummyWaker::dummy());
         if let Ok(StepPoll {
-            result: StepPollResult::Ready,
+            result: StepPollResult::Ready {
+                ..
+            },
             outputs,
         }) = poll_result
         {
@@ -116,9 +122,12 @@ fn next_unsaturated_same_time() {
         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
         next.saturate_take(&mut step).unwrap();
 
-        let poll_result = Pin::new(&mut next).poll(DummyWaker::dummy());
+        let mut pin = Pin::new(&mut next);
+        let poll_result = pin.poll(DummyWaker::dummy());
         if let Ok(StepPoll {
-            result: StepPollResult::Ready,
+            result: StepPollResult::Ready {
+                ..
+            },
             outputs,
         }) = poll_result
         {
@@ -147,9 +156,12 @@ fn do_some_clones() {
         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
         next.saturate_clone(&step).unwrap();
 
-        let poll_result = Pin::new(&mut next).poll(DummyWaker::dummy());
+        let mut pin = Pin::new(&mut next);
+        let poll_result = pin.poll(DummyWaker::dummy());
         if let Ok(StepPoll {
-            result: StepPollResult::Ready,
+            result: StepPollResult::Ready {
+                ..
+            },
             outputs,
         }) = poll_result
         {
@@ -162,9 +174,12 @@ fn do_some_clones() {
         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
         next.saturate_clone(&step).unwrap();
 
-        let poll_result = Pin::new(&mut next).poll(DummyWaker::dummy());
+        let mut pin = Pin::new(&mut next);
+        let poll_result = pin.poll(DummyWaker::dummy());
         if let Ok(StepPoll {
-            result: StepPollResult::Ready,
+            result: StepPollResult::Ready {
+                ..
+            },
             outputs,
         }) = poll_result
         {
@@ -177,9 +192,12 @@ fn do_some_clones() {
         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
         next.saturate_clone(&step).unwrap();
 
-        let poll_result = Pin::new(&mut next).poll(DummyWaker::dummy());
+        let mut pin = Pin::new(&mut next);
+        let poll_result = pin.poll(DummyWaker::dummy());
         if let Ok(StepPoll {
-            result: StepPollResult::Ready,
+            result: StepPollResult::Ready {
+                ..
+            },
             outputs,
         }) = poll_result
         {
