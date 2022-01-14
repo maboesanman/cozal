@@ -46,6 +46,12 @@ impl<T: Transposer> StepMetadata<T, ImRcStorage> for Metadata {
             w.wake_by_ref();
         }
     }
+
+    fn desaturate_saturating(metadata: Self::Saturating) -> Self::Unsaturated {
+        if let Some(w) = metadata.upgrade() {
+            w.wake_by_ref();
+        }
+    }
 }
 
 enum ChannelStatus<T: Transposer> {

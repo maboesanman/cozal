@@ -322,7 +322,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
         )
     }
 
-    pub fn poll(&mut self, waker: Waker) -> Result<StepPoll<'_, T, S, M>, PollErr> {
+    pub fn poll(&mut self, waker: Waker) -> Result<StepPoll<T>, PollErr> {
         let mut outputs = Vec::new();
         loop {
             let CurrentSaturating {
@@ -341,19 +341,10 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
 
             match poll_result {
                 Poll::Pending => {
-                    let metadata = match &mut self.inner {
-                        StepInner::OriginalSaturating {
-                            metadata, ..
-                        } => metadata,
-                        StepInner::RepeatSaturating {
-                            metadata, ..
-                        } => metadata,
-                        _ => unreachable!(),
-                    };
                     break Ok(if self.input_state.requested() {
-                        StepPoll::new_needs_state(outputs, metadata)
+                        StepPoll::new_needs_state(outputs)
                     } else {
-                        StepPoll::new_pending(outputs, metadata)
+                        StepPoll::new_pending(outputs)
                     })
                 },
                 Poll::Ready(Some(mut o)) => outputs.append(&mut o),
@@ -362,13 +353,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
 
             // now we are ready, we need to advance to the next sub-step.
             if self.advance_saturation_index().is_saturated() {
-                let metadata = match &mut self.inner {
-                    StepInner::Saturated {
-                        metadata, ..
-                    } => metadata,
-                    _ => unreachable!(),
-                };
-                break Ok(StepPoll::new_ready(outputs, metadata))
+                break Ok(StepPoll::new_ready(outputs))
             }
         }
     }
@@ -435,6 +420,27 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                 })
             },
             _ => Err(InterpolateErr::NotSaturated),
+        }
+    }
+
+    pub fn get_metadata_mut(&mut self) -> Metadata<'_, T, S, M> {
+        match &mut self.inner {
+            StepInner::OriginalUnsaturated {
+                metadata, ..
+            } => Metadata::Unsaturated(metadata),
+            StepInner::OriginalSaturating {
+                metadata, ..
+            } => Metadata::Saturating(metadata),
+            StepInner::RepeatUnsaturated {
+                metadata, ..
+            } => Metadata::Unsaturated(metadata),
+            StepInner::RepeatSaturating {
+                metadata, ..
+            } => Metadata::Saturating(metadata),
+            StepInner::Saturated {
+                metadata, ..
+            } => Metadata::Saturated(metadata),
+            StepInner::Unreachable => unreachable!(),
         }
     }
 
@@ -660,43 +666,43 @@ enum StepInner<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> {
     Unreachable,
 }
 
-pub struct StepPoll<'a, T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> {
-    pub result:  StepPollResult<'a, T, S, M>,
+pub struct StepPoll<T: Transposer> {
+    pub result:  StepPollResult,
     pub outputs: Vec<T::Output>,
 }
 
-impl<'a, T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> StepPoll<'a, T, S, M> {
-    pub fn new_pending(outputs: Vec<T::Output>, metadata: &'a M::Saturating) -> Self {
+impl<T: Transposer> StepPoll<T> {
+    pub fn new_pending(outputs: Vec<T::Output>) -> Self {
         Self {
-            result: StepPollResult::Pending {
-                metadata,
-            },
+            result: StepPollResult::Pending,
             outputs,
         }
     }
-    pub fn new_needs_state(outputs: Vec<T::Output>, metadata: &'a M::Saturating) -> Self {
+    pub fn new_needs_state(outputs: Vec<T::Output>) -> Self {
         Self {
-            result: StepPollResult::NeedsState {
-                metadata,
-            },
+            result: StepPollResult::NeedsState,
             outputs,
         }
     }
-    pub fn new_ready(outputs: Vec<T::Output>, metadata: &'a M::Saturated) -> Self {
+    pub fn new_ready(outputs: Vec<T::Output>) -> Self {
         Self {
-            result: StepPollResult::Ready {
-                metadata,
-            },
+            result: StepPollResult::Ready,
             outputs,
         }
     }
 }
 
 #[derive(Debug)]
-pub enum StepPollResult<'a, T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> {
-    NeedsState { metadata: &'a M::Saturating },
-    Pending { metadata: &'a M::Saturating },
-    Ready { metadata: &'a M::Saturated },
+pub enum StepPollResult {
+    NeedsState,
+    Pending,
+    Ready,
+}
+
+pub enum Metadata<'a, T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> {
+    Unsaturated(&'a mut M::Unsaturated),
+    Saturating(&'a mut M::Saturating),
+    Saturated(&'a mut M::Saturated),
 }
 
 #[derive(Debug)]
