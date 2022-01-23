@@ -17,10 +17,6 @@ pub struct Interpolation<'t, T: Transposer, S: StorageFamily> {
 }
 
 impl<'t, T: Transposer, S: StorageFamily> Interpolation<'t, T, S> {
-    pub fn time(&self) -> T::Time {
-        self.inner.time()
-    }
-
     // SAFETY: wrapped transposer must outlive this object.
     pub(crate) unsafe fn new(
         time: T::Time,

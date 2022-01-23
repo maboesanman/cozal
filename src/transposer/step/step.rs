@@ -56,13 +56,14 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
         }
     }
 
-    // this only needs mut because it can remove interpolations.
+    // this only needs mut because it can mutate metadata.
     pub fn next_unsaturated(
         &mut self,
         next_inputs: &mut NextInputs<T>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         if let StepInner::Saturated {
-            steps, ..
+            steps,
+            metadata,
         } = &mut self.inner
         {
             let input_state = Box::new(LazyState::new());
@@ -93,6 +94,10 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                 #[cfg(debug_assertions)]
                 uuid_prev: Some(self.uuid_self),
             });
+
+            if let Some(n) = next.as_ref() {
+                M::next_unsaturated(metadata, n.raw_time());
+            }
 
             Ok(next)
         } else {
@@ -561,11 +566,11 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
         AdvanceSaturationIndex::Saturating
     }
 
-    fn is_saturated(&self) -> bool {
+    pub fn is_saturated(&self) -> bool {
         matches!(self.inner, StepInner::Saturated { .. })
     }
 
-    fn is_unsaturated(&self) -> bool {
+    pub fn is_unsaturated(&self) -> bool {
         matches!(
             self.inner,
             StepInner::OriginalUnsaturated { .. } | StepInner::RepeatUnsaturated { .. }
@@ -587,6 +592,18 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
             StepTime::Init
         } else {
             StepTime::Normal(t.raw_time())
+        }
+    }
+
+    pub fn is_original(&self) -> bool {
+        match self.inner {
+            StepInner::OriginalUnsaturated {
+                ..
+            } => true,
+            StepInner::OriginalSaturating {
+                ..
+            } => true,
+            _ => false,
         }
     }
 }

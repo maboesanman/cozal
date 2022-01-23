@@ -1,0 +1,45 @@
+use std::sync::Weak;
+use std::task::Wake;
+
+use crate::transposer::schedule_storage::ImRcStorage;
+use crate::transposer::step::StepMetadata;
+use crate::transposer::Transposer;
+use crate::util::stack_waker::StackWaker;
+
+pub struct TransposeMetadata;
+
+#[derive(Default)]
+pub struct SaturatingMetadata {
+    pub stack_waker:     Weak<StackWaker>,
+    pub polling_channel: Option<usize>,
+}
+
+impl SaturatingMetadata {
+    pub fn desaturate(self) {
+        if let Some(w) = self.stack_waker.upgrade() {
+            w.wake_by_ref();
+        }
+    }
+}
+
+impl<T: Transposer> StepMetadata<T, ImRcStorage> for TransposeMetadata {
+    type Unsaturated = ();
+
+    type Saturating = SaturatingMetadata;
+
+    type Saturated = ();
+
+    fn new_unsaturated() -> Self::Unsaturated {}
+
+    fn to_saturating(_metadata: Self::Unsaturated) -> Self::Saturating {
+        Default::default()
+    }
+
+    fn to_saturated(metadata: Self::Saturating, _transposer: &T) -> Self::Saturated {
+        metadata.desaturate();
+    }
+
+    fn desaturate_saturating(metadata: Self::Saturating) -> Self::Unsaturated {
+        metadata.desaturate();
+    }
+}

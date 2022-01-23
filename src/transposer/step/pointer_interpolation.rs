@@ -11,14 +11,9 @@ use crate::transposer::Transposer;
 pub struct PointerInterpolation<T: Transposer> {
     pub(crate) future:  Pin<Box<dyn Future<Output = T::OutputState>>>,
     pub(crate) context: Box<StepInterpolateContext<T>>,
-    time:               T::Time,
 }
 
 impl<T: Transposer> PointerInterpolation<T> {
-    pub fn time(&self) -> T::Time {
-        self.time
-    }
-
     // SAFETY: wrapped transposer must outlive this object.
     pub unsafe fn new<S: StorageFamily>(
         time: T::Time,
@@ -35,7 +30,6 @@ impl<T: Transposer> PointerInterpolation<T> {
             unsafe { core::mem::transmute(future) };
 
         Self {
-            time,
             context,
             future,
         }

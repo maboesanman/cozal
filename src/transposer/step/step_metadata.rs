@@ -16,6 +16,8 @@ pub trait StepMetadata<T: Transposer, S: StorageFamily> {
     fn desaturate_saturated(_metadata: Self::Saturated) -> Self::Unsaturated {
         Self::new_unsaturated()
     }
+
+    fn next_unsaturated(_metadata: &mut Self::Saturated, _next_time: T::Time) {}
 }
 
 pub struct EmptyStepMetadata;

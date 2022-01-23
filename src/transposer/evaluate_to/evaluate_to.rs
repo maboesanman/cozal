@@ -20,7 +20,7 @@ where
     S: Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
-    let mut input_buffer = InputBuffer::<T::Time, T::Input>::new();
+    let mut input_buffer = InputBuffer::<T>::new();
     for (time, input) in events {
         if time <= until && T::can_handle(time, &input) {
             input_buffer.insert_back(time, input);
@@ -53,7 +53,7 @@ where
 {
     Step {
         frame:     Box<Step<T, StdStorage>>,
-        events:    InputBuffer<T::Time, T::Input>,
+        events:    InputBuffer<T>,
         state:     S,
         state_fut: Option<Fs>,
         until:     T::Time,

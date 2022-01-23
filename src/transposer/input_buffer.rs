@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
+use super::Transposer;
 use crate::util::take_mut;
 
-pub struct InputBuffer<Time: Ord + Copy, Input>(BTreeMap<Time, InputContainer<Input>>);
+pub struct InputBuffer<T: Transposer>(BTreeMap<T::Time, InputContainer<T::Input>>);
 
 enum InputContainer<Input> {
     Hot(Vec<Input>),
@@ -78,12 +79,12 @@ impl<Input> IntoIterator for InputContainer<Input> {
     }
 }
 
-impl<Time: Ord + Copy, Input> InputBuffer<Time, Input> {
+impl<T: Transposer> InputBuffer<T> {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn insert_back(&mut self, time: Time, input: Input) {
+    pub fn insert_back(&mut self, time: T::Time, input: T::Input) {
         match self.0.get_mut(&time) {
             Some(current) => current.push(input),
             None => {
@@ -92,7 +93,7 @@ impl<Time: Ord + Copy, Input> InputBuffer<Time, Input> {
         }
     }
 
-    pub fn extend_front(&mut self, time: Time, inputs: Box<[Input]>) {
+    pub fn extend_front(&mut self, time: T::Time, inputs: Box<[T::Input]>) {
         match self.0.get_mut(&time) {
             Some(current) => take_mut::take_or_recover(current, InputContainer::recover, |c| {
                 let mut new_vec: Vec<_> = inputs.into();
@@ -105,21 +106,21 @@ impl<Time: Ord + Copy, Input> InputBuffer<Time, Input> {
         }
     }
 
-    pub fn first_time(&self) -> Option<Time> {
+    pub fn first_time(&self) -> Option<T::Time> {
         self.0.first_key_value().map(|(&k, _)| k)
     }
 
-    pub fn pop_first(&mut self) -> Option<(Time, Box<[Input]>)> {
+    pub fn pop_first(&mut self) -> Option<(T::Time, Box<[T::Input]>)> {
         self.0.pop_first().map(|(t, v)| (t, v.into()))
     }
 
-    pub fn rollback(&mut self, time: Time) {
+    pub fn rollback(&mut self, time: T::Time) {
         let InputBuffer(inner) = self;
         inner.split_off(&time);
     }
 }
 
-impl<Time: Ord + Copy, Input> Default for InputBuffer<Time, Input> {
+impl<T: Transposer> Default for InputBuffer<T> {
     fn default() -> Self {
         Self(BTreeMap::new())
     }
