@@ -129,8 +129,13 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
         };
 
         let inner = if is_input {
+            #[cfg(debug_assertions)]
+            next_inputs.as_ref().unwrap();
+
+            // SAFETY: is_input is always assigned false if next_inputs is None.
+            let (_, inputs) = unsafe { core::mem::take(next_inputs).unwrap_unchecked() };
             SubStepInner::OriginalUnsaturatedInput {
-                inputs: core::mem::take(next_inputs).unwrap().1,
+                inputs,
             }
         } else {
             SubStepInner::OriginalUnsaturatedScheduled
@@ -344,7 +349,6 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
                     update,
                 } => {
                     let inner = SubStepInner::OriginalUnsaturatedInput {
-                        // elevate to panic, because we should be fully saturated in this situation
                         inputs: update.reclaim_pending(),
                     };
                     (inner, Ok(None))
@@ -353,7 +357,6 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
                     update,
                 } => {
                     let inner = SubStepInner::RepeatUnsaturatedInput {
-                        // elevate to panic, because we should be fully saturated in this situation
                         inputs: update.reclaim_pending(),
                     };
                     (inner, Ok(None))
