@@ -6,6 +6,7 @@ use futures_core::Future;
 use super::update::{Arg, UpdateContext, WrappedTransposer};
 use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::Transposer;
+use crate::util::debug_assert::debug_unreachable;
 
 pub struct InitArg<T: Transposer, S: StorageFamily> {
     phantom: PhantomData<fn() -> (T, S)>,
@@ -97,10 +98,9 @@ impl<T: Transposer, S: StorageFamily> Arg<T, S> for ScheduledArg<T, S> {
     {
         let val = frame.pop_schedule_event();
 
-        debug_assert!(val.is_some());
-
-        let (_, payload) = val.unwrap();
-
-        payload
+        match val {
+            Some((_, payload)) => payload,
+            None => unsafe { debug_unreachable() },
+        }
     }
 }

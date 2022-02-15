@@ -7,6 +7,7 @@ use super::ScheduledTime;
 use crate::transposer::context::ExpireEventError;
 use crate::transposer::schedule_storage::{HashMapStorage, OrdMapStorage, StorageFamily};
 use crate::transposer::{ExpireHandle, Transposer};
+use crate::util::debug_assert::debug_unwrap;
 
 #[derive(Clone)]
 pub struct TransposerMetaData<T: Transposer, S: StorageFamily> {
@@ -60,8 +61,9 @@ impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
             Some(time) => {
                 let t = time.time;
 
+                let payload = self.schedule.remove(time);
                 // SAFETY: maps are kept in sync
-                let payload = self.schedule.remove(time).unwrap();
+                let payload = unsafe { debug_unwrap(payload) };
                 self.expire_handles_backward.remove(time);
                 self.expire_handles_forward.remove(&handle);
 

@@ -46,7 +46,8 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
         let context_mut: *mut _ = context.as_mut();
 
         // SAFETY: this is used by future, so it will not dangle as future is dropped before context.
-        let context_mut = unsafe { context_mut.as_mut().unwrap() };
+        // SAFETY: this was created two lines above by box, so cannot be null.
+        let context_mut = unsafe { context_mut.as_mut().unwrap_unchecked() };
 
         // get future, filling box if we can.
         let future = A::get_future(transposer, context_mut, raw_time, arg_passed);

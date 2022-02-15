@@ -83,7 +83,7 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> UpdateConte
 impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> SubStepUpdateContext<T, S, C> {
     fn get_frame_internal_mut(&mut self) -> &mut TransposerMetaData<T, S> {
         // SAFETY: this is good as long as the constructor's criteria are met.
-        unsafe { self.frame_internal.as_mut().unwrap() }
+        unsafe { self.frame_internal.as_mut().unwrap_unchecked() }
     }
 }
 
@@ -92,7 +92,7 @@ impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> InputSt
 {
     fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
         // SAFETY: this is good as long as the constructor's criteria are met.
-        Box::pin(unsafe { self.input_state.as_ref().unwrap() })
+        Box::pin(unsafe { self.input_state.as_ref().unwrap_unchecked() })
     }
 }
 

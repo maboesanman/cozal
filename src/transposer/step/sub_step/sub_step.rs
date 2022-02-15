@@ -112,28 +112,28 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
 
         let next_time_index = self.time.index() + 1;
 
-        let (time, is_input) = match (&next_inputs, next_scheduled_time) {
+        let (time, inputs) = match (&next_inputs, next_scheduled_time) {
             (None, None) => return Ok(None),
-            (None, Some(t)) => (
-                SubStepTime::new_scheduled(next_time_index, t.clone()),
-                false,
-            ),
-            (Some((t, _)), None) => (SubStepTime::new_input(next_time_index, *t), true),
+            (None, Some(t)) => (SubStepTime::new_scheduled(next_time_index, t.clone()), None),
+            (Some((t, _)), None) => {
+                let time = *t;
+                let inputs = core::mem::take(next_inputs).map(|(_, i)| i);
+                (SubStepTime::new_input(next_time_index, time), inputs)
+            },
             (Some((t_i, _)), Some(t_s)) => match t_i.cmp(&t_s.time) {
                 Ordering::Greater => (
                     SubStepTime::new_scheduled(next_time_index, t_s.clone()),
-                    false,
+                    None,
                 ),
-                _ => (SubStepTime::new_input(next_time_index, *t_i), true),
+                _ => {
+                    let time = *t_i;
+                    let inputs = core::mem::take(next_inputs).map(|(_, i)| i);
+                    (SubStepTime::new_input(next_time_index, time), inputs)
+                },
             },
         };
 
-        let inner = if is_input {
-            #[cfg(debug_assertions)]
-            next_inputs.as_ref().unwrap();
-
-            // SAFETY: is_input is always assigned false if next_inputs is None.
-            let (_, inputs) = unsafe { core::mem::take(next_inputs).unwrap_unchecked() };
+        let inner = if let Some(inputs) = inputs {
             SubStepInner::OriginalUnsaturatedInput {
                 inputs,
             }
