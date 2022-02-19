@@ -17,8 +17,7 @@ impl<'a, S> Future for &'a LazyState<S> {
     type Output = &'a S;
 
     fn poll(self: Pin<&'_ mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // SAFETY: we are moving S, but we never pinned any refs to it, so it's ok.
-        let this: &'_ mut &'a _ = unsafe { self.get_unchecked_mut() };
+        let this: &'_ mut &'a _ = self.get_mut();
         let lazy_state: &'a _ = *this;
 
         match lazy_state.value.get() {
