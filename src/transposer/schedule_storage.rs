@@ -258,30 +258,6 @@ impl<K: Hash + Eq + Clone, V: Clone> HashMapStorage<K, V> for std::collections::
     }
 }
 
-// impl<'a, T> TransposerPointer<T> for Box<T>
-// where
-//     Self: 'a,
-//     T: 'a,
-// {
-//     type Borrowed = &'a T;
-
-//     fn new(inner: T) -> Self {
-//         Box::new(inner)
-//     }
-
-//     fn borrow(&'a self) -> Self::Borrowed {
-//         self
-//     }
-
-//     fn mutate(&mut self) -> &mut T {
-//         self
-//     }
-
-//     fn try_take(self) -> Option<T> {
-//         Some(*self)
-//     }
-// }
-
 impl<T: Clone> TransposerPointer<T> for Arc<T> {
     type Borrowed = Arc<T>;
 
