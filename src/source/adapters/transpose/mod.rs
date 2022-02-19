@@ -2,7 +2,6 @@ mod output_buffer;
 mod transpose_inner;
 mod transpose_metadata;
 
-use std::collections::BTreeMap;
 use std::pin::Pin;
 use std::sync::Weak;
 use std::task::{Context, Poll};
@@ -10,7 +9,6 @@ use std::task::{Context, Poll};
 use futures_core::Future;
 use pin_project::pin_project;
 
-use self::output_buffer::OutputBuffer;
 use self::transpose_inner::{PollResult, TransposeInner};
 use crate::source::source_poll::SourcePollOk;
 use crate::source::traits::SourceContext;
@@ -261,7 +259,7 @@ where
     }
 
     fn advance(self: Pin<&mut Self>, time: Self::Time) {
-        self.project().inner.handle_source_advance(time)
+        self.project().inner.handle_caller_advance(time)
     }
 
     fn max_channel(&self) -> std::num::NonZeroUsize {
@@ -270,7 +268,7 @@ where
 
     fn release_channel(self: Pin<&mut Self>, channel: usize) {
         let mut this = self.project();
-        for c in this.inner.handle_source_release_channel(channel) {
+        for c in this.inner.handle_caller_release_channel(channel) {
             this.source.as_mut().release_channel(c)
         }
     }

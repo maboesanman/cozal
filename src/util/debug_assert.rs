@@ -1,10 +1,12 @@
+
+#[cfg(not(debug_assertions))]
 use std::hint::unreachable_unchecked;
 
 #[inline(always)]
 #[rustfmt::skip]
 pub unsafe fn debug_unreachable() -> ! {
     #[cfg(debug_assertions)]
-    return unreachable!();
+    unreachable!();
 
     #[cfg(not(debug_assertions))]
     unsafe {

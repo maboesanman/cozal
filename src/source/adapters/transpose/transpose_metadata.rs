@@ -1,7 +1,7 @@
 use std::sync::Weak;
 use std::task::Wake;
 
-use crate::transposer::schedule_storage::ImRcStorage;
+use crate::transposer::schedule_storage::{ImRcStorage, StorageFamily};
 use crate::transposer::step::StepMetadata;
 use crate::transposer::Transposer;
 use crate::util::stack_waker::StackWaker;
@@ -22,7 +22,7 @@ impl SaturatingMetadata {
     }
 }
 
-impl<T: Transposer> StepMetadata<T, ImRcStorage> for TransposeMetadata {
+impl<T: Transposer, S: StorageFamily> StepMetadata<T, S> for TransposeMetadata {
     type Unsaturated = ();
 
     type Saturating = SaturatingMetadata;
