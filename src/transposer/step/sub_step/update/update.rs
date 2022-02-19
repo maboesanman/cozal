@@ -8,10 +8,14 @@ use crate::transposer::step::lazy_state::LazyState;
 use crate::transposer::Transposer;
 
 pub struct Update<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> {
-    // references context, wrapped_transposer.transposer, and args
-    future: Pin<Box<dyn Future<Output = ()>>>,
+    inner: Option<UpdateInner<T, S, C>>,
 
     arg: A::Stored,
+}
+
+struct UpdateInner<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>> {
+    // references context, wrapped_transposer.transposer, and args
+    future: Pin<Box<dyn Future<Output = ()>>>,
 
     // references state and wrapped_transposer.internal
     context: Box<C>,
@@ -55,59 +59,61 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
         let future: Pin<Box<dyn Future<Output = ()>>> = unsafe { core::mem::transmute(future) };
 
         Self {
-            future,
+            inner: Some(UpdateInner {
+                future,
+                context,
+                wrapped_transposer,
+            }),
             arg,
-            context,
-            wrapped_transposer,
         }
     }
 
     pub fn reclaim_pending(self) -> A::Stored {
         let Self {
-            future,
+            inner,
             arg,
-            context,
-            wrapped_transposer,
         } = self;
 
-        drop(future);
-        drop(context);
-        drop(wrapped_transposer);
+        drop(inner);
         arg
-    }
-
-    // SAFETY: this must be called after this future resolves.
-    pub unsafe fn reclaim_ready(self) -> UpdateResult<T, S, C, A> {
-        let Self {
-            future,
-            arg,
-            context,
-            wrapped_transposer,
-        } = self;
-
-        drop(future);
-        let outputs = context.recover_outputs();
-
-        UpdateResult {
-            wrapped_transposer,
-            outputs,
-            arg,
-        }
     }
 }
 
 impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Future
     for Update<T, S, C, A>
 {
-    type Output = ();
+    type Output = UpdateResult<T, S, C>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.future.as_mut().poll(cx)
+        let inner = match &mut self.inner {
+            Some(inner) => inner,
+            None => return Poll::Pending,
+        };
+        match inner.future.as_mut().poll(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(()) => {
+                let UpdateInner {
+                    future,
+                    context,
+                    wrapped_transposer,
+                } = core::mem::take(&mut self.inner).unwrap();
+
+                drop(future);
+
+                let outputs = C::recover_outputs(*context);
+
+                let update_result = UpdateResult {
+                    wrapped_transposer,
+                    outputs,
+                };
+
+                Poll::Ready(update_result)
+            },
+        }
     }
 }
 
-pub struct UpdateResult<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> {
+pub struct UpdateResult<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>> {
     pub wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     pub outputs:            C::Outputs,
-    pub arg:                A::Stored,
 }

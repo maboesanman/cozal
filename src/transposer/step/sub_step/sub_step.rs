@@ -439,12 +439,10 @@ impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
                 SubStepInner::SaturatingInit {
                     mut update,
                 } => match Pin::new(&mut update).poll(cx) {
-                    Poll::Ready(()) => {
-                        let UpdateResult {
-                            wrapped_transposer,
-                            outputs,
-                            arg: (),
-                        } = unsafe { update.reclaim_ready() };
+                    Poll::Ready(UpdateResult {
+                        wrapped_transposer,
+                        outputs,
+                    }) => {
                         let inner = SubStepInner::SaturatedInit {
                             wrapped_transposer,
                         };
@@ -461,15 +459,14 @@ impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
                 SubStepInner::OriginalSaturatingInput {
                     mut update,
                 } => match Pin::new(&mut update).poll(cx) {
-                    Poll::Ready(()) => {
-                        let UpdateResult {
-                            wrapped_transposer,
-                            outputs,
-                            arg,
-                        } = unsafe { update.reclaim_ready() };
+                    Poll::Ready(UpdateResult {
+                        wrapped_transposer,
+                        outputs,
+                    }) => {
+                        let inputs = update.reclaim_pending();
                         let inner = SubStepInner::SaturatedInput {
                             wrapped_transposer,
-                            inputs: arg,
+                            inputs,
                         };
 
                         (inner, handle_original_outputs(outputs))
@@ -485,15 +482,15 @@ impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
                 SubStepInner::RepeatSaturatingInput {
                     mut update,
                 } => match Pin::new(&mut update).poll(cx) {
-                    Poll::Ready(()) => {
+                    Poll::Ready(result) => {
                         let UpdateResult {
                             wrapped_transposer,
                             outputs: (),
-                            arg,
-                        } = unsafe { update.reclaim_ready() };
+                        } = result;
+                        let inputs = update.reclaim_pending();
                         let inner = SubStepInner::SaturatedInput {
                             wrapped_transposer,
-                            inputs: arg,
+                            inputs,
                         };
 
                         (inner, Poll::Ready(Ok(None)))
@@ -508,12 +505,10 @@ impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
                 SubStepInner::OriginalSaturatingScheduled {
                     mut update,
                 } => match Pin::new(&mut update).poll(cx) {
-                    Poll::Ready(()) => {
-                        let UpdateResult {
-                            wrapped_transposer,
-                            outputs,
-                            arg: (),
-                        } = unsafe { update.reclaim_ready() };
+                    Poll::Ready(UpdateResult {
+                        wrapped_transposer,
+                        outputs,
+                    }) => {
                         let inner = SubStepInner::SaturatedScheduled {
                             wrapped_transposer,
                         };
@@ -530,12 +525,11 @@ impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
                 SubStepInner::RepeatSaturatingScheduled {
                     mut update,
                 } => match Pin::new(&mut update).poll(cx) {
-                    Poll::Ready(()) => {
+                    Poll::Ready(result) => {
                         let UpdateResult {
                             wrapped_transposer,
                             outputs: (),
-                            arg: (),
-                        } = unsafe { update.reclaim_ready() };
+                        } = result;
                         let inner = SubStepInner::SaturatedScheduled {
                             wrapped_transposer,
                         };
