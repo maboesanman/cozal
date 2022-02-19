@@ -1,5 +1,6 @@
 use core::future::Future;
 use core::pin::Pin;
+use std::ops::Deref;
 
 use super::time::SubStepTime;
 use super::update::{TransposerMetaData, UpdateContext};
@@ -33,14 +34,15 @@ impl<O> OutputCollector<O> for () {
 /// though there are more methods to interact with the engine.
 pub struct SubStepUpdateContext<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> {
     // these are pointers because this is stored next to the targets.
-    frame_internal: *mut TransposerMetaData<T, S>,
-    input_state:    *const LazyState<T::InputState>,
+    metadata: *mut TransposerMetaData<T, S>,
 
     time:                   SubStepTime<T::Time>,
     current_emission_index: usize,
 
     // values to output
     output_collector: C,
+
+    input_state: S::LazyState<LazyState<T::InputState>>,
 }
 
 impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> InitContext<'a, T>
@@ -63,11 +65,11 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> UpdateConte
     // SAFETY: need to gurantee the pointers outlive this object.
     unsafe fn new(
         time: SubStepTime<T::Time>,
-        frame_internal: *mut TransposerMetaData<T, S>,
-        input_state: *const LazyState<T::InputState>,
+        metadata: *mut TransposerMetaData<T, S>,
+        input_state: S::LazyState<LazyState<T::InputState>>,
     ) -> Self {
         Self {
-            frame_internal,
+            metadata,
             input_state,
             time,
             current_emission_index: 0,
@@ -81,9 +83,9 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> UpdateConte
 }
 
 impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> SubStepUpdateContext<T, S, C> {
-    fn get_frame_internal_mut(&mut self) -> &mut TransposerMetaData<T, S> {
+    fn get_metadata_mut(&mut self) -> &mut TransposerMetaData<T, S> {
         // SAFETY: this is good as long as the constructor's criteria are met.
-        unsafe { self.frame_internal.as_mut().unwrap_unchecked() }
+        unsafe { self.metadata.as_mut().unwrap_unchecked() }
     }
 }
 
@@ -91,8 +93,8 @@ impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> InputSt
     for SubStepUpdateContext<T, S, C>
 {
     fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
-        // SAFETY: this is good as long as the constructor's criteria are met.
-        Box::pin(unsafe { self.input_state.as_ref().unwrap_unchecked() })
+        let ptr: *const _ = self.input_state.deref();
+        Box::pin(unsafe { ptr.as_ref().unwrap_unchecked() })
     }
 }
 
@@ -110,7 +112,7 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> ScheduleEve
 
         let time = self.time.spawn_scheduled(time, self.current_emission_index);
 
-        self.get_frame_internal_mut().schedule_event(time, payload);
+        self.get_metadata_mut().schedule_event(time, payload);
         self.current_emission_index += 1;
 
         Ok(())
@@ -128,7 +130,7 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> ScheduleEve
         let time = self.time.spawn_scheduled(time, self.current_emission_index);
 
         let handle = self
-            .get_frame_internal_mut()
+            .get_metadata_mut()
             .schedule_event_expireable(time, payload);
         self.current_emission_index += 1;
 
@@ -143,7 +145,7 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> ExpireEvent
         &mut self,
         handle: ExpireHandle,
     ) -> Result<(T::Time, T::Scheduled), ExpireEventError> {
-        self.get_frame_internal_mut().expire_event(handle)
+        self.get_metadata_mut().expire_event(handle)
     }
 }
 
@@ -159,6 +161,6 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> RngContext
     for SubStepUpdateContext<T, S, C>
 {
     fn get_rng(&mut self) -> &mut dyn rand::RngCore {
-        &mut self.get_frame_internal_mut().rng
+        &mut self.get_metadata_mut().rng
     }
 }

@@ -22,12 +22,11 @@ pub struct Update<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Ar
 }
 
 impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Update<T, S, C, A> {
-    // SAFETY: input_state must outlive returned value
-    pub unsafe fn new(
+    pub fn new(
         mut wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
         mut arg: A::Stored,
         time: SubStepTime<T::Time>,
-        input_state: *const LazyState<T::InputState>,
+        input_state: S::LazyState<LazyState<T::InputState>>,
     ) -> Self {
         // update 'current time'
         let raw_time = time.raw_time();
@@ -41,7 +40,6 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
         let transposer = &mut wrapped_transposer_mut.transposer;
         let metadata = &mut wrapped_transposer_mut.metadata;
 
-        // SAFETY: metadata outlives context by drop order, input_state outlives because new is unsafe and the caller must uphold.
         let context = unsafe { C::new(time, metadata, input_state) };
         let mut context = Box::new(context);
         let context_mut: *mut _ = context.as_mut();

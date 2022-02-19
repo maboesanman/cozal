@@ -4,12 +4,14 @@ use std::ops::Deref;
 use std::rc::Rc;
 use std::sync::Arc;
 
-pub trait StorageFamily: Copy {
+pub trait StorageFamily: Copy + 'static {
     type OrdMap<K: Ord + Eq + Clone, V: Clone>: OrdMapStorage<K, V>;
     type HashMap<K: Hash + Eq + Clone, V: Clone>: HashMapStorage<K, V>;
 
     // someday we want to drop this clone bound and specialize the Arc impl when W is clone.
     type Transposer<W: Clone>: TransposerPointer<W>;
+
+    type LazyState<W>: LazyStatePointer<W>;
 }
 
 #[derive(Clone, Copy)]
@@ -18,7 +20,8 @@ pub struct DefaultStorage;
 impl StorageFamily for DefaultStorage {
     type OrdMap<K: Ord + Eq + Clone, V: Clone> = im::OrdMap<K, V>;
     type HashMap<K: Hash + Eq + Clone, V: Clone> = im::HashMap<K, V>;
-    type Transposer<W: Clone> = Box<W>;
+    type Transposer<W: Clone> = Arc<W>;
+    type LazyState<W> = Arc<W>;
 }
 
 pub trait OrdMapStorage<K: Ord + Eq + Clone, V: Clone>: Clone {
@@ -55,17 +58,18 @@ pub trait HashMapStorage<K: Hash + Eq + Clone, V: Clone>: Clone {
 }
 
 pub trait TransposerPointer<T>: Deref<Target = T> + Unpin {
-    type Borrowed<'a>: Deref<Target = T>
-    where
-        Self: 'a,
-        T: 'a;
+    type Borrowed: Deref<Target = T> + Unpin;
 
     fn new(inner: T) -> Self;
 
-    fn borrow(&self) -> Self::Borrowed<'_>;
+    fn borrow(&self) -> Self::Borrowed;
     fn mutate(&mut self) -> &mut T;
 
     fn try_take(self) -> Option<T>;
+}
+
+pub trait LazyStatePointer<T>: Deref<Target = T> + Unpin + Clone {
+    fn new(inner: T) -> Self;
 }
 
 impl<K: Ord + Eq + Clone, V: Clone> OrdMapStorage<K, V> for im::OrdMap<K, V> {
@@ -254,41 +258,38 @@ impl<K: Hash + Eq + Clone, V: Clone> HashMapStorage<K, V> for std::collections::
     }
 }
 
-impl<T> TransposerPointer<T> for Box<T> {
-    type Borrowed<'a>
-    where
-        Self: 'a,
-        T: 'a,
-    = &'a T;
+// impl<'a, T> TransposerPointer<T> for Box<T>
+// where
+//     Self: 'a,
+//     T: 'a,
+// {
+//     type Borrowed = &'a T;
 
-    fn new(inner: T) -> Self {
-        Box::new(inner)
-    }
+//     fn new(inner: T) -> Self {
+//         Box::new(inner)
+//     }
 
-    fn borrow(&self) -> Self::Borrowed<'_> {
-        self
-    }
+//     fn borrow(&'a self) -> Self::Borrowed {
+//         self
+//     }
 
-    fn mutate(&mut self) -> &mut T {
-        self
-    }
+//     fn mutate(&mut self) -> &mut T {
+//         self
+//     }
 
-    fn try_take(self) -> Option<T> {
-        Some(*self)
-    }
-}
+//     fn try_take(self) -> Option<T> {
+//         Some(*self)
+//     }
+// }
 
 impl<T: Clone> TransposerPointer<T> for Arc<T> {
-    type Borrowed<'a>
-    where
-        T: 'a,
-    = Arc<T>;
+    type Borrowed = Arc<T>;
 
     fn new(inner: T) -> Self {
         Arc::new(inner)
     }
 
-    fn borrow(&self) -> Self::Borrowed<'_> {
+    fn borrow(&self) -> Self::Borrowed {
         self.clone()
     }
 
@@ -302,16 +303,13 @@ impl<T: Clone> TransposerPointer<T> for Arc<T> {
 }
 
 impl<T: Clone> TransposerPointer<T> for Rc<T> {
-    type Borrowed<'a>
-    where
-        T: 'a,
-    = Rc<T>;
+    type Borrowed = Rc<T>;
 
     fn new(inner: T) -> Self {
         Rc::new(inner)
     }
 
-    fn borrow(&self) -> Self::Borrowed<'_> {
+    fn borrow(&self) -> Self::Borrowed {
         self.clone()
     }
 
@@ -321,5 +319,17 @@ impl<T: Clone> TransposerPointer<T> for Rc<T> {
 
     fn try_take(self) -> Option<T> {
         Rc::try_unwrap(self).ok()
+    }
+}
+
+impl<T> LazyStatePointer<T> for Arc<T> {
+    fn new(inner: T) -> Self {
+        Arc::new(inner)
+    }
+}
+
+impl<T> LazyStatePointer<T> for Rc<T> {
+    fn new(inner: T) -> Self {
+        Rc::new(inner)
     }
 }

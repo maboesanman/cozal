@@ -5,10 +5,9 @@ use futures_core::Future;
 
 use super::interpolation::Interpolation;
 use super::lazy_state::LazyState;
-use super::pointer_interpolation::PointerInterpolation;
 use super::step_metadata::{EmptyStepMetadata, StepMetadata};
 use super::sub_step::{PollErr as StepPollErr, SubStep, SubStepTime, WrappedTransposer};
-use crate::transposer::schedule_storage::{DefaultStorage, StorageFamily};
+use crate::transposer::schedule_storage::{DefaultStorage, LazyStatePointer, StorageFamily};
 use crate::transposer::step::sub_step::SaturateErr;
 use crate::transposer::Transposer;
 use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
@@ -21,7 +20,7 @@ pub struct Step<
     inner: StepInner<T, S, M>,
 
     // boxed to make self reference easier.
-    input_state: Box<LazyState<T::InputState>>,
+    input_state: S::LazyState<LazyState<T::InputState>>,
 
     // these are used purely for enforcing that saturate calls use the previous step_group.
     #[cfg(debug_assertions)]
@@ -35,11 +34,9 @@ pub type NextInputs<T> = Option<(<T as Transposer>::Time, Box<[<T as Transposer>
 impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         let mut steps = Vec::with_capacity(1);
-        let input_state = Box::new(LazyState::new());
-        let input_state_ptr = input_state.as_ref();
+        let input_state = S::LazyState::<LazyState<T::InputState>>::new(LazyState::new());
 
-        // SAFETY: steps are dropped before input_state.
-        steps.push(unsafe { SubStep::new_init(transposer, rng_seed, input_state_ptr) });
+        steps.push(SubStep::new_init(transposer, rng_seed, &input_state));
 
         Self {
             inner: StepInner::OriginalSaturating {
@@ -66,13 +63,12 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
             metadata,
         } = &mut self.inner
         {
-            let input_state = Box::new(LazyState::new());
-            let input_state_ptr = input_state.as_ref();
+            let input_state = S::LazyState::<LazyState<T::InputState>>::new(LazyState::new());
 
             let next = steps
                 .last()
                 .unwrap()
-                .next_unsaturated(next_inputs, input_state_ptr)
+                .next_unsaturated(next_inputs, &input_state)
                 .map_err(|e| match e {
                     super::sub_step::NextUnsaturatedErr::NotSaturated => unreachable!(),
 
@@ -371,10 +367,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
         self.input_state.set(state, ignore_waker)
     }
 
-    pub(crate) fn interpolate_pointer(
-        &self,
-        time: T::Time,
-    ) -> Result<PointerInterpolation<T>, InterpolateErr> {
+    pub fn interpolate(&self, time: T::Time) -> Result<Interpolation<T, S>, InterpolateErr> {
         match &self.inner {
             StepInner::Saturated {
                 steps,
@@ -385,44 +378,15 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                     return Err(InterpolateErr::TimePast)
                 }
 
-                Ok(unsafe {
-                    PointerInterpolation::new(
-                        time,
-                        steps
-                            .as_ref()
-                            .last()
-                            .unwrap()
-                            .finished_wrapped_transposer()
-                            .unwrap(),
-                    )
-                })
-            },
-            _ => Err(InterpolateErr::NotSaturated),
-        }
-    }
-
-    pub fn interpolate(&self, time: T::Time) -> Result<Interpolation<'_, T, S>, InterpolateErr> {
-        match &self.inner {
-            StepInner::Saturated {
-                steps,
-                metadata: _,
-            } => {
-                #[cfg(debug_assertions)]
-                if self.raw_time() > time {
-                    return Err(InterpolateErr::TimePast)
-                }
-
-                Ok(unsafe {
-                    Interpolation::new(
-                        time,
-                        steps
-                            .as_ref()
-                            .last()
-                            .unwrap()
-                            .finished_wrapped_transposer()
-                            .unwrap(),
-                    )
-                })
+                Ok(Interpolation::new(
+                    time,
+                    steps
+                        .as_ref()
+                        .last()
+                        .unwrap()
+                        .finished_wrapped_transposer()
+                        .unwrap(),
+                ))
             },
             _ => Err(InterpolateErr::NotSaturated),
         }

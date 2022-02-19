@@ -1,13 +1,13 @@
 use std::hash::Hash;
 use std::pin::Pin;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use futures_core::Future;
 
 use crate::transposer::input_buffer::InputBuffer;
 use crate::transposer::schedule_storage::StorageFamily;
-use crate::transposer::step::{PointerInterpolation, Step, StepPollResult};
+use crate::transposer::step::{Interpolation, Step, StepPollResult};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
 
@@ -17,7 +17,8 @@ struct Storage;
 impl StorageFamily for Storage {
     type OrdMap<K: Ord + Eq + Clone, V: Clone> = std::collections::BTreeMap<K, V>;
     type HashMap<K: Hash + Eq + Clone, V: Clone> = std::collections::HashMap<K, V>;
-    type Transposer<T: Clone> = Box<T>;
+    type Transposer<T: Clone> = Arc<T>;
+    type LazyState<T> = Arc<T>;
 }
 
 pub fn evaluate_to<T: Transposer, S, Fs>(
@@ -72,7 +73,7 @@ where
     },
     Interpolate {
         frame:       Box<Step<T, Storage>>,
-        interpolate: Pin<Box<PointerInterpolation<T>>>,
+        interpolate: Pin<Box<Interpolation<T, Storage>>>,
         state:       S,
         state_fut:   Option<Fs>,
         until:       T::Time,
@@ -199,7 +200,7 @@ where
 
                             // no updates or updates after "until"
 
-                            let interpolate = Box::pin(frame.interpolate_pointer(until).unwrap());
+                            let interpolate = Box::pin(frame.interpolate(until).unwrap());
 
                             (
                                 EvaluateToInner::Interpolate {

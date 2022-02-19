@@ -8,7 +8,7 @@ use super::transpose_metadata::TransposeMetadata;
 use crate::source::source_poll::SourcePollOk;
 use crate::source::SourcePoll;
 use crate::transposer::input_buffer::InputBuffer;
-use crate::transposer::step::{PointerInterpolation, Step};
+use crate::transposer::step::{Interpolation, Step};
 use crate::transposer::Transposer;
 
 pub struct TransposeInner<T: Transposer> {
@@ -188,7 +188,7 @@ impl<T: Transposer> TransposeInner<T> {
         &mut self,
         channel: usize,
         time: T::Time,
-    ) -> Pin<&mut PointerInterpolation<T>> {
+    ) -> Pin<&mut Interpolation<T, TransposeStorage>> {
         todo!()
     }
 

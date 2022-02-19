@@ -9,11 +9,11 @@ pub trait UpdateContext<T: Transposer, S: StorageFamily>:
 {
     type Outputs;
 
-    // SAFETY: ensure this UpdateContext is dropped before frame_internal and input_state.
+    // SAFETY: ensure this UpdateContext is dropped before metadata.
     unsafe fn new(
         time: SubStepTime<T::Time>,
         metadata: *mut TransposerMetaData<T, S>,
-        input_state: *const LazyState<T::InputState>,
+        input_state: S::LazyState<LazyState<T::InputState>>,
     ) -> Self;
 
     fn recover_outputs(self) -> Self::Outputs;

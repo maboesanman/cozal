@@ -11,6 +11,7 @@ impl StorageFamily for TransposeStorage {
     type OrdMap<K: Ord + Eq + Clone, V: Clone> = im_rc::OrdMap<K, V>;
     type HashMap<K: Hash + Eq + Clone, V: Clone> = im_rc::HashMap<K, V>;
     type Transposer<T: Clone> = Rc<T>;
+    type LazyState<T> = Rc<T>;
 }
 
 // this is never actually instantiated. it is used in a where clause for a Send impl.
@@ -21,4 +22,5 @@ impl StorageFamily for DummySendStorage {
     type OrdMap<K: Ord + Eq + Clone, V: Clone> = im::OrdMap<K, V>;
     type HashMap<K: Hash + Eq + Clone, V: Clone> = im::HashMap<K, V>;
     type Transposer<T: Clone> = Arc<T>;
+    type LazyState<T> = Arc<T>;
 }

@@ -1,4 +1,5 @@
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use async_trait::async_trait;
@@ -67,7 +68,7 @@ fn saturate_take() {
     let rng_seed = rand::thread_rng().gen();
     let mut next_input = None;
 
-    let s = LazyState::new();
+    let s = Arc::new(LazyState::new());
     let mut init = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
 
     let waker = DummyWaker::dummy();
@@ -75,7 +76,7 @@ fn saturate_take() {
 
     assert_matches!(Pin::new(&mut init).poll(&mut cx), Poll::Ready(Ok(None)));
 
-    let s = LazyState::new();
+    let s = Arc::new(LazyState::new());
     let mut scheduled = init;
 
     for i in 1..100 {
@@ -103,7 +104,7 @@ fn saturate_clone() {
     let rng_seed = rand::thread_rng().gen();
     let mut next_input = None;
 
-    let s = LazyState::new();
+    let s = Arc::new(LazyState::new());
     let mut init = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
 
     let waker = DummyWaker::dummy();
@@ -111,7 +112,7 @@ fn saturate_clone() {
 
     assert_matches!(Pin::new(&mut init).poll(&mut cx), Poll::Ready(Ok(None)));
 
-    let s = LazyState::new();
+    let s = Arc::new(LazyState::new());
     let mut scheduled = init;
 
     for i in 1..100 {
@@ -128,7 +129,7 @@ fn saturate_clone() {
         }
 
         scheduled = scheduled_next;
-        // s = LazyState::new();
+        // s = Arc::new(LazyState::new());
     }
 }
 
@@ -140,19 +141,19 @@ fn desaturate() {
     let rng_seed = rand::thread_rng().gen();
     let mut next_input = None;
 
-    let s = LazyState::new();
+    let s = Arc::new(LazyState::new());
     let mut init = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
 
     let _ = Pin::new(&mut init).poll(&mut cx);
 
-    let s = LazyState::new();
+    let s = Arc::new(LazyState::new());
     let mut scheduled1 = init.next_unsaturated(&mut next_input, &s).unwrap().unwrap();
     scheduled1.saturate_clone(&mut init).unwrap();
     assert_matches!(Pin::new(&mut scheduled1).poll(&mut cx), Poll::Ready(Ok(_)));
 
-    let s = LazyState::new();
+    let s = Arc::new(LazyState::new());
     let mut scheduled2 = scheduled1
         .next_unsaturated(&mut next_input, &s)
         .unwrap()
@@ -179,7 +180,7 @@ fn next_unsaturated_same_time() {
     let rng_seed = rand::thread_rng().gen();
     let mut next_input = Some((1, vec![()].into_boxed_slice()));
 
-    let s = LazyState::new();
+    let s = Arc::new(LazyState::new());
     let mut step = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
 
     let waker = DummyWaker::dummy();
@@ -187,7 +188,7 @@ fn next_unsaturated_same_time() {
 
     assert_matches!(Pin::new(&mut step).poll(&mut cx), Poll::Ready(Ok(None)));
 
-    let s = LazyState::new();
+    let s = Arc::new(LazyState::new());
 
     // let next = step.next_unsaturated(&mut next_input, &s).unwrap();
 

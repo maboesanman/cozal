@@ -17,7 +17,7 @@ use crate::util::take_mut::{self, take_and_return_or_recover};
 pub struct SubStep<T: Transposer, S: StorageFamily> {
     time:        SubStepTime<T::Time>,
     inner:       SubStepInner<T, S>,
-    input_state: *const LazyState<T::InputState>,
+    input_state: S::LazyState<LazyState<T::InputState>>,
 
     // these are used purely for enforcing that saturate calls use the previous step.
     #[cfg(debug_assertions)]
@@ -52,11 +52,10 @@ pub enum PollErr {
 }
 
 impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
-    // SAFETY: input_state must outlive returned value and all values created from `next_unsaturated_same_time`
-    pub unsafe fn new_init(
+    pub fn new_init(
         transposer: T,
         rng_seed: [u8; 32],
-        input_state: *const LazyState<T::InputState>,
+        input_state: &S::LazyState<LazyState<T::InputState>>,
     ) -> Self {
         let time = SubStepTime::new_init();
         let wrapped_transposer = WrappedTransposer::new(transposer, rng_seed);
@@ -64,14 +63,14 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
             <S::Transposer<WrappedTransposer<T, S>> as TransposerPointer<_>>::new(
                 wrapped_transposer,
             );
-        let update = unsafe { Update::new(wrapped_transposer, (), time.clone(), input_state) };
+        let update = Update::new(wrapped_transposer, (), time.clone(), input_state.clone());
         let inner = SubStepInner::SaturatingInit {
             update,
         };
         SubStep {
             time,
             inner,
-            input_state,
+            input_state: input_state.clone(),
 
             #[cfg(debug_assertions)]
             uuid_self: uuid::Uuid::new_v4(),
@@ -83,7 +82,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
     pub fn next_unsaturated(
         &self,
         next_inputs: &mut NextInputs<T>,
-        input_state: *const LazyState<T::InputState>,
+        input_state: &S::LazyState<LazyState<T::InputState>>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         #[cfg(debug_assertions)]
         if let Some((t, _)) = next_inputs {
@@ -147,7 +146,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
         let item = SubStep {
             time,
             inner,
-            input_state,
+            input_state: input_state.clone(),
 
             #[cfg(debug_assertions)]
             uuid_self: uuid::Uuid::new_v4(),
@@ -197,7 +196,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
         let item = SubStep {
             time,
             inner,
-            input_state: self.input_state,
+            input_state: self.input_state.clone(),
 
             #[cfg(debug_assertions)]
             uuid_self: uuid::Uuid::new_v4(),
@@ -297,14 +296,12 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
                 SubStepInner::OriginalUnsaturatedInput {
                     inputs,
                 } => {
-                    let update = unsafe {
-                        Update::new(
-                            wrapped_transposer,
-                            inputs,
-                            self.time.clone(),
-                            self.input_state,
-                        )
-                    };
+                    let update = Update::new(
+                        wrapped_transposer,
+                        inputs,
+                        self.time.clone(),
+                        self.input_state.clone(),
+                    );
                     SubStepInner::OriginalSaturatingInput {
                         update,
                     }
@@ -312,30 +309,34 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
                 SubStepInner::RepeatUnsaturatedInput {
                     inputs,
                 } => {
-                    let update = unsafe {
-                        Update::new(
-                            wrapped_transposer,
-                            inputs,
-                            self.time.clone(),
-                            self.input_state,
-                        )
-                    };
+                    let update = Update::new(
+                        wrapped_transposer,
+                        inputs,
+                        self.time.clone(),
+                        self.input_state.clone(),
+                    );
                     SubStepInner::RepeatSaturatingInput {
                         update,
                     }
                 },
                 SubStepInner::OriginalUnsaturatedScheduled => {
-                    let update = unsafe {
-                        Update::new(wrapped_transposer, (), self.time.clone(), self.input_state)
-                    };
+                    let update = Update::new(
+                        wrapped_transposer,
+                        (),
+                        self.time.clone(),
+                        self.input_state.clone(),
+                    );
                     SubStepInner::OriginalSaturatingScheduled {
                         update,
                     }
                 },
                 SubStepInner::RepeatUnsaturatedScheduled => {
-                    let update = unsafe {
-                        Update::new(wrapped_transposer, (), self.time.clone(), self.input_state)
-                    };
+                    let update = Update::new(
+                        wrapped_transposer,
+                        (),
+                        self.time.clone(),
+                        self.input_state.clone(),
+                    );
                     SubStepInner::RepeatSaturatingScheduled {
                         update,
                     }
@@ -402,7 +403,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
 
     // this has the additional gurantee that the pointer returned lives until this is desaturated or dropped.
     // if you move self the returned pointer is still valid.
-    pub fn finished_wrapped_transposer(&self) -> Option<&WrappedTransposer<T, S>> {
+    pub fn finished_wrapped_transposer(&self) -> Option<&S::Transposer<WrappedTransposer<T, S>>> {
         match &self.inner {
             SubStepInner::SaturatedInit {
                 wrapped_transposer,
