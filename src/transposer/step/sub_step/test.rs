@@ -69,7 +69,7 @@ fn saturate_take() {
     let mut next_input = None;
 
     let s = Arc::new(LazyState::new());
-    let mut init = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
+    let mut init = SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s);
 
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
@@ -105,7 +105,7 @@ fn saturate_clone() {
     let mut next_input = None;
 
     let s = Arc::new(LazyState::new());
-    let mut init = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
+    let mut init = SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s);
 
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
@@ -142,7 +142,7 @@ fn desaturate() {
     let mut next_input = None;
 
     let s = Arc::new(LazyState::new());
-    let mut init = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
+    let mut init = SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s);
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
 
@@ -181,7 +181,7 @@ fn next_unsaturated_same_time() {
     let mut next_input = Some((1, vec![()].into_boxed_slice()));
 
     let s = Arc::new(LazyState::new());
-    let mut step = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
+    let mut step = SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s);
 
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
