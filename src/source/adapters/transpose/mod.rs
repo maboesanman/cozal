@@ -1,4 +1,5 @@
 mod output_buffer;
+mod storage;
 mod transpose_inner;
 mod transpose_metadata;
 

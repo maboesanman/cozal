@@ -3,7 +3,7 @@ use rand::Rng;
 
 use super::{ScheduledTime, TransposerMetaData, WrappedTransposer};
 use crate::transposer::context::InterpolateContext;
-use crate::transposer::schedule_storage::ImArcStorage;
+use crate::transposer::schedule_storage::DefaultStorage;
 use crate::transposer::Transposer;
 
 #[derive(Clone)]
@@ -36,7 +36,7 @@ impl Transposer for TestTransposer {
 #[test]
 fn metadata() {
     let seed = rand::thread_rng().gen();
-    let mut metadata = TransposerMetaData::<TestTransposer, ImArcStorage>::new(seed);
+    let mut metadata = TransposerMetaData::<TestTransposer, DefaultStorage>::new(seed);
 
     assert_eq!(metadata.schedule.len(), 0);
     assert_eq!(metadata.expire_handles_forward.len(), 0);
@@ -110,7 +110,7 @@ fn metadata() {
 #[test]
 fn metadata_pop() {
     let seed = rand::thread_rng().gen();
-    let mut metadata = TransposerMetaData::<TestTransposer, ImArcStorage>::new(seed);
+    let mut metadata = TransposerMetaData::<TestTransposer, DefaultStorage>::new(seed);
 
     assert_eq!(metadata.schedule.len(), 0);
     assert_eq!(metadata.expire_handles_forward.len(), 0);
@@ -163,7 +163,7 @@ fn metadata_pop() {
 #[test]
 fn metadata_failed_expire() {
     let seed = rand::thread_rng().gen();
-    let mut metadata = TransposerMetaData::<TestTransposer, ImArcStorage>::new(seed);
+    let mut metadata = TransposerMetaData::<TestTransposer, DefaultStorage>::new(seed);
 
     let handle = metadata.schedule_event_expireable(
         ScheduledTime {
@@ -183,7 +183,7 @@ fn metadata_failed_expire() {
 fn wrapped_transposer() {
     let transposer = TestTransposer {};
     let seed = rand::thread_rng().gen();
-    let mut wrapped_transposer = WrappedTransposer::<_, ImArcStorage>::new(transposer, seed);
+    let mut wrapped_transposer = WrappedTransposer::<_, DefaultStorage>::new(transposer, seed);
 
     assert!(wrapped_transposer.get_next_scheduled_time().is_none());
     assert!(wrapped_transposer.pop_schedule_event().is_none());
@@ -212,7 +212,7 @@ fn wrapped_transposer() {
 fn wrapped_transposer_clone() {
     let transposer = TestTransposer {};
     let seed = rand::thread_rng().gen();
-    let mut wrapped_transposer = WrappedTransposer::<_, ImArcStorage>::new(transposer, seed);
+    let mut wrapped_transposer = WrappedTransposer::<_, DefaultStorage>::new(transposer, seed);
 
     assert!(wrapped_transposer.get_next_scheduled_time().is_none());
     assert!(wrapped_transposer.pop_schedule_event().is_none());
@@ -254,7 +254,7 @@ fn wrapped_transposer_clone() {
 #[should_panic]
 fn metadata_expire_illegal() {
     let seed = rand::thread_rng().gen();
-    let mut metadata = TransposerMetaData::<TestTransposer, ImArcStorage>::new(seed);
+    let mut metadata = TransposerMetaData::<TestTransposer, DefaultStorage>::new(seed);
 
     let handle = metadata.schedule_event_expireable(
         ScheduledTime {

@@ -3,11 +3,11 @@ use std::pin::Pin;
 use std::task::Poll;
 
 use super::output_buffer::OutputBuffer;
+use super::storage::{DummySendStorage, TransposeStorage};
 use super::transpose_metadata::TransposeMetadata;
 use crate::source::source_poll::SourcePollOk;
 use crate::source::SourcePoll;
 use crate::transposer::input_buffer::InputBuffer;
-use crate::transposer::schedule_storage::{ImArcStorage, ImRcStorage};
 use crate::transposer::step::{PointerInterpolation, Step};
 use crate::transposer::Transposer;
 
@@ -23,10 +23,11 @@ pub struct TransposeInner<T: Transposer> {
 
 // a collection of Rc which are guranteed not to be cloned outside the collection is Send
 // whenever the same collection, but with Arc would be Send, so we do an unsafe impl for exactly that situation.
-unsafe impl<T: Transposer> Send for Steps<T> where Step<T, ImArcStorage, TransposeMetadata>: Send {}
+unsafe impl<T: Transposer> Send for Steps<T> where Step<T, DummySendStorage, TransposeMetadata>: Send
+{}
 struct Steps<T: Transposer>(VecDeque<StepWrapper<T>>);
 struct StepWrapper<T: Transposer> {
-    step:           Step<T, ImRcStorage, TransposeMetadata>,
+    step:           Step<T, TransposeStorage, TransposeMetadata>,
     events_emitted: bool,
 }
 
@@ -64,7 +65,7 @@ impl<T: Transposer> TransposeInner<T> {
     pub fn get_working_step(
         &mut self,
         time: T::Time,
-    ) -> &mut Step<T, ImRcStorage, TransposeMetadata> {
+    ) -> &mut Step<T, TransposeStorage, TransposeMetadata> {
         // step[i] is first step for which step.raw_time() > time.
         // step[i - 1] is the last step for which step.raw_time() <= time.
         let i = self.steps.0.partition_point(|s| s.step.raw_time() <= time);

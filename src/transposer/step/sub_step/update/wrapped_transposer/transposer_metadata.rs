@@ -25,20 +25,22 @@ pub struct TransposerMetaData<T: Transposer, S: StorageFamily> {
 
 impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
     pub fn new(rng_seed: [u8; 32]) -> Self {
-
         // this works around a GAT compiler issue
         // maybe fix someday...
-        let schedule = <S::OrdMap<ScheduledTime<T::Time>, T::Scheduled> as OrdMapStorage<_, _>>::new();
-        let expire_handles_forward = <S::HashMap<ExpireHandle, ScheduledTime<T::Time>> as HashMapStorage<_, _>>::new();
-        let expire_handles_backward = <S::OrdMap<ScheduledTime<T::Time>, ExpireHandle> as OrdMapStorage<_, _>>::new();
+        let schedule =
+            <S::OrdMap<ScheduledTime<T::Time>, T::Scheduled> as OrdMapStorage<_, _>>::new();
+        let expire_handles_forward =
+            <S::HashMap<ExpireHandle, ScheduledTime<T::Time>> as HashMapStorage<_, _>>::new();
+        let expire_handles_backward =
+            <S::OrdMap<ScheduledTime<T::Time>, ExpireHandle> as OrdMapStorage<_, _>>::new();
 
         Self {
-            last_updated:            T::Time::default(),
+            last_updated: T::Time::default(),
             schedule,
             expire_handles_forward,
             expire_handles_backward,
-            expire_handle_factory:   ExpireHandleFactory::new(),
-            rng:                     BlockRng::new(ChaCha12Core::from_seed(rng_seed)),
+            expire_handle_factory: ExpireHandleFactory::new(),
+            rng: BlockRng::new(ChaCha12Core::from_seed(rng_seed)),
         }
     }
 

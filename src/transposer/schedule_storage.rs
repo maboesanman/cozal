@@ -1,33 +1,24 @@
 use core::borrow::Borrow;
 use core::hash::Hash;
+use std::ops::Deref;
+use std::rc::Rc;
+use std::sync::Arc;
 
 pub trait StorageFamily: Copy {
     type OrdMap<K: Ord + Eq + Clone, V: Clone>: OrdMapStorage<K, V>;
     type HashMap<K: Hash + Eq + Clone, V: Clone>: HashMapStorage<K, V>;
+
+    // someday we want to drop this clone bound and specialize the Arc impl when W is clone.
+    type Transposer<W: Clone>: TransposerPointer<W>;
 }
 
 #[derive(Clone, Copy)]
-pub struct ImArcStorage;
+pub struct DefaultStorage;
 
-impl StorageFamily for ImArcStorage {
+impl StorageFamily for DefaultStorage {
     type OrdMap<K: Ord + Eq + Clone, V: Clone> = im::OrdMap<K, V>;
     type HashMap<K: Hash + Eq + Clone, V: Clone> = im::HashMap<K, V>;
-}
-
-#[derive(Clone, Copy)]
-pub struct ImRcStorage;
-
-impl StorageFamily for ImRcStorage {
-    type OrdMap<K: Ord + Eq + Clone, V: Clone> = im_rc::OrdMap<K, V>;
-    type HashMap<K: Hash + Eq + Clone, V: Clone> = im_rc::HashMap<K, V>;
-}
-
-#[derive(Clone, Copy)]
-pub struct StdStorage;
-
-impl StorageFamily for StdStorage {
-    type OrdMap<K: Ord + Eq + Clone, V: Clone> = std::collections::BTreeMap<K, V>;
-    type HashMap<K: Hash + Eq + Clone, V: Clone> = std::collections::HashMap<K, V>;
+    type Transposer<W: Clone> = Box<W>;
 }
 
 pub trait OrdMapStorage<K: Ord + Eq + Clone, V: Clone>: Clone {
@@ -61,6 +52,20 @@ pub trait HashMapStorage<K: Hash + Eq + Clone, V: Clone>: Clone {
     where
         BK: Hash + Eq + ?Sized,
         K: Borrow<BK>;
+}
+
+pub trait TransposerPointer<T>: Deref<Target = T> + Unpin {
+    type Borrowed<'a>: Deref<Target = T>
+    where
+        Self: 'a,
+        T: 'a;
+
+    fn new(inner: T) -> Self;
+
+    fn borrow(&self) -> Self::Borrowed<'_>;
+    fn mutate(&mut self) -> &mut T;
+
+    fn try_take(self) -> Option<T>;
 }
 
 impl<K: Ord + Eq + Clone, V: Clone> OrdMapStorage<K, V> for im::OrdMap<K, V> {
@@ -246,5 +251,75 @@ impl<K: Hash + Eq + Clone, V: Clone> HashMapStorage<K, V> for std::collections::
         K: Borrow<BK>,
     {
         self.remove(k)
+    }
+}
+
+impl<T> TransposerPointer<T> for Box<T> {
+    type Borrowed<'a>
+    where
+        Self: 'a,
+        T: 'a,
+    = &'a T;
+
+    fn new(inner: T) -> Self {
+        Box::new(inner)
+    }
+
+    fn borrow(&self) -> Self::Borrowed<'_> {
+        self
+    }
+
+    fn mutate(&mut self) -> &mut T {
+        self
+    }
+
+    fn try_take(self) -> Option<T> {
+        Some(*self)
+    }
+}
+
+impl<T: Clone> TransposerPointer<T> for Arc<T> {
+    type Borrowed<'a>
+    where
+        T: 'a,
+    = Arc<T>;
+
+    fn new(inner: T) -> Self {
+        Arc::new(inner)
+    }
+
+    fn borrow(&self) -> Self::Borrowed<'_> {
+        self.clone()
+    }
+
+    fn mutate(&mut self) -> &mut T {
+        Arc::make_mut(self)
+    }
+
+    fn try_take(self) -> Option<T> {
+        Arc::try_unwrap(self).ok()
+    }
+}
+
+impl<T: Clone> TransposerPointer<T> for Rc<T> {
+    type Borrowed<'a>
+    where
+        T: 'a,
+    = Rc<T>;
+
+    fn new(inner: T) -> Self {
+        Rc::new(inner)
+    }
+
+    fn borrow(&self) -> Self::Borrowed<'_> {
+        self.clone()
+    }
+
+    fn mutate(&mut self) -> &mut T {
+        Rc::make_mut(self)
+    }
+
+    fn try_take(self) -> Option<T> {
+        Rc::try_unwrap(self).ok()
     }
 }

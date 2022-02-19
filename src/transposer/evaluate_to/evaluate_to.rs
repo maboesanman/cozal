@@ -1,13 +1,24 @@
+use std::hash::Hash;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::task::{Context, Poll};
 
 use futures_core::Future;
 
 use crate::transposer::input_buffer::InputBuffer;
-use crate::transposer::schedule_storage::StdStorage;
+use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::step::{PointerInterpolation, Step, StepPollResult};
 use crate::transposer::Transposer;
 use crate::util::take_mut;
+
+#[derive(Clone, Copy)]
+struct Storage;
+
+impl StorageFamily for Storage {
+    type OrdMap<K: Ord + Eq + Clone, V: Clone> = std::collections::BTreeMap<K, V>;
+    type HashMap<K: Hash + Eq + Clone, V: Clone> = std::collections::HashMap<K, V>;
+    type Transposer<T: Clone> = Box<T>;
+}
 
 pub fn evaluate_to<T: Transposer, S, Fs>(
     transposer: T,
@@ -52,7 +63,7 @@ where
     Fs: Future<Output = T::InputState>,
 {
     Step {
-        frame:     Box<Step<T, StdStorage>>,
+        frame:     Box<Step<T, Storage>>,
         events:    InputBuffer<T>,
         state:     S,
         state_fut: Option<Fs>,
@@ -60,7 +71,7 @@ where
         outputs:   EmittedEvents<T>,
     },
     Interpolate {
-        frame:       Box<Step<T, StdStorage>>,
+        frame:       Box<Step<T, Storage>>,
         interpolate: Pin<Box<PointerInterpolation<T>>>,
         state:       S,
         state_fut:   Option<Fs>,

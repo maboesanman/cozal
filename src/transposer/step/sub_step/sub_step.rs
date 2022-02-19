@@ -8,7 +8,7 @@ use super::args::{InitArg, InputArg, ScheduledArg};
 use super::sub_step_update_context::SubStepUpdateContext;
 use super::time::SubStepTime;
 use super::update::{Arg, Update, UpdateResult, WrappedTransposer};
-use crate::transposer::schedule_storage::StorageFamily;
+use crate::transposer::schedule_storage::{StorageFamily, TransposerPointer};
 use crate::transposer::step::lazy_state::LazyState;
 use crate::transposer::step::NextInputs;
 use crate::transposer::Transposer;
@@ -60,7 +60,10 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
     ) -> Self {
         let time = SubStepTime::new_init();
         let wrapped_transposer = WrappedTransposer::new(transposer, rng_seed);
-        let wrapped_transposer = Box::new(wrapped_transposer);
+        let wrapped_transposer =
+            <S::Transposer<WrappedTransposer<T, S>> as TransposerPointer<_>>::new(
+                wrapped_transposer,
+            );
         let update = unsafe { Update::new(wrapped_transposer, (), time.clone(), input_state) };
         let inner = SubStepInner::SaturatingInit {
             update,
@@ -97,15 +100,15 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
             SubStepInner::SaturatedInit {
                 wrapped_transposer,
                 ..
-            } => wrapped_transposer.as_ref(),
+            } => wrapped_transposer,
             SubStepInner::SaturatedInput {
                 wrapped_transposer,
                 ..
-            } => wrapped_transposer.as_ref(),
+            } => wrapped_transposer,
             SubStepInner::SaturatedScheduled {
                 wrapped_transposer,
                 ..
-            } => wrapped_transposer.as_ref(),
+            } => wrapped_transposer,
             _ => return Err(NextUnsaturatedErr::NotSaturated),
         };
         let next_scheduled_time = wrapped_transposer.get_next_scheduled_time();
@@ -165,15 +168,15 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
             SubStepInner::SaturatedInit {
                 wrapped_transposer,
                 ..
-            } => wrapped_transposer.as_ref(),
+            } => wrapped_transposer,
             SubStepInner::SaturatedInput {
                 wrapped_transposer,
                 ..
-            } => wrapped_transposer.as_ref(),
+            } => wrapped_transposer,
             SubStepInner::SaturatedScheduled {
                 wrapped_transposer,
                 ..
-            } => wrapped_transposer.as_ref(),
+            } => wrapped_transposer,
             _ => return Err(NextUnsaturatedErr::NotSaturated),
         };
 
@@ -251,7 +254,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
     // previous is expected to be the value produced this via next_unsaturated.
     pub fn saturate_clone(&mut self, previous: &Self) -> Result<(), SaturateErr>
     where
-        T: Clone,
+        S::Transposer<WrappedTransposer<T, S>>: Clone,
     {
         #[cfg(debug_assertions)]
         if self.uuid_prev != Some(previous.uuid_self) {
@@ -262,7 +265,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
             return Err(SaturateErr::SelfNotUnsaturated)
         }
 
-        let wrapped_transposer = match &previous.inner {
+        let wrapped_transposer: S::Transposer<WrappedTransposer<T, S>> = match &previous.inner {
             SubStepInner::SaturatedInit {
                 wrapped_transposer,
                 ..
@@ -285,7 +288,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
     // panics if self is unsaturated.
     fn saturate_from_wrapped_transposer(
         &mut self,
-        wrapped_transposer: Box<WrappedTransposer<T, S>>,
+        wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     ) {
         take_mut::take_or_recover(
             &mut self.inner,
@@ -371,7 +374,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
                     wrapped_transposer,
                 } => (
                     SubStepInner::UnsaturatedInit,
-                    Ok(Some(wrapped_transposer.transposer)),
+                    Ok(wrapped_transposer.try_take().map(|w_t| w_t.transposer)),
                 ),
                 SubStepInner::SaturatedInput {
                     inputs,
@@ -380,13 +383,13 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
                     SubStepInner::RepeatUnsaturatedInput {
                         inputs,
                     },
-                    Ok(Some(wrapped_transposer.transposer)),
+                    Ok(wrapped_transposer.try_take().map(|w_t| w_t.transposer)),
                 ),
                 SubStepInner::SaturatedScheduled {
                     wrapped_transposer,
                 } => (
                     SubStepInner::RepeatUnsaturatedScheduled,
-                    Ok(Some(wrapped_transposer.transposer)),
+                    Ok(wrapped_transposer.try_take().map(|w_t| w_t.transposer)),
                 ),
                 other => (other, Err(DesaturateErr::AlreadyUnsaturated)),
             }
@@ -614,14 +617,14 @@ enum SubStepInner<T: Transposer, S: StorageFamily> {
         update: RepeatScheduledUpdate<T, S>,
     },
     SaturatedInit {
-        wrapped_transposer: Box<WrappedTransposer<T, S>>,
+        wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     },
     SaturatedInput {
         inputs:             <InputArg<T, S> as Arg<T, S>>::Stored,
-        wrapped_transposer: Box<WrappedTransposer<T, S>>,
+        wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     },
     SaturatedScheduled {
-        wrapped_transposer: Box<WrappedTransposer<T, S>>,
+        wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     },
     Unreachable,
 }

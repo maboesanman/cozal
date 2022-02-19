@@ -7,7 +7,7 @@ use matches::assert_matches;
 use rand::Rng;
 
 use crate::transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
-use crate::transposer::schedule_storage::ImArcStorage;
+use crate::transposer::schedule_storage::DefaultStorage;
 use crate::transposer::step::lazy_state::LazyState;
 use crate::transposer::step::sub_step::SubStep;
 use crate::transposer::Transposer;
@@ -68,7 +68,7 @@ fn saturate_take() {
     let mut next_input = None;
 
     let s = LazyState::new();
-    let mut init = unsafe { SubStep::<_, ImArcStorage>::new_init(transposer, rng_seed, &s) };
+    let mut init = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
 
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
@@ -104,7 +104,7 @@ fn saturate_clone() {
     let mut next_input = None;
 
     let s = LazyState::new();
-    let mut init = unsafe { SubStep::<_, ImArcStorage>::new_init(transposer, rng_seed, &s) };
+    let mut init = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
 
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
@@ -141,7 +141,7 @@ fn desaturate() {
     let mut next_input = None;
 
     let s = LazyState::new();
-    let mut init = unsafe { SubStep::<_, ImArcStorage>::new_init(transposer, rng_seed, &s) };
+    let mut init = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
 
@@ -180,7 +180,7 @@ fn next_unsaturated_same_time() {
     let mut next_input = Some((1, vec![()].into_boxed_slice()));
 
     let s = LazyState::new();
-    let mut step = unsafe { SubStep::<_, ImArcStorage>::new_init(transposer, rng_seed, &s) };
+    let mut step = unsafe { SubStep::<_, DefaultStorage>::new_init(transposer, rng_seed, &s) };
 
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);

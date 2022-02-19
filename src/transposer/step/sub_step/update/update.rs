@@ -3,7 +3,7 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 
 use super::{Arg, SubStepTime, UpdateContext, WrappedTransposer};
-use crate::transposer::schedule_storage::StorageFamily;
+use crate::transposer::schedule_storage::{StorageFamily, TransposerPointer};
 use crate::transposer::step::lazy_state::LazyState;
 use crate::transposer::Transposer;
 
@@ -18,27 +18,28 @@ pub struct Update<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Ar
 
     // may be partially modified.
     // treated as borrowed, split between future and context.
-    wrapped_transposer: Box<WrappedTransposer<T, S>>,
+    wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
 }
 
 impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Update<T, S, C, A> {
     // SAFETY: input_state must outlive returned value
     pub unsafe fn new(
-        mut wrapped_transposer: Box<WrappedTransposer<T, S>>,
+        mut wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
         mut arg: A::Stored,
         time: SubStepTime<T::Time>,
         input_state: *const LazyState<T::InputState>,
     ) -> Self {
         // update 'current time'
         let raw_time = time.raw_time();
-        wrapped_transposer.metadata.last_updated = raw_time;
+        let wrapped_transposer_mut = wrapped_transposer.mutate();
+        wrapped_transposer_mut.metadata.last_updated = raw_time;
 
         // // upgrade arg from borrowed to passed (pulling the event from the schedule if scheduled).
-        let arg_passed = A::get_passed(&mut wrapped_transposer, &mut arg);
+        let arg_passed = A::get_passed(wrapped_transposer_mut, &mut arg);
 
         // split borrow. one goes to fut, one to context.
-        let transposer = &mut wrapped_transposer.transposer;
-        let metadata = &mut wrapped_transposer.metadata;
+        let transposer = &mut wrapped_transposer_mut.transposer;
+        let metadata = &mut wrapped_transposer_mut.metadata;
 
         // SAFETY: metadata outlives context by drop order, input_state outlives because new is unsafe and the caller must uphold.
         let context = unsafe { C::new(time, metadata, input_state) };
@@ -108,7 +109,7 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Futu
 }
 
 pub struct UpdateResult<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> {
-    pub wrapped_transposer: Box<WrappedTransposer<T, S>>,
+    pub wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     pub outputs:            C::Outputs,
     pub arg:                A::Stored,
 }

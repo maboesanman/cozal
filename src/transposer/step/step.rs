@@ -7,15 +7,15 @@ use super::interpolation::Interpolation;
 use super::lazy_state::LazyState;
 use super::pointer_interpolation::PointerInterpolation;
 use super::step_metadata::{EmptyStepMetadata, StepMetadata};
-use super::sub_step::{PollErr as StepPollErr, SubStep, SubStepTime};
-use crate::transposer::schedule_storage::{ImArcStorage, StorageFamily};
+use super::sub_step::{PollErr as StepPollErr, SubStep, SubStepTime, WrappedTransposer};
+use crate::transposer::schedule_storage::{DefaultStorage, StorageFamily};
 use crate::transposer::step::sub_step::SaturateErr;
 use crate::transposer::Transposer;
 use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
 
 pub struct Step<
     T: Transposer,
-    S: StorageFamily = ImArcStorage,
+    S: StorageFamily = DefaultStorage,
     M: StepMetadata<T, S> = EmptyStepMetadata,
 > {
     inner: StepInner<T, S, M>,
@@ -176,7 +176,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
 
     pub fn saturate_clone(&mut self, prev: &Self) -> Result<(), SaturateCloneErr>
     where
-        T: Clone,
+        S::Transposer<WrappedTransposer<T, S>>: Clone,
     {
         #[cfg(debug_assertions)]
         if self.uuid_prev != Some(prev.uuid_self) {
@@ -188,7 +188,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
             next: &mut SubStep<T, S>,
         ) -> Result<(), SaturateErr>
         where
-            T: Clone,
+            S::Transposer<WrappedTransposer<T, S>>: Clone,
         {
             if let StepInner::Saturated {
                 steps, ..

@@ -1,11 +1,10 @@
 use std::sync::Weak;
 use std::task::Wake;
 
-use crate::transposer::schedule_storage::{ImRcStorage, StorageFamily};
+use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::step::StepMetadata;
 use crate::transposer::Transposer;
 use crate::util::stack_waker::StackWaker;
-
 pub struct TransposeMetadata;
 
 #[derive(Default)]
