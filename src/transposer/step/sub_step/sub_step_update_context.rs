@@ -62,7 +62,7 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> UpdateConte
 {
     type Outputs = C;
 
-    // SAFETY: need to gurantee the pointers outlive this object.
+    // SAFETY: need to gurantee the metadata pointer outlives this object.
     unsafe fn new(
         time: SubStepTime<T::Time>,
         metadata: *mut TransposerMetaData<T, S>,
@@ -94,6 +94,9 @@ impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> InputSt
 {
     fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
         let ptr: *const _ = self.input_state.deref();
+
+        // SAFETY: 'a is scoped to the transposer's handler future, which must outlive this scope
+        // because that's where this function gets called from.
         Box::pin(unsafe { ptr.as_ref().unwrap_unchecked() })
     }
 }

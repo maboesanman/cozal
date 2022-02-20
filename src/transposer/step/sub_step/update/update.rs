@@ -44,6 +44,7 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
         let transposer = &mut wrapped_transposer_mut.transposer;
         let metadata = &mut wrapped_transposer_mut.metadata;
 
+        // SAFETY: metadata is stable, and contained in wrapped_transposer
         let context = unsafe { C::new(time, metadata, input_state) };
         let mut context = Box::new(context);
         let context_mut: *mut _ = context.as_mut();

@@ -29,7 +29,7 @@ pub fn evaluate_to<T: Transposer, S, Fs>(
     seed: [u8; 32],
 ) -> EvaluateTo<T, S, Fs>
 where
-    S: Fn(T::Time) -> Fs,
+    S: Unpin + Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
     let mut input_buffer = InputBuffer::<T>::new();
@@ -52,7 +52,7 @@ where
 
 pub struct EvaluateTo<T: Transposer, S, Fs>
 where
-    S: Fn(T::Time) -> Fs,
+    S: Unpin + Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
     inner: EvaluateToInner<T, S, Fs>,
@@ -60,22 +60,21 @@ where
 
 enum EvaluateToInner<T: Transposer, S, Fs>
 where
-    S: Fn(T::Time) -> Fs,
+    S: Unpin + Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
     Step {
         frame:     Box<Step<T, Storage>>,
         events:    InputBuffer<T>,
         state:     S,
-        state_fut: Option<Fs>,
+        state_fut: Option<Pin<Box<Fs>>>,
         until:     T::Time,
         outputs:   EmittedEvents<T>,
     },
     Interpolate {
-        frame:       Box<Step<T, Storage>>,
         interpolate: Pin<Box<Interpolation<T, Storage>>>,
         state:       S,
-        state_fut:   Option<Fs>,
+        state_fut:   Option<Pin<Box<Fs>>>,
         until:       T::Time,
         outputs:     EmittedEvents<T>,
     },
@@ -86,13 +85,14 @@ pub type EmittedEvents<T> = Vec<(<T as Transposer>::Time, Vec<<T as Transposer>:
 
 impl<T: Transposer, S, Fs> Future for EvaluateTo<T, S, Fs>
 where
-    S: Clone + Fn(T::Time) -> Fs,
+    S: Clone + Unpin + Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
+    T::Output: Unpin,
 {
     type Output = (EmittedEvents<T>, T::OutputState);
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = unsafe { self.get_unchecked_mut() };
+        let this = self.get_mut();
 
         loop {
             let poll_result = take_mut::take_and_return_or_recover(
@@ -109,7 +109,7 @@ where
                             mut outputs,
                         } => {
                             if let Some(fut) = &mut state_fut {
-                                let fut = unsafe { Pin::new_unchecked(fut) };
+                                let fut = Pin::new(fut);
                                 match fut.poll(cx) {
                                     Poll::Ready(s) => {
                                         let _ = frame.set_input_state(s, cx.waker());
@@ -137,7 +137,7 @@ where
                                 StepPollResult::NeedsState {
                                     ..
                                 } => {
-                                    state_fut = Some((state)(time));
+                                    state_fut = Some(Box::pin((state)(time)));
                                     return (
                                         EvaluateToInner::Step {
                                             frame,
@@ -204,7 +204,6 @@ where
 
                             (
                                 EvaluateToInner::Interpolate {
-                                    frame,
                                     interpolate,
                                     state,
                                     state_fut: None,
@@ -215,7 +214,6 @@ where
                             )
                         },
                         EvaluateToInner::Interpolate {
-                            frame,
                             mut interpolate,
                             state,
                             mut state_fut,
@@ -223,7 +221,7 @@ where
                             outputs,
                         } => {
                             if let Some(fut) = &mut state_fut {
-                                let fut = unsafe { Pin::new_unchecked(fut) };
+                                let fut = Pin::new(fut);
                                 match fut.poll(cx) {
                                     Poll::Ready(s) => {
                                         if interpolate.set_state(s, cx.waker()).is_err() {
@@ -234,7 +232,6 @@ where
                                     Poll::Pending => {
                                         return (
                                             EvaluateToInner::Interpolate {
-                                                frame,
                                                 interpolate,
                                                 state,
                                                 state_fut,
@@ -252,14 +249,13 @@ where
                             match poll {
                                 Poll::Pending => {
                                     let result = if interpolate.needs_state() {
-                                        state_fut = Some((state)(until));
+                                        state_fut = Some(Box::pin((state)(until)));
                                         Poll::Ready(None)
                                     } else {
                                         Poll::Pending
                                     };
                                     (
                                         EvaluateToInner::Interpolate {
-                                            frame,
                                             interpolate,
                                             state,
                                             state_fut,

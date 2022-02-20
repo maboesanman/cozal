@@ -69,8 +69,8 @@ impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
         match self.expire_handles_forward.get(&handle) {
             Some(time) => {
                 let t = time.time;
-
                 let payload = self.schedule.remove(time);
+
                 // SAFETY: maps are kept in sync
                 let payload = unsafe { debug_unwrap(payload) };
                 self.expire_handles_backward.remove(time);
