@@ -99,7 +99,7 @@ impl<T: Transposer, S: StorageFamily> Arg<T, S> for ScheduledArg<T, S> {
         if let Some((_, payload)) = frame.pop_schedule_event() {
             payload
         } else {
-            unsafe { debug_unreachable() }
+            unreachable!()
         }
     }
 }

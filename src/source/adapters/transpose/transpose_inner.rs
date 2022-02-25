@@ -1,15 +1,20 @@
 use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
-use std::task::Poll;
+use std::task::{Context, Poll, Waker};
+
+use futures_core::Future;
 
 use super::output_buffer::OutputBuffer;
 use super::storage::{DummySendStorage, TransposeStorage};
-use super::transpose_metadata::TransposeMetadata;
-use crate::source::source_poll::SourcePollOk;
+use super::transpose_metadata::{SaturatingMetadata, TransposeMetadata};
+use crate::source::source_poll::{SourcePollErr, SourcePollOk};
+use crate::source::traits::SourceContext;
 use crate::source::SourcePoll;
 use crate::transposer::input_buffer::InputBuffer;
-use crate::transposer::step::{Interpolation, Step};
+use crate::transposer::step::{Interpolation, Metadata, Step, StepPoll, StepPollResult};
 use crate::transposer::Transposer;
+use crate::util::stack_waker::StackWaker;
+use crate::util::vecdeque_helpers;
 
 pub struct TransposeInner<T: Transposer> {
     steps:             Steps<T>,
@@ -41,7 +46,31 @@ impl<T: Transposer> StepWrapper<T> {
 }
 
 struct ChannelData<T: Transposer> {
-    last_time: T::Time,
+    last_time:     T::Time,
+    interpolation: Interpolation<T, TransposeStorage>,
+}
+
+/// the result of poll
+///
+/// After returning NeedsState the source should be polled, and the callback called if a state is available
+pub enum InnerPoll<'a, T: Transposer, S, E> {
+    Output {
+        time:   T::Time,
+        output: T::Output,
+    },
+    Pending,
+    NeedsState {
+        time:              T::Time,
+        channel:           usize,
+        one_channel_waker: Waker,
+        forget:            bool,
+        callback: Box<
+            dyn FnOnce(T::InputState) -> Result<InnerPoll<'a, T, S, E>, SourcePollErr<T::Time, E>>
+                + 'a,
+        >,
+    },
+    Ready(S),
+    Scheduled(S, T::Time),
 }
 
 impl<T: Transposer> TransposeInner<T> {
@@ -86,6 +115,7 @@ impl<T: Transposer> TransposeInner<T> {
         steps.0.get_mut(i).map(|s| &mut s.step).unwrap()
     }
 
+    /// this is the first possible time to emit an event, barring any new inputs
     fn get_first_original_step_time(&self) -> Option<T::Time> {
         let step = &self.steps.0.back()?.step;
 
@@ -147,49 +177,172 @@ impl<T: Transposer> TransposeInner<T> {
         todo!()
     }
 
-    pub fn buffer_output_events(&mut self, time: T::Time, outputs: Vec<T::Output>) {
-        for val in outputs.into_iter() {
-            self.output_buffer.handle_event(time, val);
-        }
-    }
-
     pub fn poll_output_buffer(&mut self, time: T::Time) -> SourcePollOk<T::Time, T::Output, ()> {
         self.output_buffer.poll(time)
     }
 
-    /// Correct our step list to respect the "working-poll-next" invariant
-    ///
-    /// what is the "working-poll-next" invariant?????
-    /// our steps always need to be in one of the following formats:
-    ///
-    /// - Saturating Step
-    /// - Unsaturated Step (any number, including 0)
-    /// - Poll Time
-    /// - Step (any number, including 0)
-    ///
-    /// or
-    ///
-    /// - Saturated Step (with empty schedule)
-    /// - Poll Time
-    /// - Step (any number, including 0)
-    ///
-    /// or
-    ///
-    /// - Saturated Step (with non-empty schedule, next scheduled after poll time)
-    /// - Poll Time
-    /// - Step (any positive number)
-    ///
-    /// Ensuring this invariant includes deciding which steps to clone and which to take when saturating.
-    pub fn ensure_working_poll_next_invariant(&mut self, time: T::Time) {
-        todo!()
+    pub fn poll<E>(
+        &mut self,
+        poll_time: T::Time,
+        forget: bool,
+        cx: SourceContext,
+    ) -> Result<InnerPoll<'_, T, T::OutputState, E>, SourcePollErr<T::Time, E>> {
+        // use an existing channel if it exists
+        if let Some(channel_data) = self.pending_channels.get_mut(&cx.channel) {
+            if channel_data.last_time != poll_time {
+                // the existing channel must be discarded because the time doesn't match
+                self.pending_channels.remove(&cx.channel);
+            } else {
+                let waker = cx.one_channel_waker.clone();
+                let mut context = Context::from_waker(&waker);
+                match Pin::new(&mut channel_data.interpolation).poll(&mut context) {
+                    Poll::Ready(output_state) => {
+                        drop(channel_data);
+                        self.pending_channels.remove(&cx.channel);
+
+                        return Ok(match self.get_scheduled_time() {
+                            Some(t) => InnerPoll::Scheduled(output_state, t),
+                            None => InnerPoll::Ready(output_state),
+                        })
+                    },
+                    Poll::Pending => {
+                        if channel_data.interpolation.needs_state() {
+                            let waker = cx.one_channel_waker.clone();
+
+                            // THIS IS NOT REQUIRED WITH POLONIUS
+                            // SAFETY: because we are returning immediately, we know that the mutable reference to self is not aliased.
+                            let channel_data: *mut _ = channel_data;
+                            let channel_data: &'_ mut _ = unsafe { &mut *channel_data };
+
+                            // THIS MUT BORROWS SELF (via channel_data)
+                            return Ok(InnerPoll::NeedsState {
+                                time: poll_time,
+                                channel: cx.channel * 2 + 1,
+                                forget,
+                                one_channel_waker: cx.one_channel_waker.clone(),
+                                callback: Box::new(move |input_state: T::InputState| {
+                                    let _ =
+                                        channel_data.interpolation.set_state(input_state, &waker);
+
+                                    self.poll(poll_time, forget, cx)
+                                }),
+                            })
+                        }
+                    },
+                }
+            }
+        }
+
+        // step[i] is first step for which step.raw_time() > time.
+        // step[i - 1] is the last step for which step.raw_time() <= time.
+        let i = self
+            .steps
+            .0
+            .partition_point(|s| s.step.raw_time() <= poll_time);
+
+        if i < 1 {
+            return Err(SourcePollErr::PollBeforeDefault)
+        }
+
+        self.poll_steps(poll_time, forget, cx, i - 1)
     }
 
-    pub fn prepare_for_interpolation(
+    fn poll_steps<E>(
         &mut self,
-        channel: usize,
-        time: T::Time,
-    ) -> Pin<&mut Interpolation<T, TransposeStorage>> {
-        todo!()
+        poll_time: T::Time,
+        forget: bool,
+        cx: SourceContext,
+        start_i: usize,
+    ) -> Result<InnerPoll<'_, T, T::OutputState, E>, SourcePollErr<T::Time, E>> {
+        // walk i backwards, until step[i] is saturating or saturated.
+        let mut i = start_i;
+        let steps = &mut self.steps;
+        loop {
+            let step = &mut steps.0.get_mut(i).unwrap().step;
+            match step.get_metadata_mut() {
+                Metadata::Unsaturated(()) => {
+                    i -= 1;
+                    continue
+                },
+                Metadata::Saturating(metadata) => {
+                    // retrieve the waker, only if we actually need to poll.
+                    let waker = match StackWaker::register(
+                        &mut metadata.stack_waker,
+                        cx.channel,
+                        cx.one_channel_waker.clone(),
+                    ) {
+                        Some(w) => w,
+                        None => break Ok(InnerPoll::Pending),
+                    };
+
+                    let StepPoll {
+                        result,
+                        outputs,
+                    } = step.poll(waker.clone()).unwrap();
+
+                    let mut outputs = outputs.into_iter();
+
+                    if let Some(output) = outputs.next() {
+                        for val in outputs {
+                            self.output_buffer.handle_event(step.raw_time(), val);
+                        }
+                        break Ok(InnerPoll::Output {
+                            time: step.raw_time(),
+                            output,
+                        })
+                    }
+
+                    match result {
+                        StepPollResult::NeedsState => {
+                            // THIS IS NOT REQUIRED WITH POLONIUS
+                            // SAFETY: because we are returning immediately, we know that the mutable reference to self is not aliased.
+                            let step: *mut _ = step;
+                            let step: &'_ mut _ = unsafe { &mut *step };
+
+                            // THIS MUT BORROWS SELF (via step)
+                            return Ok(InnerPoll::NeedsState {
+                                time:              poll_time,
+                                channel:           cx.channel * 2 + 1,
+                                forget:            false,
+                                one_channel_waker: waker.clone(),
+                                callback:          Box::new(move |input_state: T::InputState| {
+                                    let _ = step.set_input_state(input_state, &waker);
+
+                                    self.poll_steps(poll_time, forget, cx, i)
+                                }),
+                            })
+                        },
+                        StepPollResult::Pending => break Ok(InnerPoll::Pending),
+                        StepPollResult::Ready => {
+                            i -= 1;
+                            continue
+                        },
+                    }
+                },
+                Metadata::Saturated(()) => {
+                    let (step, next) =
+                        vecdeque_helpers::get_with_next_mut(&mut steps.0, i).unwrap();
+
+                    // if there's another step we need to saturate then do that one first.
+                    if let Some(next) = next {
+                        if next.step.raw_time() <= poll_time {
+                            next.step.saturate_clone(&step.step).unwrap();
+                            i += 1;
+                            continue
+                        }
+                    }
+
+                    let interpolation = step.step.interpolate(poll_time).unwrap();
+                    let channel_data = ChannelData {
+                        last_time: poll_time,
+                        interpolation,
+                    };
+
+                    self.pending_channels.insert(cx.channel, channel_data);
+                    break self.poll(poll_time, forget, cx)
+                },
+            }
+        }
     }
 
     pub fn clear_channel(&mut self, channel: usize) {
@@ -199,33 +352,33 @@ impl<T: Transposer> TransposeInner<T> {
     pub fn handle_source_poll<S, Err>(
         &mut self,
         poll: SourcePoll<T::Time, T::Input, S, Err>,
-    ) -> PollResult<S> {
-        match poll {
+    ) -> Result<PollResult<S>, SourcePollErr<T::Time, Err>> {
+        Ok(match poll {
             Poll::Pending => PollResult::Pending,
-            Poll::Ready(Err(_)) => panic!(),
+            Poll::Ready(Err(e)) => return Err(e),
             Poll::Ready(Ok(SourcePollOk::Event(e, t))) => {
                 self.handle_input_event(t, e);
-                PollResult::Continue
+                PollResult::PollAgain
             },
             Poll::Ready(Ok(SourcePollOk::Rollback(t))) => {
                 self.handle_input_rollback(t);
-                PollResult::Continue
+                PollResult::PollAgain
             },
             Poll::Ready(Ok(SourcePollOk::Finalize(t))) => {
                 self.handle_input_finalize(t);
-                PollResult::Continue
+                PollResult::PollAgain
             },
             Poll::Ready(Ok(SourcePollOk::Scheduled(s, t))) => {
                 self.handle_scheduled(t);
                 PollResult::Ready(s)
             },
             Poll::Ready(Ok(SourcePollOk::Ready(s))) => PollResult::Ready(s),
-        }
+        })
     }
 }
 
 pub enum PollResult<T> {
     Ready(T),
     Pending,
-    Continue,
+    PollAgain,
 }

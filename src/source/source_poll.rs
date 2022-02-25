@@ -27,6 +27,7 @@ where
 pub enum SourcePollErr<T, Err> {
     OutOfBoundsChannel,
     PollAfterAdvance { advanced: T },
+    PollBeforeDefault,
     SpecificError(Err),
 }
 

@@ -93,6 +93,7 @@ pub trait Source {
         }
     }
 
+    /// Inform the source it is no longer obligated to retain progress made on `channel`
     fn release_channel(self: Pin<&mut Self>, channel: usize);
 
     /// Inform the source that you will never poll before `time` again on any channel.

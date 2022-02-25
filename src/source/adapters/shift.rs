@@ -56,6 +56,7 @@ impl<Src: Source, T: Ord + Copy> Shift<Src, T> {
                     advanced: into_new(t),
                 },
                 SourcePollErr::SpecificError(e) => SourcePollErr::SpecificError(e),
+                SourcePollErr::PollBeforeDefault => SourcePollErr::PollBeforeDefault,
             })),
             Poll::Ready(Ok(result)) => Poll::Ready(Ok(match result {
                 SourcePollOk::Rollback(t) => SourcePollOk::Rollback(into_new(t)),
