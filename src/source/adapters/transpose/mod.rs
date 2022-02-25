@@ -9,7 +9,7 @@ use std::task::Poll;
 
 use pin_project::pin_project;
 
-use self::transpose_inner::{PollResult, TransposeInner};
+use self::transpose_inner::{HandleSourcePollCallbackResult, PollResult, TransposeInner};
 use crate::source::source_poll::SourcePollOk;
 use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
@@ -99,10 +99,10 @@ where
             inner,
             latest_polled_time: _,
         } = self.as_mut().project();
-        let mut poll = Some(inner.poll::<Src::Error>(poll_time, forget, cx.clone())?);
+        let mut poll = inner.poll::<Src::Error>(poll_time, forget, cx.clone())?;
 
         let poll_ok = 'main: loop {
-            match poll.take().unwrap() {
+            match poll {
                 transpose_inner::InnerPoll::Output {
                     time,
                     output,
@@ -111,9 +111,9 @@ where
                 transpose_inner::InnerPoll::NeedsState {
                     time,
                     channel,
-                    callback,
                     one_channel_waker,
                     forget,
+                    mut handle_source_poll_callback,
                 } => {
                     let new_source_context = SourceContext {
                         channel,
@@ -121,7 +121,7 @@ where
                         one_channel_waker,
                     };
 
-                    let input_state = 'poll_source: loop {
+                    poll = 'source_poll: loop {
                         let result = if forget {
                             source
                                 .as_mut()
@@ -130,14 +130,14 @@ where
                             source.as_mut().poll(time, new_source_context.clone())
                         };
 
-                        match inner.handle_source_poll(result)? {
-                            PollResult::Pending => return Poll::Pending,
-                            PollResult::PollAgain => continue 'poll_source,
-                            PollResult::Ready(s) => break 'poll_source s,
+                        match (handle_source_poll_callback)(result)? {
+                            HandleSourcePollCallbackResult::Pending => return Poll::Pending,
+                            HandleSourcePollCallbackResult::PollAgain(callback) => {
+                                handle_source_poll_callback = callback;
+                            },
+                            HandleSourcePollCallbackResult::Ready(s) => break 'source_poll s?,
                         };
                     };
-
-                    poll = Some(callback(input_state)?);
                 },
                 transpose_inner::InnerPoll::Ready(state) => break 'main SourcePollOk::Ready(state),
                 transpose_inner::InnerPoll::Scheduled(state, time) => {

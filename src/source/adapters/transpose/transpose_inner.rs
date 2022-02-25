@@ -6,7 +6,7 @@ use futures_core::Future;
 
 use super::output_buffer::OutputBuffer;
 use super::storage::{DummySendStorage, TransposeStorage};
-use super::transpose_metadata::{SaturatingMetadata, TransposeMetadata};
+use super::transpose_metadata::TransposeMetadata;
 use crate::source::source_poll::{SourcePollErr, SourcePollOk};
 use crate::source::traits::SourceContext;
 use crate::source::SourcePoll;
@@ -53,24 +53,41 @@ struct ChannelData<T: Transposer> {
 /// the result of poll
 ///
 /// After returning NeedsState the source should be polled, and the callback called if a state is available
-pub enum InnerPoll<'a, T: Transposer, S, E> {
+pub enum InnerPoll<'a, T: Transposer, S, Err> {
     Output {
         time:   T::Time,
         output: T::Output,
     },
     Pending,
     NeedsState {
-        time:              T::Time,
-        channel:           usize,
+        time: T::Time,
+        channel: usize,
         one_channel_waker: Waker,
-        forget:            bool,
-        callback: Box<
-            dyn FnOnce(T::InputState) -> Result<InnerPoll<'a, T, S, E>, SourcePollErr<T::Time, E>>
-                + 'a,
-        >,
+        forget: bool,
+        handle_source_poll_callback: HandleSourcePollCallback<'a, T, S, Err>,
     },
     Ready(S),
     Scheduled(S, T::Time),
+}
+
+pub type HandleSourcePollCallback<'a, T, S, Err> = Box<
+    dyn FnOnce(
+            SourcePoll<
+                <T as Transposer>::Time,
+                <T as Transposer>::Input,
+                <T as Transposer>::InputState,
+                Err,
+            >,
+        ) -> Result<
+            HandleSourcePollCallbackResult<'a, T, S, Err>,
+            SourcePollErr<<T as Transposer>::Time, Err>,
+        > + 'a,
+>;
+
+pub enum HandleSourcePollCallbackResult<'a, T: Transposer, S, Err> {
+    Pending,
+    PollAgain(HandleSourcePollCallback<'a, T, S, Err>),
+    Ready(Result<InnerPoll<'a, T, S, Err>, SourcePollErr<T::Time, Err>>),
 }
 
 impl<T: Transposer> TransposeInner<T> {
@@ -181,12 +198,12 @@ impl<T: Transposer> TransposeInner<T> {
         self.output_buffer.poll(time)
     }
 
-    pub fn poll<E>(
+    pub fn poll<Err>(
         &mut self,
         poll_time: T::Time,
         forget: bool,
         cx: SourceContext,
-    ) -> Result<InnerPoll<'_, T, T::OutputState, E>, SourcePollErr<T::Time, E>> {
+    ) -> Result<InnerPoll<'_, T, T::OutputState, Err>, SourcePollErr<T::Time, Err>> {
         // use an existing channel if it exists
         if let Some(channel_data) = self.pending_channels.get_mut(&cx.channel) {
             if channel_data.last_time != poll_time {
@@ -220,12 +237,46 @@ impl<T: Transposer> TransposeInner<T> {
                                 channel: cx.channel * 2 + 1,
                                 forget,
                                 one_channel_waker: cx.one_channel_waker.clone(),
-                                callback: Box::new(move |input_state: T::InputState| {
-                                    let _ =
-                                        channel_data.interpolation.set_state(input_state, &waker);
+                                handle_source_poll_callback: Box::new(
+                                    move |source_poll: SourcePoll<
+                                        T::Time,
+                                        T::Input,
+                                        T::InputState,
+                                        Err,
+                                    >| {
+                                        let source_poll = match source_poll {
+                                            Poll::Ready(source_poll) => source_poll,
+                                            Poll::Pending => {
+                                                return Ok(HandleSourcePollCallbackResult::Pending)
+                                            },
+                                        };
 
-                                    self.poll(poll_time, forget, cx)
-                                }),
+                                        match source_poll? {
+                                            SourcePollOk::Rollback(t) => {
+                                                self.handle_input_rollback(t);
+                                            },
+                                            SourcePollOk::Event(e, t) => {
+                                                self.handle_input_event(t, e);
+                                            },
+                                            SourcePollOk::Finalize(t) => {
+                                                self.handle_input_finalize(t);
+                                            },
+                                            SourcePollOk::Scheduled(s, t) => {
+                                                self.current_scheduled = Some(t);
+                                                let _ =
+                                                    channel_data.interpolation.set_state(s, &waker);
+                                            },
+                                            SourcePollOk::Ready(s) => {
+                                                let _ =
+                                                    channel_data.interpolation.set_state(s, &waker);
+                                            },
+                                        };
+
+                                        Ok(HandleSourcePollCallbackResult::Ready(
+                                            self.poll(poll_time, forget, cx),
+                                        ))
+                                    },
+                                ),
                             })
                         }
                     },
@@ -247,13 +298,13 @@ impl<T: Transposer> TransposeInner<T> {
         self.poll_steps(poll_time, forget, cx, i - 1)
     }
 
-    fn poll_steps<E>(
+    fn poll_steps<Err>(
         &mut self,
         poll_time: T::Time,
         forget: bool,
         cx: SourceContext,
         start_i: usize,
-    ) -> Result<InnerPoll<'_, T, T::OutputState, E>, SourcePollErr<T::Time, E>> {
+    ) -> Result<InnerPoll<'_, T, T::OutputState, Err>, SourcePollErr<T::Time, Err>> {
         // walk i backwards, until step[i] is saturating or saturated.
         let mut i = start_i;
         let steps = &mut self.steps;
@@ -298,18 +349,50 @@ impl<T: Transposer> TransposeInner<T> {
                             // SAFETY: because we are returning immediately, we know that the mutable reference to self is not aliased.
                             let step: *mut _ = step;
                             let step: &'_ mut _ = unsafe { &mut *step };
-
                             // THIS MUT BORROWS SELF (via step)
                             return Ok(InnerPoll::NeedsState {
-                                time:              poll_time,
-                                channel:           cx.channel * 2 + 1,
-                                forget:            false,
+                                time: poll_time,
+                                channel: cx.channel * 2 + 1,
+                                forget: false,
                                 one_channel_waker: waker.clone(),
-                                callback:          Box::new(move |input_state: T::InputState| {
-                                    let _ = step.set_input_state(input_state, &waker);
+                                handle_source_poll_callback: Box::new(
+                                    move |source_poll: SourcePoll<
+                                        T::Time,
+                                        T::Input,
+                                        T::InputState,
+                                        Err,
+                                    >| {
+                                        let source_poll = match source_poll {
+                                            Poll::Ready(source_poll) => source_poll,
+                                            Poll::Pending => {
+                                                return Ok(HandleSourcePollCallbackResult::Pending)
+                                            },
+                                        };
 
-                                    self.poll_steps(poll_time, forget, cx, i)
-                                }),
+                                        match source_poll? {
+                                            SourcePollOk::Rollback(t) => {
+                                                self.handle_input_rollback(t);
+                                            },
+                                            SourcePollOk::Event(e, t) => {
+                                                self.handle_input_event(t, e);
+                                            },
+                                            SourcePollOk::Finalize(t) => {
+                                                self.handle_input_finalize(t);
+                                            },
+                                            SourcePollOk::Scheduled(s, t) => {
+                                                self.current_scheduled = Some(t);
+                                                let _ = step.set_input_state(s, &waker);
+                                            },
+                                            SourcePollOk::Ready(s) => {
+                                                let _ = step.set_input_state(s, &waker);
+                                            },
+                                        };
+
+                                        Ok(HandleSourcePollCallbackResult::Ready(
+                                            self.poll_steps(poll_time, forget, cx, i),
+                                        ))
+                                    },
+                                ),
                             })
                         },
                         StepPollResult::Pending => break Ok(InnerPoll::Pending),
