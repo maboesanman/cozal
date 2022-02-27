@@ -9,8 +9,13 @@ use std::task::Poll;
 
 use pin_project::pin_project;
 
-use self::transpose_inner::{HandleSourcePollCallbackResult, PollResult, TransposeInner};
-use crate::source::source_poll::SourcePollOk;
+use self::transpose_inner::{
+    HandleSourcePollCallbackResult,
+    InnerPoll,
+    PollResult,
+    TransposeInner,
+};
+use crate::source::source_poll::{SourcePollErr, SourcePollOk};
 use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
 use crate::transposer::Transposer;
@@ -41,12 +46,22 @@ where
         }
     }
 
-    fn poll_impl(
-        mut self: Pin<&mut Self>,
+    fn poll_impl<'a, S, PollFn>(
+        mut self: Pin<&'a mut Self>,
         poll_time: T::Time,
-        forget: bool,
         cx: SourceContext,
-    ) -> SourcePoll<T::Time, T::Output, T::OutputState, Src::Error> {
+        initial_poll: PollFn,
+    ) -> SourcePoll<T::Time, T::Output, S, Src::Error>
+    where
+        T: 'a,
+        PollFn:
+            FnOnce(
+                &'a mut TransposeInner<T>,
+                T::Time,
+                SourceContext,
+            )
+                -> Result<InnerPoll<'a, T, S, Src::Error>, SourcePollErr<T::Time, Src::Error>>,
+    {
         let TransposeProject {
             mut source,
             source_waker,
@@ -84,22 +99,32 @@ where
             _ => {},
         };
 
-        self.poll_loop(poll_time, forget, cx)
+        self.poll_loop(poll_time, cx, initial_poll)
     }
 
-    fn poll_loop(
-        mut self: Pin<&mut Self>,
+    fn poll_loop<'a, S, PollFn>(
+        self: Pin<&'a mut Self>,
         poll_time: T::Time,
-        forget: bool,
         cx: SourceContext,
-    ) -> SourcePoll<T::Time, T::Output, T::OutputState, Src::Error> {
+        initial_poll: PollFn,
+    ) -> SourcePoll<T::Time, T::Output, S, Src::Error>
+    where
+        T: 'a,
+        PollFn:
+            FnOnce(
+                &'a mut TransposeInner<T>,
+                T::Time,
+                SourceContext,
+            )
+                -> Result<InnerPoll<'a, T, S, Src::Error>, SourcePollErr<T::Time, Src::Error>>,
+    {
         let TransposeProject {
             mut source,
             source_waker: _,
             inner,
             latest_polled_time: _,
-        } = self.as_mut().project();
-        let mut poll = inner.poll::<Src::Error>(poll_time, forget, cx.clone())?;
+        } = self.project();
+        let mut poll = initial_poll(inner, poll_time, cx.clone())?;
 
         let poll_ok = 'main: loop {
             match poll {
@@ -170,7 +195,7 @@ where
         poll_time: Self::Time,
         cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
-        self.poll_impl(poll_time, false, cx)
+        self.poll_impl(poll_time, cx, |inner, t, cx| inner.poll(t, false, cx))
     }
 
     fn poll_forget(
@@ -178,15 +203,15 @@ where
         poll_time: Self::Time,
         cx: crate::source::traits::SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
-        self.poll_impl(poll_time, true, cx)
+        self.poll_impl(poll_time, cx, |inner, t, cx| inner.poll(t, true, cx))
     }
 
     fn poll_events(
         self: Pin<&mut Self>,
-        _time: Self::Time,
-        _cx: crate::source::traits::SourceContext,
+        poll_time: Self::Time,
+        cx: crate::source::traits::SourceContext,
     ) -> crate::source::SourcePoll<Self::Time, Self::Event, (), Self::Error> {
-        todo!()
+        self.poll_impl(poll_time, cx, |inner, t, cx| inner.poll_events(t, true, cx))
     }
 
     fn advance(self: Pin<&mut Self>, time: Self::Time) {
@@ -194,7 +219,9 @@ where
     }
 
     fn max_channel(&self) -> std::num::NonZeroUsize {
-        todo!()
+        let source_max = usize::from(self.source.max_channel());
+        let max = (source_max - 1) / 2;
+        std::num::NonZeroUsize::new(max).unwrap()
     }
 
     fn release_channel(self: Pin<&mut Self>, channel: usize) {

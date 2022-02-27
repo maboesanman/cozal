@@ -284,6 +284,35 @@ impl<T: Transposer> TransposeInner<T> {
             }
         }
 
+        let i = self.calculate_starting_step_index(poll_time)?;
+
+        self.poll_steps(poll_time, forget, cx.clone(), i - 1, move |this| {
+            this.poll(poll_time, forget, cx)
+        })
+    }
+
+    pub fn poll_events<Err>(
+        &mut self,
+        poll_time: T::Time,
+        forget: bool,
+        cx: SourceContext,
+    ) -> Result<InnerPoll<'_, T, (), Err>, SourcePollErr<T::Time, Err>> {
+        self.pending_channels.remove(&cx.channel);
+
+        let i = self.calculate_starting_step_index(poll_time)?;
+
+        self.poll_steps(poll_time, forget, cx, i - 1, |this| {
+            Ok(match this.get_scheduled_time() {
+                Some(t) => InnerPoll::Scheduled((), t),
+                None => InnerPoll::Ready(()),
+            })
+        })
+    }
+
+    fn calculate_starting_step_index<Err>(
+        &self,
+        poll_time: T::Time,
+    ) -> Result<usize, SourcePollErr<T::Time, Err>> {
         // step[i] is first step for which step.raw_time() > time.
         // step[i - 1] is the last step for which step.raw_time() <= time.
         let i = self
@@ -292,19 +321,24 @@ impl<T: Transposer> TransposeInner<T> {
             .partition_point(|s| s.step.raw_time() <= poll_time);
 
         if i < 1 {
-            return Err(SourcePollErr::PollBeforeDefault)
+            Err(SourcePollErr::PollBeforeDefault)
+        } else {
+            Ok(i)
         }
-
-        self.poll_steps(poll_time, forget, cx, i - 1)
     }
 
-    fn poll_steps<Err>(
-        &mut self,
+    fn poll_steps<'a, Err, S, SFn>(
+        &'a mut self,
         poll_time: T::Time,
         forget: bool,
         cx: SourceContext,
         start_i: usize,
-    ) -> Result<InnerPoll<'_, T, T::OutputState, Err>, SourcePollErr<T::Time, Err>> {
+        state_func: SFn,
+    ) -> Result<InnerPoll<'a, T, S, Err>, SourcePollErr<T::Time, Err>>
+    where
+        SFn: 'a
+            + FnOnce(&'a mut Self) -> Result<InnerPoll<'a, T, S, Err>, SourcePollErr<T::Time, Err>>,
+    {
         // walk i backwards, until step[i] is saturating or saturated.
         let mut i = start_i;
         let steps = &mut self.steps;
@@ -372,12 +406,18 @@ impl<T: Transposer> TransposeInner<T> {
                                         match source_poll? {
                                             SourcePollOk::Rollback(t) => {
                                                 self.handle_input_rollback(t);
+                                                i =
+                                                    self.calculate_starting_step_index(poll_time)?;
                                             },
                                             SourcePollOk::Event(e, t) => {
                                                 self.handle_input_event(t, e);
+                                                i =
+                                                    self.calculate_starting_step_index(poll_time)?;
                                             },
                                             SourcePollOk::Finalize(t) => {
                                                 self.handle_input_finalize(t);
+                                                i =
+                                                    self.calculate_starting_step_index(poll_time)?;
                                             },
                                             SourcePollOk::Scheduled(s, t) => {
                                                 self.current_scheduled = Some(t);
@@ -389,7 +429,7 @@ impl<T: Transposer> TransposeInner<T> {
                                         };
 
                                         Ok(HandleSourcePollCallbackResult::Ready(
-                                            self.poll_steps(poll_time, forget, cx, i),
+                                            self.poll_steps(poll_time, forget, cx, i, state_func),
                                         ))
                                     },
                                 ),
@@ -422,14 +462,10 @@ impl<T: Transposer> TransposeInner<T> {
                     };
 
                     self.pending_channels.insert(cx.channel, channel_data);
-                    break self.poll(poll_time, forget, cx)
+                    break state_func(self)
                 },
             }
         }
-    }
-
-    pub fn clear_channel(&mut self, channel: usize) {
-        todo!()
     }
 
     pub fn handle_source_poll<S, Err>(
