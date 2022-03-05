@@ -4,15 +4,16 @@ use std::task::{Context, Poll, Waker};
 
 use futures_core::Future;
 
+use super::input_buffer::InputBuffer;
 use super::output_buffer::OutputBuffer;
 use super::storage::{DummySendStorage, TransposeStorage};
 use super::transpose_metadata::TransposeMetadata;
 use crate::source::source_poll::{SourcePollErr, SourcePollOk};
 use crate::source::traits::SourceContext;
 use crate::source::SourcePoll;
-use crate::transposer::input_buffer::InputBuffer;
 use crate::transposer::step::{Interpolation, Metadata, Step, StepPoll, StepPollResult};
 use crate::transposer::Transposer;
+use crate::util::option_min::min_none_less;
 use crate::util::stack_waker::StackWaker;
 use crate::util::vecdeque_helpers;
 
@@ -21,6 +22,7 @@ pub struct TransposeInner<T: Transposer> {
     pending_channels:  HashMap<usize, ChannelData<T>>,
     current_scheduled: Option<T::Time>,
     input_finalized:   Option<T::Time>,
+    caller_advanced:   Option<T::Time>,
 
     output_buffer: OutputBuffer<T>,
     input_buffer:  InputBuffer<T>,
@@ -32,15 +34,15 @@ unsafe impl<T: Transposer> Send for Steps<T> where Step<T, DummySendStorage, Tra
 {}
 struct Steps<T: Transposer>(VecDeque<StepWrapper<T>>);
 struct StepWrapper<T: Transposer> {
-    step:           Step<T, TransposeStorage, TransposeMetadata>,
-    events_emitted: bool,
+    step:             Step<T, TransposeStorage, TransposeMetadata>,
+    first_emitted_id: Option<usize>,
 }
 
 impl<T: Transposer> StepWrapper<T> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         Self {
-            step:           Step::new_init(transposer, rng_seed),
-            events_emitted: false,
+            step:             Step::new_init(transposer, rng_seed),
+            first_emitted_id: None,
         }
     }
 }
@@ -100,6 +102,7 @@ impl<T: Transposer> TransposeInner<T> {
             pending_channels: HashMap::new(),
             current_scheduled: None,
             input_finalized: None,
+            caller_advanced: None,
             output_buffer: OutputBuffer::new(),
             input_buffer: InputBuffer::new(),
         }
@@ -164,28 +167,76 @@ impl<T: Transposer> TransposeInner<T> {
         return result
     }
 
-    fn handle_input_event(&mut self, time: T::Time, event: T::Input) {
-        self.current_scheduled = None;
-        self.input_buffer.insert_back(time, event);
-        // delete active interpolations, clear source channels, wake wakers
+    // delete active interpolations, clear source channels, wake wakers
+    fn remove_active_interpolations(&mut self, time: T::Time) {
         todo!()
     }
+
+    // remove steps that occur after the first item in the input buffer
+    fn resolve_steps_with_input_buffer(&mut self, time: T::Time) {
+        todo!()
+    }
+
+    fn handle_input_event(&mut self, time: T::Time, event: T::Input) {
+        self.current_scheduled = None;
+
+        if T::can_handle(time, &event) {
+            self.input_buffer.insert_back(time, event);
+            self.output_buffer.handle_input_event(time);
+            self.remove_active_interpolations(time);
+        }
+    }
+
     fn handle_input_rollback(&mut self, time: T::Time) {
         self.current_scheduled = None;
         self.input_buffer.rollback(time);
-        todo!()
+        self.output_buffer.handle_input_rollback(time);
+        self.remove_active_interpolations(time);
     }
+
     fn handle_input_finalize(&mut self, time: T::Time) {
         self.current_scheduled = None;
-        self.input_finalized = Some(time);
+
+        let prev_finalized = core::mem::replace(&mut self.input_finalized, Some(time));
+        let new_internal_advanced = min_none_less(self.input_finalized, self.caller_advanced);
+
+        if let Some(new_internal_advanced) = new_internal_advanced {
+            let prev_internal_advanced = min_none_less(prev_finalized, self.caller_advanced);
+            self.internal_advance(prev_internal_advanced, new_internal_advanced);
+        }
+
+        // self.input_buffer.
+
         todo!()
     }
+
     fn handle_scheduled(&mut self, time: T::Time) {
         self.current_scheduled = Some(time);
         todo!()
     }
-    pub fn handle_caller_advance(&mut self, time: T::Time) {
+
+    /// returns list of source channels to release
+    pub fn handle_caller_advance(&mut self, time: T::Time) -> Vec<usize> {
         // throw away pending channels that were last polled before time
+        let prev_advanced = core::mem::replace(&mut self.caller_advanced, Some(time));
+        let new_internal_advanced = min_none_less(self.input_finalized, self.caller_advanced);
+
+        if let Some(new_internal_advanced) = new_internal_advanced {
+            let prev_internal_advanced = min_none_less(self.input_finalized, prev_advanced);
+            self.internal_advance(prev_internal_advanced, new_internal_advanced);
+        }
+
+        todo!()
+    }
+
+    fn internal_advance(&mut self, prev: Option<T::Time>, time: T::Time) {
+        // if we already handled this time, skip
+        if let Some(prev) = prev {
+            if time <= prev {
+                return
+            }
+        };
+
         todo!()
     }
 
@@ -263,12 +314,18 @@ impl<T: Transposer> TransposeInner<T> {
                                             },
                                             SourcePollOk::Scheduled(s, t) => {
                                                 self.current_scheduled = Some(t);
-                                                let _ =
-                                                    channel_data.interpolation.set_state(s, &waker);
+                                                channel_data
+                                                    .interpolation
+                                                    .set_state(s, &waker)
+                                                    .map_err(|_| "state already present")
+                                                    .unwrap();
                                             },
                                             SourcePollOk::Ready(s) => {
-                                                let _ =
-                                                    channel_data.interpolation.set_state(s, &waker);
+                                                channel_data
+                                                    .interpolation
+                                                    .set_state(s, &waker)
+                                                    .map_err(|_| "state already present")
+                                                    .unwrap();
                                             },
                                         };
 
@@ -369,7 +426,7 @@ impl<T: Transposer> TransposeInner<T> {
 
                     if let Some(output) = outputs.next() {
                         for val in outputs {
-                            self.output_buffer.handle_event(step.raw_time(), val);
+                            self.output_buffer.handle_output_event(step.raw_time(), val);
                         }
                         break Ok(InnerPoll::Output {
                             time: step.raw_time(),
@@ -421,10 +478,14 @@ impl<T: Transposer> TransposeInner<T> {
                                             },
                                             SourcePollOk::Scheduled(s, t) => {
                                                 self.current_scheduled = Some(t);
-                                                let _ = step.set_input_state(s, &waker);
+                                                step.set_input_state(s, &waker)
+                                                    .map_err(|_| "state already present")
+                                                    .unwrap();
                                             },
                                             SourcePollOk::Ready(s) => {
-                                                let _ = step.set_input_state(s, &waker);
+                                                step.set_input_state(s, &waker)
+                                                    .map_err(|_| "state already present")
+                                                    .unwrap();
                                             },
                                         };
 

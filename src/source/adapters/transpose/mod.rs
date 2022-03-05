@@ -1,3 +1,4 @@
+mod input_buffer;
 mod output_buffer;
 mod storage;
 mod transpose_inner;
@@ -215,7 +216,10 @@ where
     }
 
     fn advance(self: Pin<&mut Self>, time: Self::Time) {
-        self.project().inner.handle_caller_advance(time)
+        let mut this = self.project();
+        for c in this.inner.handle_caller_advance(time) {
+            this.source.as_mut().release_channel(c)
+        }
     }
 
     fn max_channel(&self) -> std::num::NonZeroUsize {

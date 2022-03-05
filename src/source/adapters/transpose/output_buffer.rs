@@ -43,16 +43,25 @@ impl<T: Transposer> OutputBuffer<T> {
             OutputType::Rollback => SourcePollOk::Rollback(t),
         }
     }
-    pub fn handle_event(&mut self, time: T::Time, event: T::Output) {
+
+    pub fn handle_input_event(&mut self, time: T::Time) {
+        todo!()
+    }
+
+    pub fn handle_input_rollback(&mut self, time: T::Time) {
+        todo!()
+    }
+
+    pub fn handle_output_event(&mut self, time: T::Time, event: T::Output) {
         self.insert(time, OutputType::Event(event));
     }
-    pub fn handle_rollback(&mut self, time: T::Time) {
+    pub fn handle_output_rollback(&mut self, time: T::Time) {
         self.0.split_off(&time);
 
         self.insert(time, OutputType::Rollback);
     }
 
-    pub fn handle_finalize(&mut self, time: T::Time) {
+    pub fn handle_output_finalize(&mut self, time: T::Time) {
         self.insert(time, OutputType::Finalize);
     }
 

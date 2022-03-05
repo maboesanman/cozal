@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::hash::Hash;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -5,7 +6,6 @@ use std::task::{Context, Poll};
 
 use futures_core::Future;
 
-use crate::transposer::input_buffer::InputBuffer;
 use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::step::{Interpolation, Step, StepPollResult};
 use crate::transposer::Transposer;
@@ -24,7 +24,7 @@ impl StorageFamily for Storage {
 pub fn evaluate_to<T: Transposer, S, Fs>(
     transposer: T,
     until: T::Time,
-    events: Vec<(T::Time, T::Input)>,
+    mut events: Vec<(T::Time, T::Input)>,
     state: S,
     seed: [u8; 32],
 ) -> EvaluateTo<T, S, Fs>
@@ -32,16 +32,32 @@ where
     S: Unpin + Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
-    let mut input_buffer = InputBuffer::<T>::new();
-    for (time, input) in events {
-        if time <= until && T::can_handle(time, &input) {
-            input_buffer.insert_back(time, input);
+    let mut collected_events = VecDeque::new();
+    events.sort_by_key(|(t, _)| *t);
+    if let Some((mut current_time, _)) = events.first() {
+        let mut e = Vec::new();
+        for (time, input) in events {
+            if time > until {
+                break
+            }
+            if time > current_time {
+                collected_events.push_back((
+                    current_time,
+                    core::mem::replace(&mut e, Vec::new()).into_boxed_slice(),
+                ));
+
+                current_time = time;
+            }
+            e.push(input)
+        }
+        if !e.is_empty() {
+            collected_events.push_back((current_time, e.into_boxed_slice()));
         }
     }
     EvaluateTo {
         inner: EvaluateToInner::Step {
             frame: Box::new(Step::new_init(transposer, seed)),
-            events: input_buffer,
+            events: collected_events,
             state,
             state_fut: None,
             until,
@@ -65,7 +81,7 @@ where
 {
     Step {
         frame:     Box<Step<T, Storage>>,
-        events:    InputBuffer<T>,
+        events:    VecDeque<(T::Time, Box<[T::Input]>)>,
         state:     S,
         state_fut: Option<Pin<Box<Fs>>>,
         until:     T::Time,
@@ -171,10 +187,10 @@ where
                             }
 
                             let next = {
-                                let mut event = events.pop_first();
+                                let mut event = events.pop_front();
                                 let next = frame.next_unsaturated(&mut event).unwrap();
                                 if let Some((time, inputs)) = event {
-                                    events.extend_front(time, inputs);
+                                    events.push_front((time, inputs));
                                 }
 
                                 next

@@ -6,7 +6,6 @@ use futures_core::Future;
 use super::update::{Arg, UpdateContext, WrappedTransposer};
 use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::Transposer;
-use crate::util::debug_assert::debug_unreachable;
 
 pub struct InitArg<T: Transposer, S: StorageFamily> {
     phantom: PhantomData<fn() -> (T, S)>,
