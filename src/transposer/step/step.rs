@@ -10,7 +10,7 @@ use super::sub_step::{PollErr as StepPollErr, SubStep, SubStepTime, WrappedTrans
 use crate::transposer::schedule_storage::{DefaultStorage, LazyStatePointer, StorageFamily};
 use crate::transposer::step::sub_step::SaturateErr;
 use crate::transposer::Transposer;
-use crate::util::take_mut::{take_and_return_or_recover, take_or_recover};
+use crate::util::replace_mut;
 
 pub struct Step<
     T: Transposer,
@@ -116,7 +116,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
             prev: &mut StepInner<T, S, M>,
             next: &mut SubStep<T, S>,
         ) -> Result<(), TakeFromPreviousErr> {
-            take_and_return_or_recover(
+            replace_mut::replace_and_return(
                 prev,
                 || StepInner::Unreachable,
                 |inner| {
@@ -211,7 +211,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
     where
         F: FnOnce(&mut SubStep<T, S>) -> Result<(), E>,
     {
-        take_and_return_or_recover(
+        replace_mut::replace_and_return(
             &mut self.inner,
             || StepInner::Unreachable,
             |inner| match inner {
@@ -262,7 +262,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
     }
 
     pub fn desaturate(&mut self) -> Result<(), DesaturateErr> {
-        take_and_return_or_recover(
+        replace_mut::replace_and_return(
             &mut self.inner,
             || StepInner::Unreachable,
             |inner| match inner {
@@ -489,7 +489,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
 
         if *i == steps.len() - 1 {
             // convert self to saturated
-            take_or_recover(
+            replace_mut::replace(
                 &mut self.inner,
                 || StepInner::Unreachable,
                 |inner| {

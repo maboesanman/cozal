@@ -9,7 +9,7 @@ use futures_core::Future;
 use crate::transposer::schedule_storage::StorageFamily;
 use crate::transposer::step::{Interpolation, Step, StepPollResult};
 use crate::transposer::Transposer;
-use crate::util::take_mut;
+use crate::util::replace_mut;
 
 #[derive(Clone, Copy)]
 struct Storage;
@@ -111,7 +111,7 @@ where
         let this = self.get_mut();
 
         loop {
-            let poll_result = take_mut::take_and_return_or_recover(
+            let poll_result = replace_mut::replace_and_return(
                 &mut this.inner,
                 || EvaluateToInner::Terminated,
                 |inner| {

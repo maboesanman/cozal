@@ -17,7 +17,7 @@ pub struct Original<Src: Source>
 where
     Src::Event: Clone,
 {
-    pub source: Mutex<Src>,
+    pub source: Mutex<Pin<Box<Src>>>,
     children:   RwLock<BTreeMap<usize, Weak<DuplicateInner<Src>>>>,
     wakers:     EventWakers,
     advanced:   Mutex<Advanced<Src::Time>>,
@@ -29,7 +29,7 @@ where
 {
     pub fn new(source: Src) -> Arc<Self> {
         let original = Original {
-            source:   Mutex::new(source),
+            source:   Mutex::new(Box::pin(source)),
             children: RwLock::new(BTreeMap::new()),
             wakers:   EventWakers::new(),
             advanced: Mutex::new(Advanced::new()),
@@ -64,10 +64,7 @@ where
     pub fn advance(&self, time: Src::Time, index: usize) {
         if let Some(t) = self.advanced.lock().unwrap().advance(time, index) {
             let mut source_lock = self.source.lock().unwrap();
-
-            // SAFETY: our source is structurally pinned inside a mutex inside original, which is an Arc, therefore unmoving.
-            let source: Pin<&mut Src> = unsafe { Pin::new_unchecked(&mut source_lock) };
-            source.advance(t);
+            source_lock.as_mut().advance(t);
         }
     }
 
@@ -79,9 +76,7 @@ where
         from_index: usize,
     ) -> SourcePoll<Src::Time, Src::Event, State, Src::Error> {
         let mut source_lock = self.source.lock().unwrap();
-
-        // SAFETY: our source is structurally pinned inside a mutex inside original, which is an Arc, therefore unmoving.
-        let source: Pin<&mut Src> = unsafe { Pin::new_unchecked(&mut source_lock) };
+        let source = source_lock.as_mut();
         let poll = poll_fn(source, poll_time, cx);
 
         // Immediately delete all stored events at or after t.

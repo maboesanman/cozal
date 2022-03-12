@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use super::Transposer;
-use crate::util::take_mut;
+use crate::util::replace_mut;
 
 pub struct InputBuffer<T: Transposer>(BTreeMap<T::Time, InputContainer<T::Input>>);
 
@@ -20,7 +20,7 @@ impl<Input> InputContainer<Input> {
     }
 
     fn heat(&mut self) -> &mut Vec<Input> {
-        take_mut::take_or_recover(self, Self::recover, |this| match this {
+        replace_mut::replace(self, Self::recover, |this| match this {
             InputContainer::Cold(b) => {
                 let v = b.into_vec();
                 InputContainer::Hot(v)
@@ -95,7 +95,7 @@ impl<T: Transposer> InputBuffer<T> {
 
     pub fn extend_front(&mut self, time: T::Time, inputs: Box<[T::Input]>) {
         match self.0.get_mut(&time) {
-            Some(current) => take_mut::take_or_recover(current, InputContainer::recover, |c| {
+            Some(current) => replace_mut::replace(current, InputContainer::recover, |c| {
                 let mut new_vec: Vec<_> = inputs.into();
                 new_vec.extend(c.into_iter());
                 new_vec.into()

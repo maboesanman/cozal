@@ -3,18 +3,18 @@ use std::panic;
 /// use closure to take value from mut_ref, and supply a replacement.
 /// if closure panics, use recover to fill the mut_ref, then continue unwinding
 /// if recover panics, the whole process aborts.
-pub fn take_or_recover<T, F, R>(mut_ref: &mut T, recover: R, closure: F)
+pub fn replace<T, F, R>(mut_ref: &mut T, recover: R, closure: F)
 where
     F: FnOnce(T) -> T,
     R: FnOnce() -> T,
 {
-    take_and_return_or_recover(mut_ref, recover, |t| (closure(t), ()))
+    replace_and_return(mut_ref, recover, |t| (closure(t), ()))
 }
 
 /// use closure to take value from mut_ref, and supply a replacement, as well as a value to return.
 /// if closure panics, use recover to fill the mut_ref, then continue unwinding
 /// if recover panics, the whole process aborts.
-pub fn take_and_return_or_recover<T, V, F, R>(mut_ref: &mut T, recover: R, closure: F) -> V
+pub fn replace_and_return<T, V, F, R>(mut_ref: &mut T, recover: R, closure: F) -> V
 where
     F: FnOnce(T) -> (T, V),
     R: FnOnce() -> T,

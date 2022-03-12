@@ -12,7 +12,7 @@ use crate::transposer::schedule_storage::{StorageFamily, TransposerPointer};
 use crate::transposer::step::lazy_state::LazyState;
 use crate::transposer::step::NextInputs;
 use crate::transposer::Transposer;
-use crate::util::take_mut::{self, take_and_return_or_recover};
+use crate::util::replace_mut;
 
 pub struct SubStep<T: Transposer, S: StorageFamily> {
     time:        SubStepTime<T::Time>,
@@ -222,7 +222,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
             return Err(SaturateErr::SelfNotUnsaturated)
         }
 
-        let wrapped_transposer = take_mut::take_and_return_or_recover(
+        let wrapped_transposer = replace_mut::replace_and_return(
             &mut previous.inner,
             || SubStepInner::Unreachable,
             |prev| match prev {
@@ -289,7 +289,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
         &mut self,
         wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     ) {
-        take_mut::take_or_recover(
+        replace_mut::replace(
             &mut self.inner,
             || SubStepInner::Unreachable,
             |next| match next {
@@ -347,7 +347,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
     }
 
     pub fn desaturate(&mut self) -> Result<Option<T>, DesaturateErr> {
-        take_mut::take_and_return_or_recover(&mut self.inner, SubStepInner::recover, |original| {
+        replace_mut::replace_and_return(&mut self.inner, SubStepInner::recover, |original| {
             match original {
                 SubStepInner::OriginalSaturatingInput {
                     update,
@@ -432,7 +432,7 @@ impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
             }))
         }
 
-        take_and_return_or_recover(
+        replace_mut::replace_and_return(
             &mut self.inner,
             || SubStepInner::Unreachable,
             |inner| match inner {
