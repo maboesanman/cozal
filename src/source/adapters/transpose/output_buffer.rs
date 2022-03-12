@@ -33,7 +33,7 @@ impl<T: Transposer> OutputBuffer<T> {
             vec.pop_front().unwrap()
         };
 
-        return match val {
+        match val {
             OutputType::Event(e) => SourcePollOk::Event(e, t),
             OutputType::Finalize => SourcePollOk::Finalize(t),
             OutputType::Rollback => SourcePollOk::Rollback(t),

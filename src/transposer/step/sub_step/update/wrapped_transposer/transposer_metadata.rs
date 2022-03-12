@@ -38,7 +38,7 @@ impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
             schedule,
             expire_handles_forward,
             expire_handles_backward,
-            expire_handle_factory: ExpireHandleFactory::new(),
+            expire_handle_factory: ExpireHandleFactory::default(),
             rng: BlockRng::new(ChaCha12Core::from_seed(rng_seed)),
         }
     }

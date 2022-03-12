@@ -23,7 +23,7 @@ impl<'a, T: Transposer> InterpolateContext<'a, T> for StepInterpolateContext<T> 
 
 impl<'a, T: Transposer> InputStateContext<'a, T> for StepInterpolateContext<T> {
     fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
-        let state_ptr: NonNull<_> = (&self.state).into();
+        let state_ptr = NonNull::from(&self.state);
 
         // SAFETY: 'a is scoped to the transposer's handler future, which must outlive this scope
         // because that's where this function gets called from.

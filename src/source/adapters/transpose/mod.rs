@@ -76,7 +76,7 @@ where
             let new_source_context = SourceContext {
                 channel:           0,
                 all_channel_waker: new_waker.clone(),
-                one_channel_waker: new_waker.clone(),
+                one_channel_waker: new_waker,
             };
 
             loop {

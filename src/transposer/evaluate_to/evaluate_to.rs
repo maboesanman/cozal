@@ -41,10 +41,8 @@ where
                 break
             }
             if time > current_time {
-                collected_events.push_back((
-                    current_time,
-                    core::mem::replace(&mut e, Vec::new()).into_boxed_slice(),
-                ));
+                collected_events
+                    .push_back((current_time, core::mem::take(&mut e).into_boxed_slice()));
 
                 current_time = time;
             }
@@ -74,6 +72,8 @@ where
     inner: EvaluateToInner<T, S, Fs>,
 }
 
+type EventGroup<T> = (<T as Transposer>::Time, Box<[<T as Transposer>::Input]>);
+
 enum EvaluateToInner<T: Transposer, S, Fs>
 where
     S: Unpin + Fn(T::Time) -> Fs,
@@ -81,7 +81,7 @@ where
 {
     Step {
         frame:     Box<Step<T, Storage>>,
-        events:    VecDeque<(T::Time, Box<[T::Input]>)>,
+        events:    VecDeque<EventGroup<T>>,
         state:     S,
         state_fut: Option<Pin<Box<Fs>>>,
         until:     T::Time,

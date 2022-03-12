@@ -560,15 +560,10 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
     }
 
     pub fn is_original(&self) -> bool {
-        match self.inner {
-            StepInner::OriginalUnsaturated {
-                ..
-            } => true,
-            StepInner::OriginalSaturating {
-                ..
-            } => true,
-            _ => false,
-        }
+        matches!(
+            self.inner,
+            StepInner::OriginalUnsaturated { .. } | StepInner::OriginalSaturating { .. }
+        )
     }
 }
 
