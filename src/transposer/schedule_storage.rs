@@ -1,6 +1,6 @@
 use core::borrow::Borrow;
 use core::hash::Hash;
-use std::ops::Deref;
+use core::ops::Deref;
 use std::rc::Rc;
 use std::sync::Arc;
 

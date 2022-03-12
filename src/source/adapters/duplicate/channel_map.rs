@@ -1,4 +1,4 @@
-use std::num::NonZeroUsize;
+use core::num::NonZeroUsize;
 
 pub fn map(duplicate: usize, channel: usize) -> usize {
     let s = duplicate + channel;
@@ -46,7 +46,7 @@ pub fn max_channel(channels: NonZeroUsize, duplicate: usize) -> NonZeroUsize {
         max_b
     };
 
-    unsafe { NonZeroUsize::new_unchecked(max_b) }
+    NonZeroUsize::new(max_b).unwrap()
 }
 
 fn last_b(n: usize) -> usize {

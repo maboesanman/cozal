@@ -1,4 +1,4 @@
-use std::pin::Pin;
+use core::pin::Pin;
 
 use async_trait::async_trait;
 use rand::Rng;

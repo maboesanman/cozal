@@ -1,7 +1,7 @@
+use core::cell::RefCell;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
-use std::cell::RefCell;
 use std::lazy::SyncOnceCell;
 
 pub struct LazyState<S> {

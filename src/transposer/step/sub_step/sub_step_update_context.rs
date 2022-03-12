@@ -1,6 +1,7 @@
 use core::future::Future;
+use core::ops::Deref;
 use core::pin::Pin;
-use std::ops::Deref;
+use core::ptr::NonNull;
 
 use super::time::SubStepTime;
 use super::update::{TransposerMetaData, UpdateContext};
@@ -34,7 +35,7 @@ impl<O> OutputCollector<O> for () {
 /// though there are more methods to interact with the engine.
 pub struct SubStepUpdateContext<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> {
     // these are pointers because this is stored next to the targets.
-    metadata: *mut TransposerMetaData<T, S>,
+    metadata: NonNull<TransposerMetaData<T, S>>,
 
     time:                   SubStepTime<T::Time>,
     current_emission_index: usize,
@@ -65,7 +66,7 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> UpdateConte
     // SAFETY: need to gurantee the metadata pointer outlives this object.
     unsafe fn new(
         time: SubStepTime<T::Time>,
-        metadata: *mut TransposerMetaData<T, S>,
+        metadata: NonNull<TransposerMetaData<T, S>>,
         input_state: S::LazyState<LazyState<T::InputState>>,
     ) -> Self {
         Self {
@@ -85,7 +86,7 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> UpdateConte
 impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> SubStepUpdateContext<T, S, C> {
     fn get_metadata_mut(&mut self) -> &mut TransposerMetaData<T, S> {
         // SAFETY: this is good as long as the constructor's criteria are met.
-        unsafe { self.metadata.as_mut().unwrap_unchecked() }
+        unsafe { self.metadata.as_mut() }
     }
 }
 
@@ -93,11 +94,11 @@ impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> InputSt
     for SubStepUpdateContext<T, S, C>
 {
     fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
-        let ptr: *const _ = self.input_state.deref();
+        let ptr: NonNull<_> = self.input_state.deref().into();
 
         // SAFETY: 'a is scoped to the transposer's handler future, which must outlive this scope
         // because that's where this function gets called from.
-        Box::pin(unsafe { ptr.as_ref().unwrap_unchecked() })
+        Box::pin(unsafe { ptr.as_ref() })
     }
 }
 

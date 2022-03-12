@@ -26,15 +26,11 @@ impl<T: Transposer> OutputBuffer<T> {
         }
 
         let val = if vec.len() == 1 {
-            unsafe {
-                let (_, mut vec) = self.0.pop_first().unwrap_unchecked();
-                vec.pop_front().unwrap_unchecked()
-            }
+            let (_, mut vec) = self.0.pop_first().unwrap();
+            vec.pop_front().unwrap()
         } else {
-            unsafe {
-                let vec = self.0.get_mut(&t).unwrap_unchecked();
-                vec.pop_front().unwrap_unchecked()
-            }
+            let vec = self.0.get_mut(&t).unwrap();
+            vec.pop_front().unwrap()
         };
 
         return match val {

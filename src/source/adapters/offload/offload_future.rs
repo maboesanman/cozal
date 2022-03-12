@@ -1,4 +1,5 @@
-use std::{pin::Pin, task::{Context, Poll}};
+use core::pin::Pin;
+use core::task::{Context, Poll};
 
 use futures_core::Future;
 

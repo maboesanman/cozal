@@ -1,6 +1,6 @@
-use std::pin::Pin;
+use core::pin::Pin;
+use core::task::{Context, Poll};
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
 use async_trait::async_trait;
 use futures_core::Future;

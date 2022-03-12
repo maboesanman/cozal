@@ -1,9 +1,8 @@
-use core::task::Waker;
+use core::num::NonZeroUsize;
+use core::pin::Pin;
+use core::task::{Poll, Waker};
 use std::collections::BTreeMap;
-use std::num::NonZeroUsize;
-use std::pin::Pin;
 use std::sync::{Arc, Mutex, RwLock, Weak};
-use std::task::Poll;
 
 use super::advanced::Advanced;
 use super::duplicate_inner::DuplicateInner;

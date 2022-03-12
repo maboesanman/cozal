@@ -1,3 +1,5 @@
+use core::ptr::NonNull;
+
 use super::{SubStepTime, TransposerMetaData};
 use crate::transposer::context::*;
 use crate::transposer::schedule_storage::StorageFamily;
@@ -12,7 +14,7 @@ pub trait UpdateContext<T: Transposer, S: StorageFamily>:
     // SAFETY: ensure this UpdateContext is dropped before metadata.
     unsafe fn new(
         time: SubStepTime<T::Time>,
-        metadata: *mut TransposerMetaData<T, S>,
+        metadata: NonNull<TransposerMetaData<T, S>>,
         input_state: S::LazyState<LazyState<T::InputState>>,
     ) -> Self;
 

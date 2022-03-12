@@ -1,5 +1,6 @@
-use std::pin::Pin;
-use std::task::{Context, Poll, Waker};
+use core::pin::Pin;
+use core::ptr::NonNull;
+use core::task::{Context, Poll, Waker};
 
 use futures_core::Future;
 
@@ -21,12 +22,17 @@ impl<T: Transposer, S: StorageFamily> Interpolation<T, S> {
     pub fn new(time: T::Time, wrapped_transposer: &S::Transposer<WrappedTransposer<T, S>>) -> Self {
         let borrowed = wrapped_transposer.borrow();
         let mut context = Box::new(StepInterpolateContext::new());
-        let context_ptr: *mut _ = context.as_mut();
-        let context_ref = unsafe { context_ptr.as_mut().unwrap() };
+        let mut context_ptr: NonNull<_> = context.as_mut().into();
+
+        // SAFETY: this is owned by future, so it will not dangle as future is dropped before context.
+        let context_ref = unsafe { context_ptr.as_mut() };
 
         let base_time = borrowed.metadata.last_updated;
         let transposer = &borrowed.transposer;
         let future = T::interpolate(transposer, base_time, time, context_ref);
+
+        // SAFETY: forcing the lifetime. This is dropped before the borrowed content (context) so its fine.
+        let future: Pin<Box<dyn Future<Output = T::OutputState>>> = future;
         let future: Pin<Box<dyn Future<Output = T::OutputState>>> =
             unsafe { core::mem::transmute(future) };
 

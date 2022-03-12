@@ -4,9 +4,9 @@ mod storage;
 mod transpose_inner;
 mod transpose_metadata;
 
-use std::pin::Pin;
+use core::pin::Pin;
+use core::task::Poll;
 use std::sync::Weak;
-use std::task::Poll;
 
 use pin_project::pin_project;
 

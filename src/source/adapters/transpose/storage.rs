@@ -1,4 +1,4 @@
-use std::hash::Hash;
+use core::hash::Hash;
 use std::rc::Rc;
 use std::sync::Arc;
 

@@ -1,11 +1,11 @@
-use std::{marker::PhantomData, pin::Pin};
+use core::marker::PhantomData;
+use core::pin::Pin;
 
-use crate::source::{Source, traits::SourceContext};
-
-
+use crate::source::traits::SourceContext;
+use crate::source::Source;
 
 pub struct OffloadSource<Src: Source> {
-    phantom: PhantomData<Src>
+    phantom: PhantomData<Src>,
 }
 
 impl<Src: Source> Source for OffloadSource<Src> {

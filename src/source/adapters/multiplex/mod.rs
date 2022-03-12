@@ -1,10 +1,10 @@
 mod affinity_map;
 mod assignment_map;
 
+use core::num::NonZeroUsize;
 use core::pin::Pin;
 use core::task::{Poll, Waker};
 use std::collections::VecDeque;
-use std::num::NonZeroUsize;
 
 use pin_project::pin_project;
 
@@ -233,7 +233,7 @@ impl<Src: Source> Source for Multiplex<Src> {
 
     fn max_channel(&self) -> NonZeroUsize {
         // SAFETY: usize::MAX is not 0.
-        unsafe { NonZeroUsize::new_unchecked(usize::MAX) }
+        NonZeroUsize::new(usize::MAX).unwrap()
     }
 
     fn release_channel(self: Pin<&mut Self>, _channel: usize) {

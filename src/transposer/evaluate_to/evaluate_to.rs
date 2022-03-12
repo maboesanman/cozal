@@ -1,8 +1,8 @@
+use core::hash::Hash;
+use core::pin::Pin;
+use core::task::{Context, Poll};
 use std::collections::VecDeque;
-use std::hash::Hash;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
 use futures_core::Future;
 

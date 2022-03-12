@@ -1,5 +1,5 @@
-use std::pin::Pin;
-use std::task::{Context, Poll, Waker};
+use core::pin::Pin;
+use core::task::{Context, Poll, Waker};
 
 use futures_core::Future;
 

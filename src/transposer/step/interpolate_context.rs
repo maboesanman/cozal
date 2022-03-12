@@ -1,4 +1,5 @@
-use std::pin::Pin;
+use core::pin::Pin;
+use core::ptr::NonNull;
 
 use futures_core::Future;
 
@@ -22,10 +23,10 @@ impl<'a, T: Transposer> InterpolateContext<'a, T> for StepInterpolateContext<T> 
 
 impl<'a, T: Transposer> InputStateContext<'a, T> for StepInterpolateContext<T> {
     fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
-        let state_ptr: *const _ = &self.state;
+        let state_ptr: NonNull<_> = (&self.state).into();
 
         // SAFETY: 'a is scoped to the transposer's handler future, which must outlive this scope
         // because that's where this function gets called from.
-        Box::pin(unsafe { state_ptr.as_ref().unwrap() })
+        Box::pin(unsafe { state_ptr.as_ref() })
     }
 }
