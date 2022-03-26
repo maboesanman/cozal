@@ -2,6 +2,9 @@
 #![feature(map_first_last)]
 #![feature(generic_associated_types)]
 #![feature(once_cell)]
+#![feature(map_try_insert)]
+#![feature(vecdeque_binary_search)]
+#![feature(entry_insert)]
 #![deny(unsafe_op_in_unsafe_fn)]
 // TODO: remove this allow
 #![allow(dead_code)]

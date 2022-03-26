@@ -42,6 +42,16 @@ impl StackWaker {
         let new_waker = arc_self.clone();
         Some(new_waker.into())
     }
+
+    pub fn un_register(weak: &mut Weak<Self>, key: usize) {
+        let arc_self = match weak.upgrade() {
+            Some(a) => a,
+            None => return, // it was dropped, won't be woken anyway
+        };
+
+        let mut lock = arc_self.inner.lock();
+        lock.wakers.remove(&key);
+    }
 }
 
 impl Wake for StackWaker {

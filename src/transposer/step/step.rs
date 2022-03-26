@@ -7,7 +7,12 @@ use super::interpolation::Interpolation;
 use super::lazy_state::LazyState;
 use super::step_metadata::{EmptyStepMetadata, StepMetadata};
 use super::sub_step::{PollErr as StepPollErr, SubStep, SubStepTime, WrappedTransposer};
-use crate::transposer::schedule_storage::{DefaultStorage, LazyStatePointer, StorageFamily};
+use crate::transposer::schedule_storage::{
+    DefaultStorage,
+    LazyStatePointer,
+    StorageFamily,
+    TransposerPointer,
+};
 use crate::transposer::step::sub_step::SaturateErr;
 use crate::transposer::Transposer;
 use crate::util::replace_mut;
@@ -42,7 +47,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
             inner: StepInner::OriginalSaturating {
                 current_saturating_index: 0,
                 steps,
-                metadata: M::to_saturating(M::new_unsaturated()),
+                metadata: M::new_init(),
             },
             input_state,
 
@@ -53,15 +58,14 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
         }
     }
 
-    // this only needs mut because it can mutate metadata.
     pub fn next_unsaturated(
-        &mut self,
+        &self,
         next_inputs: &mut NextInputs<T>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         if let StepInner::Saturated {
             steps,
             metadata,
-        } = &mut self.inner
+        } = &self.inner
         {
             let input_state = S::LazyState::<LazyState<T::InputState>>::new(LazyState::new());
 
@@ -81,7 +85,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
             let next = next.map(|step| Step {
                 inner: StepInner::OriginalUnsaturated {
                     steps:    vec![step],
-                    metadata: M::new_unsaturated(),
+                    metadata: M::next_unsaturated(metadata),
                 },
                 input_state,
 
@@ -90,10 +94,6 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                 #[cfg(debug_assertions)]
                 uuid_prev: Some(self.uuid_self),
             });
-
-            if let Some(n) = next.as_ref() {
-                M::next_unsaturated(metadata, n.raw_time());
-            }
 
             Ok(next)
         } else {
@@ -125,7 +125,9 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                         metadata,
                     } = inner
                     {
-                        match next.saturate_take(steps.last_mut().unwrap()) {
+                        let last_step = steps.last_mut().unwrap();
+                        let ptr = last_step.finished_wrapped_transposer().unwrap().borrow();
+                        match next.saturate_take(last_step) {
                             Err(err) => {
                                 let replacement = StepInner::Saturated {
                                     steps,
@@ -136,7 +138,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                             Ok(()) => {
                                 let replacement = StepInner::RepeatUnsaturated {
                                     steps,
-                                    metadata: M::desaturate_saturated(metadata),
+                                    metadata: M::desaturate_saturated(metadata, &ptr.transposer),
                                 };
 
                                 (replacement, Ok(()))
@@ -223,7 +225,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                         let replacement = StepInner::OriginalSaturating {
                             current_saturating_index: 0,
                             steps,
-                            metadata: M::to_saturating(metadata),
+                            metadata: M::original_saturating(metadata),
                         };
                         (replacement, Ok(()))
                     },
@@ -243,7 +245,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                         let replacement = StepInner::RepeatSaturating {
                             current_saturating_index: 0,
                             steps,
-                            metadata: M::to_saturating(metadata),
+                            metadata: M::repeat_saturating(metadata),
                         };
                         (replacement, Ok(()))
                     },
@@ -285,7 +287,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                     (
                         StepInner::OriginalUnsaturated {
                             steps,
-                            metadata: M::desaturate_saturating(metadata),
+                            metadata: M::desaturate_original_saturating(metadata),
                         },
                         Ok(()),
                     )
@@ -303,7 +305,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                     (
                         StepInner::RepeatUnsaturated {
                             steps,
-                            metadata: M::desaturate_saturating(metadata),
+                            metadata: M::desaturate_repeat_saturating(metadata),
                         },
                         Ok(()),
                     )
@@ -311,13 +313,17 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                 StepInner::Saturated {
                     steps,
                     metadata,
-                } => (
-                    StepInner::RepeatUnsaturated {
-                        steps,
-                        metadata: M::desaturate_saturated(metadata),
-                    },
-                    Ok(()),
-                ),
+                } => {
+                    let last_step = steps.last().unwrap();
+                    let ptr = last_step.finished_wrapped_transposer().unwrap().borrow();
+                    (
+                        StepInner::RepeatUnsaturated {
+                            steps,
+                            metadata: M::desaturate_saturated(metadata, &ptr.transposer),
+                        },
+                        Ok(()),
+                    )
+                },
                 StepInner::Unreachable => unreachable!(),
             },
         )
@@ -392,23 +398,44 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
         }
     }
 
-    pub fn get_metadata_mut(&mut self) -> Metadata<'_, T, S, M> {
-        match &mut self.inner {
+    pub fn get_metadata(&self) -> Metadata<'_, T, S, M> {
+        match &self.inner {
             StepInner::OriginalUnsaturated {
                 metadata, ..
-            } => Metadata::Unsaturated(metadata),
+            } => Metadata::OriginalUnsaturated(metadata),
             StepInner::OriginalSaturating {
                 metadata, ..
-            } => Metadata::Saturating(metadata),
+            } => Metadata::OriginalSaturating(metadata),
             StepInner::RepeatUnsaturated {
                 metadata, ..
-            } => Metadata::Unsaturated(metadata),
+            } => Metadata::RepeatUnsaturated(metadata),
             StepInner::RepeatSaturating {
                 metadata, ..
-            } => Metadata::Saturating(metadata),
+            } => Metadata::RepeatSaturating(metadata),
             StepInner::Saturated {
                 metadata, ..
             } => Metadata::Saturated(metadata),
+            StepInner::Unreachable => unreachable!(),
+        }
+    }
+
+    pub fn get_metadata_mut(&mut self) -> MetadataMut<'_, T, S, M> {
+        match &mut self.inner {
+            StepInner::OriginalUnsaturated {
+                metadata, ..
+            } => MetadataMut::OriginalUnsaturated(metadata),
+            StepInner::OriginalSaturating {
+                metadata, ..
+            } => MetadataMut::OriginalSaturating(metadata),
+            StepInner::RepeatUnsaturated {
+                metadata, ..
+            } => MetadataMut::RepeatUnsaturated(metadata),
+            StepInner::RepeatSaturating {
+                metadata, ..
+            } => MetadataMut::RepeatSaturating(metadata),
+            StepInner::Saturated {
+                metadata, ..
+            } => MetadataMut::Saturated(metadata),
             StepInner::Unreachable => unreachable!(),
         }
     }
@@ -498,19 +525,29 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                             steps,
                             metadata,
                             ..
-                        } => (steps.into_boxed_slice(), metadata),
+                        } => {
+                            let wrapped_transposer_ref =
+                                steps.last().unwrap().finished_wrapped_transposer().unwrap();
+                            let metadata =
+                                M::original_saturate(metadata, &wrapped_transposer_ref.transposer);
+
+                            (steps.into_boxed_slice(), metadata)
+                        },
                         StepInner::RepeatSaturating {
                             steps,
                             metadata,
                             ..
-                        } => (steps, metadata),
+                        } => {
+                            let wrapped_transposer_ref =
+                                steps.last().unwrap().finished_wrapped_transposer().unwrap();
+
+                            let metadata =
+                                M::repeat_saturate(metadata, &wrapped_transposer_ref.transposer);
+
+                            (steps, metadata)
+                        },
                         _ => unreachable!(),
                     };
-
-                    let wrapped_transposer_ref =
-                        steps.last().unwrap().finished_wrapped_transposer().unwrap();
-
-                    let metadata = M::to_saturated(metadata, &wrapped_transposer_ref.transposer);
 
                     StepInner::Saturated {
                         steps,
@@ -619,21 +656,21 @@ impl<Time: Ord + Copy> Eq for StepTime<Time> {}
 enum StepInner<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> {
     OriginalUnsaturated {
         steps:    Vec<SubStep<T, S>>,
-        metadata: M::Unsaturated,
+        metadata: M::OriginalUnsaturated,
     },
     OriginalSaturating {
         current_saturating_index: usize,
         steps:                    Vec<SubStep<T, S>>,
-        metadata:                 M::Saturating,
+        metadata:                 M::OriginalSaturating,
     },
     RepeatUnsaturated {
         steps:    Box<[SubStep<T, S>]>,
-        metadata: M::Unsaturated,
+        metadata: M::RepeatUnsaturated,
     },
     RepeatSaturating {
         current_saturating_index: usize,
         steps:                    Box<[SubStep<T, S>]>,
-        metadata:                 M::Saturating,
+        metadata:                 M::RepeatSaturating,
     },
     Saturated {
         steps:    Box<[SubStep<T, S>]>,
@@ -676,8 +713,18 @@ pub enum StepPollResult {
 }
 
 pub enum Metadata<'a, T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> {
-    Unsaturated(&'a mut M::Unsaturated),
-    Saturating(&'a mut M::Saturating),
+    OriginalUnsaturated(&'a M::OriginalUnsaturated),
+    OriginalSaturating(&'a M::OriginalSaturating),
+    RepeatUnsaturated(&'a M::RepeatUnsaturated),
+    RepeatSaturating(&'a M::RepeatSaturating),
+    Saturated(&'a M::Saturated),
+}
+
+pub enum MetadataMut<'a, T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> {
+    OriginalUnsaturated(&'a mut M::OriginalUnsaturated),
+    OriginalSaturating(&'a mut M::OriginalSaturating),
+    RepeatUnsaturated(&'a mut M::RepeatUnsaturated),
+    RepeatSaturating(&'a mut M::RepeatSaturating),
     Saturated(&'a mut M::Saturated),
 }
 

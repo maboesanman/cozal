@@ -31,4 +31,6 @@ pub enum SourcePollErr<T, Err> {
     SpecificError(Err),
 }
 
-pub type SourcePoll<T, E, S, Err> = Poll<Result<SourcePollOk<T, E, S>, SourcePollErr<T, Err>>>;
+pub type SourcePollInner<T, E, S, Err> = Result<SourcePollOk<T, E, S>, SourcePollErr<T, Err>>;
+
+pub type SourcePoll<T, E, S, Err> = Poll<SourcePollInner<T, E, S, Err>>;
