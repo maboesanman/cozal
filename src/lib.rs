@@ -3,7 +3,7 @@
 #![feature(generic_associated_types)]
 #![feature(once_cell)]
 #![feature(map_try_insert)]
-#![feature(vecdeque_binary_search)]
+#![feature(hash_raw_entry)]
 #![feature(entry_insert)]
 #![deny(unsafe_op_in_unsafe_fn)]
 // TODO: remove this allow

@@ -6,10 +6,12 @@ use std::task::{Context, Poll, Waker};
 
 use futures_core::Future;
 
+use super::caller_channel_status::CallerChannelStatus;
 use super::input_buffer::InputBuffer;
 use super::output_buffer::OutputBuffer;
 use super::steps::{StepWrapper, Steps};
 use super::storage::TransposeStorage;
+use crate::source::adapters::transpose_redux::caller_channel_status::Free;
 // use crate::source::adapters::transpose_redux::transpose_step_metadata::unwrap_repeat_saturating;
 use crate::source::source_poll::{SourcePollInner, SourcePollOk};
 use crate::source::traits::SourceContext;
@@ -22,25 +24,27 @@ use crate::util::stack_waker::StackWaker;
 // own steps.
 // own interpolations.
 // own one_channel_wakers.
-struct TransposerInner<T: Transposer> {
+pub struct TransposerInner<T: Transposer> {
     // the collection of steps.
-    steps: Steps<T>,
+    pub steps: Steps<T>,
 
     // These are all the source channels currently in use.
-    blocked_source_channels: BTreeSet</* source_channel */ usize>,
+    // this is just a hack to use the entry api.
+    pub blocked_source_channels: BTreeMap</* source_channel */ usize, ()>,
 
     // These are all the currently pending operations, from the perspective of the caller.
     // They can be blocked due to pending source_state, step_future, or interpolation_future.
-    blocked_caller_channels:
+    pub blocked_caller_channels:
         HashMap</* caller_channel */ usize, CallerChannelBlockedReason<T>>,
 
     // these are the currently blocked repeat steps, including the stack wakers
-    repeat_step_blocked_reasons: HashMap</* step_id */ usize, StepBlockedReason>,
+    pub repeat_step_blocked_reasons: HashMap</* step_id */ usize, StepBlockedReason>,
 
     // this is the currently blocked original step if it exists, including the stack wakers
-    original_step_blocked_reasons: Option<StepBlockedReason>,
+    pub original_step_blocked_reasons: Option<StepBlockedReason>,
 }
 
+#[derive(Debug)]
 pub enum StepBlockedReason {
     SourceState {
         source_channel: usize,
@@ -78,7 +82,7 @@ struct InterpolationWrapper<T: Transposer> {
     interpolation:  Interpolation<T, TransposeStorage>,
 }
 
-enum InnerPoll<T: Transposer> {
+pub enum InnerPoll<T: Transposer> {
     Pending,
     Poll {
         time:              T::Time,
@@ -93,7 +97,7 @@ enum InnerPoll<T: Transposer> {
     Ready(SourcePollOk<T::Time, T::Output, T::OutputState>),
 }
 
-struct StateHandler<T: Transposer> {
+pub struct StateHandler<T: Transposer> {
     phantom: PhantomData<fn(Self, T::OutputState)>,
 }
 
@@ -104,7 +108,7 @@ impl<T: Transposer> StateHandler<T> {
     }
 }
 
-struct InputHandler<T: Transposer> {
+pub struct InputHandler<T: Transposer> {
     phantom: PhantomData<fn(Self, T::OutputState)>,
 }
 

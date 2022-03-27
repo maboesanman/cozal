@@ -6,6 +6,7 @@ use super::storage::{DummySendStorage, TransposeStorage};
 // use super::transpose_step_metadata::TransposeStepMetadata;
 use crate::transposer::step::Step;
 use crate::transposer::Transposer;
+use crate::util::extended_entry::vecdeque::{get_ext_entry, ExtEntry};
 
 // a collection of Rc which are guranteed not to be cloned outside the collection is Send
 // whenever the same collection, but with Arc would be Send, so we do an unsafe impl for exactly that situation.
@@ -35,6 +36,21 @@ impl<T: Transposer> Steps<T> {
         let i = i.checked_sub(self.num_deleted_steps)?;
 
         self.steps.get_mut(i)
+    }
+
+    pub fn get_entry_by_sequence_number(
+        &mut self,
+        i: usize,
+    ) -> Option<ExtEntry<'_, StepWrapper<T>>> {
+        let i = i.checked_sub(self.num_deleted_steps)?;
+
+        get_ext_entry(&mut self.steps, i)
+    }
+
+    pub fn get_last_entry(&mut self) -> Option<ExtEntry<'_, StepWrapper<T>>> {
+        let i = self.steps.len().checked_sub(1)?;
+
+        get_ext_entry(&mut self.steps, i)
     }
 
     pub fn get_last_mut(&mut self) -> &mut StepWrapper<T> {

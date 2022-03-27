@@ -4,10 +4,12 @@ use std::task::{Wake, Waker};
 
 use parking_lot::Mutex;
 
+#[derive(Debug)]
 pub struct StackWaker {
     inner: Mutex<StackWakerInner>,
 }
 
+#[derive(Debug)]
 struct StackWakerInner {
     wakers: HashMap<usize, Waker>,
 }
