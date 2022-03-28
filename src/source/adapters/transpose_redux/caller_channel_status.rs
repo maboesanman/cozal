@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
-use std::task::Poll;
+use std::task::{Poll, Waker};
 
 use super::channel_assignments::{CallerChannelBlockedReason, StepBlockedReason, TransposerInner};
 use super::steps::{StepWrapper, Steps};
@@ -40,7 +40,7 @@ pub enum CallerChannelStatus<'a, T: Transposer> {
 }
 
 impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
-    fn get_channel_status(inner: &'a mut TransposerInner<T>, caller_channel: usize) -> Self {
+    pub fn get_channel_status(inner: &'a mut TransposerInner<T>, caller_channel: usize) -> Self {
         let TransposerInner {
             ref mut blocked_caller_channels,
             ref mut steps,
@@ -150,6 +150,18 @@ impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
             }),
         }
     }
+
+    pub fn caller_channel(&self) -> usize {
+        match self {
+            CallerChannelStatus::Free(s) => s.caller_channel(),
+            CallerChannelStatus::OriginalStepSourceState(s) => s.caller_channel(),
+            CallerChannelStatus::OriginalStepFuture(s) => s.caller_channel(),
+            CallerChannelStatus::RepeatStepSourceState(s) => s.caller_channel(),
+            CallerChannelStatus::RepeatStepFuture(s) => s.caller_channel(),
+            CallerChannelStatus::InterpolationSourceState(s) => s.caller_channel(),
+            CallerChannelStatus::InterpolationFuture(s) => s.caller_channel(),
+        }
+    }
 }
 
 pub struct Free<'a, T: Transposer> {
@@ -230,19 +242,31 @@ pub struct InterpolationFuture<'a, T: Transposer> {
 }
 
 impl<'a, T: Transposer> Free<'a, T> {
-    pub fn poll(self) -> CallerChannelStatus<'a, T> {
+    pub fn caller_channel(&self) -> usize {
+        *self.caller_channel.get_key()
+    }
+    pub fn poll(self) -> Result<T::OutputState, CallerChannelStatus<'a, T>> {
         todo!()
     }
 }
 
 impl<'a, T: Transposer> OriginalStepFuture<'a, T> {
-    pub fn poll(self) -> CallerChannelStatus<'a, T> {
+    pub fn caller_channel(&self) -> usize {
+        *self.caller_channel.get_key()
+    }
+    pub fn get_waker_for_future_poll(&self) -> Option<Waker> {
+        todo!()
+    }
+    pub fn poll_step(self) -> (CallerChannelStatus<'a, T>, Vec<T::Output>) {
         todo!()
     }
 }
 
 impl<'a, T: Transposer> OriginalStepSourceState<'a, T> {
-    pub fn get_context_for_source_poll(&self) -> SourceContext {
+    pub fn caller_channel(&self) -> usize {
+        *self.caller_channel.get_key()
+    }
+    pub fn get_context_for_source_poll(&self) -> Option<SourceContext> {
         todo!()
     }
     pub fn provide_state(self) -> CallerChannelStatus<'a, T> {
@@ -251,13 +275,22 @@ impl<'a, T: Transposer> OriginalStepSourceState<'a, T> {
 }
 
 impl<'a, T: Transposer> RepeatStepFuture<'a, T> {
-    pub fn poll(self) -> CallerChannelStatus<'a, T> {
+    pub fn caller_channel(&self) -> usize {
+        *self.caller_channel.get_key()
+    }
+    pub fn get_waker_for_future_poll(&self) -> Option<Waker> {
+        todo!()
+    }
+    pub fn poll_step(self) -> CallerChannelStatus<'a, T> {
         todo!()
     }
 }
 
 impl<'a, T: Transposer> RepeatStepSourceState<'a, T> {
-    pub fn get_context_for_source_poll(&self) -> SourceContext {
+    pub fn caller_channel(&self) -> usize {
+        *self.caller_channel.get_key()
+    }
+    pub fn get_context_for_source_poll(&self) -> Option<SourceContext> {
         todo!()
     }
     pub fn provide_state(self) -> CallerChannelStatus<'a, T> {
@@ -266,12 +299,18 @@ impl<'a, T: Transposer> RepeatStepSourceState<'a, T> {
 }
 
 impl<'a, T: Transposer> InterpolationFuture<'a, T> {
-    pub fn poll(self) -> CallerChannelStatus<'a, T> {
+    pub fn caller_channel(&self) -> usize {
+        *self.caller_channel.get_key()
+    }
+    pub fn poll_interpolation(self) -> CallerChannelStatus<'a, T> {
         todo!()
     }
 }
 
 impl<'a, T: Transposer> InterpolationSourceState<'a, T> {
+    pub fn caller_channel(&self) -> usize {
+        *self.caller_channel.get_key()
+    }
     pub fn get_context_for_source_poll(&self) -> SourceContext {
         todo!()
     }
