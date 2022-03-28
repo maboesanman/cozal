@@ -1,5 +1,6 @@
 use core::num::NonZeroUsize;
 use core::pin::Pin;
+use std::task::Waker;
 
 use super::source::SourceContext;
 use super::Source;
@@ -24,7 +25,7 @@ pub trait StatelessSource {
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext,
+        waker: Waker,
     ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error>;
 
     fn max_channels(&self) -> NonZeroUsize;
@@ -43,9 +44,9 @@ where
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext,
+        waker: Waker,
     ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error> {
-        S::poll_events(self, time, cx)
+        S::poll_events(self, time, waker)
     }
 
     fn max_channels(&self) -> NonZeroUsize {

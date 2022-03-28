@@ -222,9 +222,9 @@ impl<Src: Source> Source for Multiplex<Src> {
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext,
+        all_channel_waker: Waker,
     ) -> SourcePoll<Self::Time, Self::Event, (), Src::Error> {
-        self.poll_internal(time, cx, Src::poll_events, PollType::Events)
+        self.project().source.poll_events(time, all_channel_waker)
     }
 
     fn advance(self: Pin<&mut Self>, time: Self::Time) {

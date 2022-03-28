@@ -1,18 +1,19 @@
-mod caller_channel_status;
-mod channel_assignments;
+// mod caller_channel_status;
+// mod channel_assignments;
+mod channel_statuses;
 mod input_buffer;
 mod output_buffer;
 mod steps;
 mod storage;
 // mod transpose_step_metadata;
 
-use std::collections::{BTreeSet, HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::Weak;
+use std::task::{Poll, Waker};
 
 use pin_project::pin_project;
 
-use self::steps::Steps;
+use self::channel_statuses::ChannelStatuses;
 use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
 use crate::transposer::Transposer;
@@ -24,9 +25,6 @@ pub struct Transpose<Src: Source, T: Transposer> {
     #[pin]
     source: Src,
 
-    // the collection of steps.
-    steps: Steps<T>,
-
     // the all channel waker to keep up to date.
     all_channel_waker: Weak<ReplaceWaker>,
 
@@ -36,22 +34,8 @@ pub struct Transpose<Src: Source, T: Transposer> {
     // whichever is later
     events_poll_time: T::Time,
 
-    // These are all the currently pending operations, from the perspective of the source.
-    // BTreeMap<source_channel, assignment>
-    source_channels: BTreeSet<usize>,
-
-    // These are all the currently pending operations, from the perspective of the caller.
-    // They can be blocked due to pending source, step, or interpolation.
-    // Each caller_channel is present in no more than one of the following collections:
-
-    // HashMap<caller_channel, step_id>
-    repeat_step_blocked_callers: HashMap<usize, usize>,
-
-    // Option<(HashSet<caller_channel>, source_channel)>
-    original_step_blocked_callers: Option<(HashSet<usize>, usize)>,
-
-    // HashMap<caller_channel, source_channel>
-    interpolation_blocked_callers: HashMap<usize, usize>,
+    // current statuses. this contains most of the state.
+    channel_statuses: ChannelStatuses<T>,
 }
 
 impl<Src, T> Transpose<Src, T>
@@ -62,6 +46,37 @@ where
     T: Clone,
 {
     pub fn new(source: Src, transposer: T, rng_seed: [u8; 32]) -> Self {
+        Self {
+            source,
+            all_channel_waker: ReplaceWaker::new_empty(),
+            events_poll_time: T::Time::default(),
+            channel_statuses: ChannelStatuses::new(transposer, rng_seed),
+        }
+    }
+
+    pub fn poll_inner(
+        self: Pin<&mut Self>,
+        poll_time: T::Time,
+        cx: SourceContext,
+    ) -> SourcePoll<T::Time, T::Output, T::OutputState, Src::Error> {
+        let TransposeProject {
+            source,
+            all_channel_waker,
+            events_poll_time,
+            channel_statuses,
+        } = self.project();
+        let SourceContext {
+            channel: caller_channel,
+            one_channel_waker,
+            all_channel_waker: caller_all_channel_waker,
+        } = cx;
+
+        if let Some(waker) = ReplaceWaker::register(all_channel_waker, caller_all_channel_waker) {
+            match source.poll_events(*events_poll_time, waker) {
+                Poll::Ready(_) => todo!(),
+                Poll::Pending => todo!(),
+            }
+        }
         todo!()
     }
 }
@@ -100,7 +115,7 @@ where
     fn poll_events(
         self: Pin<&mut Self>,
         poll_time: Self::Time,
-        cx: SourceContext,
+        all_channel_waker: Waker,
     ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error> {
         todo!()
     }

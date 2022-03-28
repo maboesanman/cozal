@@ -1,10 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
-use std::task::{Poll, Waker};
+use std::sync::Weak;
+use std::task::Waker;
 
-use super::channel_assignments::{CallerChannelBlockedReason, StepBlockedReason, TransposerInner};
 use super::steps::{StepWrapper, Steps};
-use super::Transpose;
+use super::storage::TransposeStorage;
+// use crate::source::adapters::transpose_redux::transpose_step_metadata::unwrap_repeat_saturating;
 use crate::source::traits::SourceContext;
+use crate::transposer::step::Interpolation;
 use crate::transposer::Transposer;
 use crate::util::extended_entry::btree_map::{
     get_occupied as btree_map_get_occupied,
@@ -25,35 +27,52 @@ use crate::util::extended_entry::vecdeque::{
     get_ext_entry as vecdeque_get_ext_entry,
     ExtEntry as VecDequeEntry,
 };
+use crate::util::replace_waker::ReplaceWaker;
+use crate::util::stack_waker::StackWaker;
 
-/// this enum represents the current blocked status for a given channel.
-/// it can move between statuses under various circumstances,
-/// like being provided a source state, or a future polling ready.
-pub enum CallerChannelStatus<'a, T: Transposer> {
-    Free(Free<'a, T>),
-    OriginalStepSourceState(OriginalStepSourceState<'a, T>),
-    OriginalStepFuture(OriginalStepFuture<'a, T>),
-    RepeatStepSourceState(RepeatStepSourceState<'a, T>),
-    RepeatStepFuture(RepeatStepFuture<'a, T>),
-    InterpolationSourceState(InterpolationSourceState<'a, T>),
-    InterpolationFuture(InterpolationFuture<'a, T>),
+// manage the association of source and caller channels.
+// own steps.
+// own interpolations.
+// own one_channel_wakers.
+pub struct ChannelStatuses<T: Transposer> {
+    // the collection of steps.
+    pub steps: Steps<T>,
+
+    // These are all the source channels currently in use.
+    // this is just a hack to use the entry api.
+    pub blocked_source_channels: BTreeMap</* source_channel */ usize, ()>,
+
+    // These are all the currently pending operations, from the perspective of the caller.
+    // They can be blocked due to pending source_state, step_future, or interpolation_future.
+    pub blocked_caller_channels:
+        HashMap</* caller_channel */ usize, CallerChannelBlockedReason<T>>,
+
+    // these are the currently blocked repeat steps, including the stack wakers
+    pub repeat_step_blocked_reasons: HashMap</* step_id */ usize, StepBlockedReason>,
+
+    // this is the currently blocked original step if it exists, including the stack wakers
+    pub original_step_blocked_reasons: Option<StepBlockedReason>,
 }
 
-impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
-    pub fn get_channel_status(inner: &'a mut TransposerInner<T>, caller_channel: usize) -> Self {
-        let TransposerInner {
+impl<T: Transposer> ChannelStatuses<T> {
+    pub fn new(transposer: T, rng_seed: [u8; 32]) -> Self {
+        todo!()
+    }
+
+    pub fn get_channel_status(&mut self, caller_channel: usize) -> CallerChannelStatus<'_, T> {
+        let ChannelStatuses {
             ref mut blocked_caller_channels,
             ref mut steps,
             ref mut blocked_source_channels,
             ref mut repeat_step_blocked_reasons,
             ref mut original_step_blocked_reasons,
-        } = inner;
+        } = self;
 
         let caller_channel_entry = hash_map_get_occupied(blocked_caller_channels, caller_channel);
 
         let caller_channel = match caller_channel_entry {
             Err(caller_channel) => {
-                return Self::Free(Free {
+                return CallerChannelStatus::Free(Free {
                     caller_channel,
                     steps,
                     blocked_source_channels,
@@ -75,7 +94,7 @@ impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
                         let source_channel =
                             btree_map_get_occupied(blocked_source_channels, *source_channel)
                                 .unwrap();
-                        Self::OriginalStepSourceState(OriginalStepSourceState {
+                        CallerChannelStatus::OriginalStepSourceState(OriginalStepSourceState {
                             caller_channel,
                             step,
                             block_reason,
@@ -85,7 +104,7 @@ impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
                     },
                     StepBlockedReason::Future {
                         ..
-                    } => Self::OriginalStepFuture(OriginalStepFuture {
+                    } => CallerChannelStatus::OriginalStepFuture(OriginalStepFuture {
                         caller_channel,
                         step,
                         block_reason,
@@ -107,7 +126,7 @@ impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
                         let source_channel =
                             btree_map_get_occupied(blocked_source_channels, *source_channel)
                                 .unwrap();
-                        Self::RepeatStepSourceState(RepeatStepSourceState {
+                        CallerChannelStatus::RepeatStepSourceState(RepeatStepSourceState {
                             caller_channel,
                             step,
                             block_reason,
@@ -117,7 +136,7 @@ impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
                     },
                     StepBlockedReason::Future {
                         ..
-                    } => Self::RepeatStepFuture(RepeatStepFuture {
+                    } => CallerChannelStatus::RepeatStepFuture(RepeatStepFuture {
                         caller_channel,
                         step,
                         block_reason,
@@ -131,7 +150,7 @@ impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
             } => {
                 let source_channel =
                     btree_map_get_occupied(blocked_source_channels, *source_channel).unwrap();
-                Self::InterpolationSourceState(InterpolationSourceState {
+                CallerChannelStatus::InterpolationSourceState(InterpolationSourceState {
                     caller_channel,
                     source_channel,
                     steps,
@@ -141,7 +160,7 @@ impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
             },
             CallerChannelBlockedReason::InterpolationFuture {
                 ..
-            } => Self::InterpolationFuture(InterpolationFuture {
+            } => CallerChannelStatus::InterpolationFuture(InterpolationFuture {
                 caller_channel,
                 steps,
                 blocked_source_channels,
@@ -150,7 +169,60 @@ impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
             }),
         }
     }
+}
 
+#[derive(Debug)]
+pub enum StepBlockedReason {
+    SourceState {
+        source_channel: usize,
+        stack_waker:    Weak<StackWaker>,
+    },
+    Future {
+        stack_waker: Weak<StackWaker>,
+    },
+}
+
+pub enum CallerChannelBlockedReason<T: Transposer> {
+    OriginalStep,
+    RepeatStep {
+        step_id: usize,
+    },
+    InterpolationSourceState {
+        source_channel: usize,
+        interpolation:  Interpolation<T, TransposeStorage>,
+        forget:         bool,
+    },
+    InterpolationFuture {
+        interpolation: Interpolation<T, TransposeStorage>,
+        forget:        bool,
+    },
+}
+
+struct RepeatStepBlockedCaller {
+    source_channel: usize,
+    step_id:        usize,
+    stack_waker:    Weak<StackWaker>,
+}
+
+struct InterpolationWrapper<T: Transposer> {
+    source_channel: usize,
+    interpolation:  Interpolation<T, TransposeStorage>,
+}
+
+/// this enum represents the current blocked status for a given channel.
+/// it can move between statuses under various circumstances,
+/// like being provided a source state, or a future polling ready.
+pub enum CallerChannelStatus<'a, T: Transposer> {
+    Free(Free<'a, T>),
+    OriginalStepSourceState(OriginalStepSourceState<'a, T>),
+    OriginalStepFuture(OriginalStepFuture<'a, T>),
+    RepeatStepSourceState(RepeatStepSourceState<'a, T>),
+    RepeatStepFuture(RepeatStepFuture<'a, T>),
+    InterpolationSourceState(InterpolationSourceState<'a, T>),
+    InterpolationFuture(InterpolationFuture<'a, T>),
+}
+
+impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
     pub fn caller_channel(&self) -> usize {
         match self {
             CallerChannelStatus::Free(s) => s.caller_channel(),

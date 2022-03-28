@@ -1,6 +1,7 @@
 use core::num::NonZeroUsize;
 use core::pin::Pin;
 use std::sync::Arc;
+use std::task::Waker;
 
 mod advanced;
 mod channel_map;
@@ -73,7 +74,7 @@ where
     fn poll_events(
         self: Pin<&mut Self>,
         poll_time: Self::Time,
-        cx: SourceContext,
+        all_channel_waker: Waker,
     ) -> SourcePoll<Self::Time, Self::Event, (), Src::Error> {
         self.inner.poll(poll_time, cx, Src::poll_events)
     }

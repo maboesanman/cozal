@@ -78,20 +78,8 @@ pub trait Source {
     fn poll_events(
         self: Pin<&mut Self>,
         time: Self::Time,
-        cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error> {
-        match self.poll_forget(time, cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
-            Poll::Ready(Ok(result)) => Poll::Ready(Ok(match result {
-                SourcePollOk::Rollback(t) => SourcePollOk::Rollback(t),
-                SourcePollOk::Event(e, t) => SourcePollOk::Event(e, t),
-                SourcePollOk::Scheduled(_s, t) => SourcePollOk::Scheduled((), t),
-                SourcePollOk::Finalize(t) => SourcePollOk::Finalize(t),
-                SourcePollOk::Ready(_s) => SourcePollOk::Ready(()),
-            })),
-        }
-    }
+        all_channel_waker: Waker,
+    ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error>;
 
     /// Inform the source it is no longer obligated to retain progress made on `channel`
     fn release_channel(self: Pin<&mut Self>, channel: usize);

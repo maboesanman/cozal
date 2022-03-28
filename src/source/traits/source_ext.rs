@@ -1,5 +1,5 @@
 use super::Source;
-use crate::source::adapters::{Duplicate, Map, Multiplex, Shift, Transpose};
+use crate::source::adapters::{Multiplex, Transpose};
 use crate::transposer::Transposer;
 
 impl<S> SourceExt for S where S: Source {}
@@ -36,24 +36,6 @@ pub trait SourceExt: Source + Sized {
         Transpose::new(self, initial, rng_seed)
     }
 
-    /// Adapter for converting the events and states of a source.
-    fn map<E, S>(
-        self,
-        event_transform: fn(Self::Event) -> Option<E>,
-        state_transform: fn(Self::State) -> S,
-    ) -> Map<Self, E, S> {
-        Map::new(self, event_transform, state_transform)
-    }
-
-    /// Adapter for converting time of a source.
-    fn shift<T: Ord + Copy, IntoNew, IntoOld>(
-        self,
-        into_new: fn(Self::Time) -> T,
-        into_old: fn(T) -> Self::Time,
-    ) -> Shift<Self, T> {
-        Shift::new(self, into_new, into_old)
-    }
-
     /// Adapter for offloading work to a future
     // fn offload(self) -> (OffloadSource<Self>, OffloadFuture<Self>) {
     //     offload(self)
@@ -62,13 +44,5 @@ pub trait SourceExt: Source + Sized {
     /// Adapter for calling a limited-channel source on any number of channels
     fn multiplex(self) -> Multiplex<Self> {
         Multiplex::new(self)
-    }
-
-    /// Adapter to make a source cloneable. Each clone gets all events, so events must be `Clone`
-    fn duplicate(self) -> Duplicate<Self>
-    where
-        Self::Event: Clone,
-    {
-        Duplicate::new(self)
     }
 }
