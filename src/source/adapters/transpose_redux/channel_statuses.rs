@@ -70,7 +70,7 @@ impl<T: Transposer> ChannelStatuses<T> {
 
         let caller_channel_entry = hash_map_get_occupied(blocked_caller_channels, caller_channel);
 
-        let caller_channel = match caller_channel_entry {
+        let mut caller_channel = match caller_channel_entry {
             Err(caller_channel) => {
                 return CallerChannelStatus::Free(Free {
                     caller_channel,
@@ -83,7 +83,7 @@ impl<T: Transposer> ChannelStatuses<T> {
             Ok(caller_channel) => caller_channel,
         };
 
-        match caller_channel.get_value() {
+        match caller_channel.get_value_mut() {
             CallerChannelBlockedReason::OriginalStep => {
                 let step = steps.get_last_entry().unwrap();
                 let block_reason = option_get_occupied(original_step_blocked_reasons).unwrap();
@@ -220,19 +220,25 @@ pub enum CallerChannelStatus<'a, T: Transposer> {
     RepeatStepFuture(RepeatStepFuture<'a, T>),
     InterpolationSourceState(InterpolationSourceState<'a, T>),
     InterpolationFuture(InterpolationFuture<'a, T>),
+    Poisioned,
 }
 
 impl<'a, T: Transposer> CallerChannelStatus<'a, T> {
     pub fn caller_channel(&self) -> usize {
         match self {
-            CallerChannelStatus::Free(s) => s.caller_channel(),
-            CallerChannelStatus::OriginalStepSourceState(s) => s.caller_channel(),
-            CallerChannelStatus::OriginalStepFuture(s) => s.caller_channel(),
-            CallerChannelStatus::RepeatStepSourceState(s) => s.caller_channel(),
-            CallerChannelStatus::RepeatStepFuture(s) => s.caller_channel(),
-            CallerChannelStatus::InterpolationSourceState(s) => s.caller_channel(),
-            CallerChannelStatus::InterpolationFuture(s) => s.caller_channel(),
+            Self::Free(s) => s.caller_channel(),
+            Self::OriginalStepSourceState(s) => s.caller_channel(),
+            Self::OriginalStepFuture(s) => s.caller_channel(),
+            Self::RepeatStepSourceState(s) => s.caller_channel(),
+            Self::RepeatStepFuture(s) => s.caller_channel(),
+            Self::InterpolationSourceState(s) => s.caller_channel(),
+            Self::InterpolationFuture(s) => s.caller_channel(),
+            Self::Poisioned => unreachable!(),
         }
+    }
+
+    pub fn is_free(&self) -> bool {
+        matches!(self, Self::Free(_))
     }
 }
 
@@ -338,11 +344,46 @@ impl<'a, T: Transposer> OriginalStepSourceState<'a, T> {
     pub fn caller_channel(&self) -> usize {
         *self.caller_channel.get_key()
     }
-    pub fn get_context_for_source_poll(&self) -> Option<SourceContext> {
+    pub fn get_args_for_source_poll(&self) -> Option<(T::Time, SourceContext)> {
         todo!()
     }
-    pub fn provide_state(self) -> CallerChannelStatus<'a, T> {
-        todo!()
+    pub fn provide_state(
+        self,
+        state: T::InputState,
+        ignore_waker: &Waker,
+    ) -> OriginalStepFuture<'a, T> {
+        let OriginalStepSourceState {
+            // entries
+            caller_channel,
+            mut step,
+            block_reason,
+            source_channel,
+
+            // extra
+            repeat_step_blocked_reasons,
+        } = self;
+
+        let x = step
+            .get_value_mut()
+            .step
+            .set_input_state(state, ignore_waker);
+
+        debug_assert!(x.is_ok());
+
+        // we're not blocked anymore, so we can remove the blocked source channel.
+        let (vacant, ()) = source_channel.vacate();
+        let (blocked_source_channels, _) = vacant.into_collection_mut();
+
+        OriginalStepFuture {
+            // entries
+            caller_channel,
+            step,
+            block_reason,
+
+            // extra
+            blocked_source_channels,
+            repeat_step_blocked_reasons,
+        }
     }
 }
 
@@ -362,11 +403,45 @@ impl<'a, T: Transposer> RepeatStepSourceState<'a, T> {
     pub fn caller_channel(&self) -> usize {
         *self.caller_channel.get_key()
     }
-    pub fn get_context_for_source_poll(&self) -> Option<SourceContext> {
+    pub fn get_args_for_source_poll(&self) -> Option<(T::Time, SourceContext)> {
         todo!()
     }
-    pub fn provide_state(self) -> CallerChannelStatus<'a, T> {
-        todo!()
+    pub fn provide_state(
+        self,
+        state: T::InputState,
+        ignore_waker: &Waker,
+    ) -> RepeatStepFuture<'a, T> {
+        let RepeatStepSourceState {
+            // entries
+            caller_channel,
+            mut step,
+            block_reason,
+            source_channel,
+            // extra
+            original_step_blocked_reasons,
+        } = self;
+
+        let x = step
+            .get_value_mut()
+            .step
+            .set_input_state(state, ignore_waker);
+
+        debug_assert!(x.is_ok());
+
+        // we're not blocked anymore, so we can remove the blocked source channel.
+        let (vacant, ()) = source_channel.vacate();
+        let (blocked_source_channels, _) = vacant.into_collection_mut();
+
+        RepeatStepFuture {
+            // entries
+            caller_channel,
+            step,
+            block_reason,
+
+            // extra
+            blocked_source_channels,
+            original_step_blocked_reasons,
+        }
     }
 }
 
@@ -383,10 +458,49 @@ impl<'a, T: Transposer> InterpolationSourceState<'a, T> {
     pub fn caller_channel(&self) -> usize {
         *self.caller_channel.get_key()
     }
-    pub fn get_context_for_source_poll(&self) -> SourceContext {
+    pub fn get_args_for_source_poll(&self) -> Option<(T::Time, SourceContext, bool)> {
         todo!()
     }
-    pub fn provide_state(self) -> CallerChannelStatus<'a, T> {
-        todo!()
+    pub fn provide_state(
+        self,
+        state: T::InputState,
+        ignore_waker: &Waker,
+    ) -> InterpolationFuture<'a, T> {
+        let InterpolationSourceState {
+            // entries
+            mut caller_channel,
+            source_channel,
+
+            // extra
+            steps,
+            repeat_step_blocked_reasons,
+            original_step_blocked_reasons,
+        } = self;
+
+        if let CallerChannelBlockedReason::InterpolationSourceState {
+            interpolation, ..
+        } = caller_channel.get_value_mut()
+        {
+            let x = interpolation.set_state(state, ignore_waker);
+
+            debug_assert!(x.is_ok())
+        } else {
+            panic!()
+        }
+
+        // we're not blocked anymore, so we can remove the blocked source channel.
+        let (vacant, ()) = source_channel.vacate();
+        let (blocked_source_channels, _) = vacant.into_collection_mut();
+
+        InterpolationFuture {
+            // entries
+            caller_channel,
+
+            // extra
+            steps,
+            blocked_source_channels,
+            repeat_step_blocked_reasons,
+            original_step_blocked_reasons,
+        }
     }
 }

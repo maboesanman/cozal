@@ -23,6 +23,21 @@ where
     Ready(S),
 }
 
+impl<T, E, S> SourcePollOk<T, E, S>
+where
+    T: Ord + Copy,
+{
+    pub(crate) fn supress_state(self) -> SourcePollOk<T, E, ()> {
+        match self {
+            Self::Rollback(t) => SourcePollOk::Rollback(t),
+            Self::Event(e, t) => SourcePollOk::Event(e, t),
+            Self::Finalize(t) => SourcePollOk::Finalize(t),
+            Self::Scheduled(_, t) => SourcePollOk::Scheduled((), t),
+            Self::Ready(_) => SourcePollOk::Ready(()),
+        }
+    }
+}
+
 #[non_exhaustive]
 pub enum SourcePollErr<T, Err> {
     OutOfBoundsChannel,

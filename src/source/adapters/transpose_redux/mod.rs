@@ -14,6 +14,8 @@ use std::task::{Poll, Waker};
 use pin_project::pin_project;
 
 use self::channel_statuses::ChannelStatuses;
+use crate::source::adapters::transpose_redux::channel_statuses::CallerChannelStatus;
+use crate::source::source_poll::SourcePollOk;
 use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
 use crate::transposer::Transposer;
@@ -38,6 +40,8 @@ pub struct Transpose<Src: Source, T: Transposer> {
     channel_statuses: ChannelStatuses<T>,
 }
 
+enum SourcePollToHandle {}
+
 impl<Src, T> Transpose<Src, T>
 where
     Src: Source,
@@ -60,24 +64,80 @@ where
         cx: SourceContext,
     ) -> SourcePoll<T::Time, T::Output, T::OutputState, Src::Error> {
         let TransposeProject {
-            source,
+            mut source,
             all_channel_waker,
             events_poll_time,
             channel_statuses,
         } = self.project();
+
         let SourceContext {
             channel: caller_channel,
             one_channel_waker,
             all_channel_waker: caller_all_channel_waker,
         } = cx;
 
+        let mut unhandled_event_info: Option<SourcePollOk<Src::Time, Src::Event, ()>> = None;
+
+        // poll events if our all channel waker was triggered.
         if let Some(waker) = ReplaceWaker::register(all_channel_waker, caller_all_channel_waker) {
-            match source.poll_events(*events_poll_time, waker) {
-                Poll::Ready(_) => todo!(),
-                Poll::Pending => todo!(),
+            match source.as_mut().poll_events(*events_poll_time, waker) {
+                Poll::Ready(Ok(poll)) => unhandled_event_info = Some(poll),
+                Poll::Ready(Err(poll)) => {
+                    todo!(/* handle new event info, possibly modifying input buffer, channel status, and output buffer */)
+                },
+                Poll::Pending => return Poll::Pending,
             }
         }
-        todo!()
+
+        let handle_scheduled = |t: T::Time| todo!();
+
+        // at this point we only need to poll the source if state is needed.
+        // we are ready to start manipulating the status,
+        // handling blockers as they arise.
+
+        let mut status = channel_statuses.get_channel_status(caller_channel);
+
+        loop {
+            if let Some(_) = unhandled_event_info {
+                unhandled_event_info = None;
+                todo!();
+            }
+
+            match core::mem::replace(&mut status, CallerChannelStatus::Poisioned) {
+                CallerChannelStatus::Poisioned => unreachable!(),
+                CallerChannelStatus::Free(_) => todo!(),
+                CallerChannelStatus::OriginalStepSourceState(inner_status) => {
+                    let state = match inner_status.get_args_for_source_poll() {
+                        Some((time, cx)) => match source.as_mut().poll(time, cx) {
+                            Poll::Ready(Ok(SourcePollOk::Ready(s))) => s,
+                            Poll::Ready(Ok(SourcePollOk::Scheduled(s, t))) => {
+                                handle_scheduled(t);
+                                s
+                            },
+                            Poll::Ready(Ok(poll)) => {
+                                unhandled_event_info = Some(poll.supress_state());
+                                continue
+                            },
+                            Poll::Ready(Err(p)) => todo!(),
+                            Poll::Pending => break Poll::Pending,
+                        },
+                        None => break Poll::Pending,
+                    };
+
+                    // this provide state call will not poll the future.
+                    let future_state = inner_status.provide_state(state, &one_channel_waker);
+
+                    // now loop again, polling the future on the next pass.
+                    status = CallerChannelStatus::OriginalStepFuture(future_state);
+                    continue
+                },
+                CallerChannelStatus::OriginalStepFuture(_) => todo!(),
+                CallerChannelStatus::RepeatStepSourceState(_) => todo!(),
+                CallerChannelStatus::RepeatStepFuture(_) => todo!(),
+                CallerChannelStatus::InterpolationSourceState(_) => todo!(),
+                CallerChannelStatus::InterpolationFuture(_) => todo!(),
+            }
+        }
     }
 }
 
