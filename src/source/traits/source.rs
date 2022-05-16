@@ -1,8 +1,7 @@
 use core::num::NonZeroUsize;
 use core::pin::Pin;
-use core::task::{Poll, Waker};
+use core::task::Waker;
 
-use crate::source::source_poll::SourcePollOk;
 use crate::source::SourcePoll;
 
 #[derive(Clone)]

@@ -3,11 +3,11 @@
     "editor.defaultFormatter": "matklad.rust-analyzer",
     "editor.formatOnPaste": true,
     "editor.formatOnSave": true,
-    "rust-analyzer.assist.importGranularity": "module",
-    "rust-analyzer.assist.allowMergingIntoGlobImports": false,
     "rust-analyzer.cargo.unsetTest": [],
     "rust-analyzer.lens.references": true,
     "rust-analyzer.lens.methodReferences": true,
     "rust-analyzer.lens.enumVariantReferences": true,
-    "rust-analyzer.updates.channel": "nightly"
+    "rust-analyzer.updates.channel": "nightly",
+    "rust-analyzer.imports.merge.glob": false,
+    "rust-analyzer.imports.granularity.group": "module"
 }
