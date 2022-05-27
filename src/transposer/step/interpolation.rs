@@ -50,9 +50,9 @@ impl<T: Transposer, S: StorageFamily> Interpolation<T, S> {
     pub fn set_state(
         &self,
         state: T::InputState,
-        ignore_waker: &Waker,
+        skip_wake: bool,
     ) -> Result<(), Box<T::InputState>> {
-        self.context.state.set(state, ignore_waker)
+        self.context.state.set(state, skip_wake)
     }
 }
 

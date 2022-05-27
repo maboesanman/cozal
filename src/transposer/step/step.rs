@@ -368,9 +368,9 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
     pub fn set_input_state(
         &mut self,
         state: T::InputState,
-        ignore_waker: &Waker,
+        skip_wake: bool,
     ) -> Result<(), Box<T::InputState>> {
-        self.input_state.set(state, ignore_waker)
+        self.input_state.set(state, skip_wake)
     }
 
     pub fn interpolate(&self, time: T::Time) -> Result<Interpolation<T, S>, InterpolateErr> {
@@ -569,6 +569,13 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
 
     pub fn is_saturated(&self) -> bool {
         matches!(self.inner, StepInner::Saturated { .. })
+    }
+
+    pub fn is_saturating(&self) -> bool {
+        matches!(
+            self.inner,
+            StepInner::OriginalSaturating { .. } | StepInner::RepeatSaturating { .. }
+        )
     }
 
     pub fn is_unsaturated(&self) -> bool {

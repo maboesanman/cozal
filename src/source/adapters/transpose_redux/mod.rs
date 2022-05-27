@@ -14,12 +14,15 @@ use std::task::{Poll, Waker};
 use pin_project::pin_project;
 
 use self::channel_statuses::ChannelStatuses;
+use self::input_buffer::InputBuffer;
+use self::output_buffer::OutputBuffer;
 use crate::source::adapters::transpose_redux::channel_statuses::CallerChannelStatus;
 use crate::source::source_poll::SourcePollOk;
 use crate::source::traits::SourceContext;
 use crate::source::{Source, SourcePoll};
 use crate::transposer::Transposer;
 use crate::util::replace_waker::ReplaceWaker;
+use crate::util::stack_waker::StackWaker;
 
 #[pin_project(project=TransposeProject)]
 pub struct Transpose<Src: Source, T: Transposer> {
@@ -38,6 +41,10 @@ pub struct Transpose<Src: Source, T: Transposer> {
 
     // current statuses. this contains most of the state.
     channel_statuses: ChannelStatuses<T>,
+
+    input_buffer: InputBuffer<T>,
+
+    output_buffer: OutputBuffer<T>,
 }
 
 enum SourcePollToHandle {}
@@ -55,6 +62,8 @@ where
             all_channel_waker: ReplaceWaker::new_empty(),
             events_poll_time: T::Time::default(),
             channel_statuses: ChannelStatuses::new(transposer, rng_seed),
+            input_buffer: InputBuffer::new(),
+            output_buffer: OutputBuffer::new(),
         }
     }
 
@@ -68,6 +77,8 @@ where
             all_channel_waker,
             events_poll_time,
             channel_statuses,
+            input_buffer,
+            output_buffer,
         } = self.project();
 
         let SourceContext {
@@ -97,18 +108,36 @@ where
 
         let mut status = channel_statuses.get_channel_status(caller_channel);
 
-        loop {
-            if let Some(_) = unhandled_event_info {
+        let all_channel_waker = ReplaceWaker::get_waker(all_channel_waker);
+
+        'outer: loop {
+            if let Some(poll) = unhandled_event_info {
                 unhandled_event_info = None;
+                // handle poll
+                poll;
                 todo!();
             }
 
-            match core::mem::replace(&mut status, CallerChannelStatus::Poisioned) {
-                CallerChannelStatus::Poisioned => unreachable!(),
-                CallerChannelStatus::Free(_) => todo!(),
-                CallerChannelStatus::OriginalStepSourceState(inner_status) => {
-                    let state = match inner_status.get_args_for_source_poll() {
-                        Some((time, cx)) => match source.as_mut().poll(time, cx) {
+            'inner: loop {
+                match core::mem::replace(&mut status, CallerChannelStatus::Limbo) {
+                    CallerChannelStatus::Limbo => unreachable!(),
+                    CallerChannelStatus::Free(inner_status) => {
+                        // TODO THIS NEEDS TO ACCOUNT FOR FORGET / EVENTS
+                        status = inner_status.poll(false, poll_time);
+                        continue 'inner
+                    },
+                    CallerChannelStatus::OriginalStepSourceState(mut inner_status) => {
+                        let (time, source_channel) = inner_status.get_args_for_source_poll();
+
+                        // original steps can emit events which effect all channels,
+                        // so this uses the all channel waker for both of these.
+                        let cx = SourceContext {
+                            channel:           source_channel,
+                            one_channel_waker: all_channel_waker.clone(),
+                            all_channel_waker: all_channel_waker.clone(),
+                        };
+
+                        let state = match source.as_mut().poll(time, cx) {
                             Poll::Ready(Ok(SourcePollOk::Ready(s))) => s,
                             Poll::Ready(Ok(SourcePollOk::Scheduled(s, t))) => {
                                 handle_scheduled(t);
@@ -116,26 +145,94 @@ where
                             },
                             Poll::Ready(Ok(poll)) => {
                                 unhandled_event_info = Some(poll.supress_state());
-                                continue
+                                continue 'outer
                             },
-                            Poll::Ready(Err(p)) => todo!(),
-                            Poll::Pending => break Poll::Pending,
-                        },
-                        None => break Poll::Pending,
-                    };
+                            Poll::Ready(Err(_)) => todo!(),
+                            Poll::Pending => break 'outer Poll::Pending,
+                        };
 
-                    // this provide state call will not poll the future.
-                    let future_state = inner_status.provide_state(state, &one_channel_waker);
+                        // this provide state call will not poll the future.
+                        let inner_status = inner_status.provide_state(state, false);
 
-                    // now loop again, polling the future on the next pass.
-                    status = CallerChannelStatus::OriginalStepFuture(future_state);
-                    continue
-                },
-                CallerChannelStatus::OriginalStepFuture(_) => todo!(),
-                CallerChannelStatus::RepeatStepSourceState(_) => todo!(),
-                CallerChannelStatus::RepeatStepFuture(_) => todo!(),
-                CallerChannelStatus::InterpolationSourceState(_) => todo!(),
-                CallerChannelStatus::InterpolationFuture(_) => todo!(),
+                        // now loop again, polling the future on the next pass.
+                        status = CallerChannelStatus::OriginalStepFuture(inner_status);
+                        continue 'inner
+                    },
+                    CallerChannelStatus::OriginalStepFuture(inner_status) => {
+                        let t = inner_status.time();
+                        let (s, outputs) = inner_status.poll(&all_channel_waker);
+                        for o in outputs {
+                            output_buffer.handle_output_event(t, o);
+                        }
+                        status = s;
+                    },
+                    CallerChannelStatus::RepeatStepSourceState(mut inner_status) => {
+                        let (time, stack_waker, source_channel) =
+                            inner_status.get_args_for_source_poll();
+
+                        let stacked_waker = match StackWaker::register(
+                            stack_waker,
+                            caller_channel,
+                            one_channel_waker.clone(),
+                        ) {
+                            Some(w) => w,
+                            None => break 'outer Poll::Pending,
+                        };
+
+                        let cx = SourceContext {
+                            channel:           source_channel,
+                            one_channel_waker: stacked_waker,
+                            all_channel_waker: all_channel_waker.clone(),
+                        };
+
+                        let state = match source.as_mut().poll(time, cx) {
+                            Poll::Ready(Ok(SourcePollOk::Ready(s))) => s,
+                            Poll::Ready(Ok(SourcePollOk::Scheduled(s, t))) => {
+                                handle_scheduled(t);
+                                s
+                            },
+                            Poll::Ready(Ok(poll)) => {
+                                unhandled_event_info = Some(poll.supress_state());
+                                continue 'outer
+                            },
+                            Poll::Ready(Err(_)) => todo!(),
+                            Poll::Pending => break 'outer Poll::Pending,
+                        };
+
+                        // this provide state call will not poll the future.
+                        let inner_status = inner_status.provide_state(state, false);
+
+                        // now loop again, polling the future on the next pass.
+                        status = CallerChannelStatus::RepeatStepFuture(inner_status);
+                        continue 'inner
+                    },
+                    CallerChannelStatus::RepeatStepFuture(inner_status) => {
+                        let stacked_waker = match StackWaker::register(
+                            todo!(), // stack_waker,
+                            caller_channel,
+                            one_channel_waker.clone(),
+                        ) {
+                            Some(w) => w,
+                            None => break 'outer Poll::Pending,
+                        };
+                        // this needs to poll with the stack waker.
+                        todo!();
+                        // status = inner_status.poll(&one_channel_waker);
+                    },
+                    CallerChannelStatus::InterpolationSourceState(_) => todo!(),
+                    CallerChannelStatus::InterpolationFuture(inner_status) => {
+                        let output_state = match inner_status.poll(&one_channel_waker) {
+                            Ok(Poll::Ready(output_state)) => output_state,
+                            Ok(Poll::Pending) => break 'outer Poll::Pending,
+                            Err(s) => {
+                                status = s;
+                                continue 'inner
+                            },
+                        };
+
+                        todo!()
+                    },
+                }
             }
         }
     }

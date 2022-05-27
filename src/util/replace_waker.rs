@@ -21,18 +21,7 @@ impl ReplaceWaker {
 
     // return whether or not this waker should be used to poll right away
     pub fn register(weak: &mut Weak<Self>, waker: Waker) -> Option<Waker> {
-        let arc_self = match weak.upgrade() {
-            Some(a) => a,
-            None => Arc::new(ReplaceWaker {
-                inner: Mutex::new(ReplaceWakerInner {
-                    waker: DummyWaker::dummy(),
-                    woken: false,
-                }),
-            }), // this means the waker was dropped; need a new one.
-        };
-
-        let new_weak = Arc::downgrade(&arc_self);
-        *weak = new_weak;
+        let arc_self = Self::get_arc_self(weak);
 
         let mut lock = arc_self.inner.lock();
         lock.waker = waker;
@@ -44,6 +33,27 @@ impl ReplaceWaker {
         lock.woken = false;
         let new_waker = arc_self.clone();
         Some(new_waker.into())
+    }
+
+    pub fn get_waker(weak: &mut Weak<Self>) -> Waker {
+        Self::get_arc_self(weak).into()
+    }
+
+    fn get_arc_self(weak: &mut Weak<Self>) -> Arc<Self> {
+        match weak.upgrade() {
+            Some(a) => a,
+            None => {
+                // this means the waker was dropped; need a new one.
+                let arc = Arc::new(ReplaceWaker {
+                    inner: Mutex::new(ReplaceWakerInner {
+                        waker: DummyWaker::dummy(),
+                        woken: false,
+                    }),
+                });
+                *weak = Arc::downgrade(&arc);
+                arc
+            },
+        }
     }
 }
 

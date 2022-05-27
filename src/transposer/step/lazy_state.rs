@@ -37,10 +37,10 @@ impl<S> LazyState<S> {
         Self::default()
     }
 
-    pub fn set(&self, state: S, ignore_waker: &Waker) -> Result<(), Box<S>> {
+    pub fn set(&self, state: S, skip_wake: bool) -> Result<(), Box<S>> {
         self.value.set(Box::new(state))?;
         if let LazyStateStatus::Requested(w) = self.status.replace(LazyStateStatus::Pending) {
-            if !w.will_wake(ignore_waker) {
+            if !skip_wake {
                 w.wake();
             }
         }

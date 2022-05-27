@@ -5,6 +5,7 @@
 #![feature(map_try_insert)]
 #![feature(hash_raw_entry)]
 #![feature(entry_insert)]
+#![feature(waker_getters)]
 #![deny(unsafe_op_in_unsafe_fn)]
 // TODO: remove this allow
 #![allow(dead_code)]

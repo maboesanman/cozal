@@ -128,7 +128,7 @@ where
                                 let fut = Pin::new(fut);
                                 match fut.poll(cx) {
                                     Poll::Ready(s) => {
-                                        let _ = frame.set_input_state(s, cx.waker());
+                                        let _ = frame.set_input_state(s, false);
                                         state_fut = None;
                                     },
                                     Poll::Pending => {
@@ -240,7 +240,7 @@ where
                                 let fut = Pin::new(fut);
                                 match fut.poll(cx) {
                                     Poll::Ready(s) => {
-                                        if interpolate.set_state(s, cx.waker()).is_err() {
+                                        if interpolate.set_state(s, false).is_err() {
                                             panic!()
                                         };
                                         state_fut = None;

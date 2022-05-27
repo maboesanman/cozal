@@ -1,5 +1,3 @@
-use core::num::NonZeroUsize;
-use core::pin::Pin;
 use core::task::Waker;
 
 use super::{Source, SourceContext};

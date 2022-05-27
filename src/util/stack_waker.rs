@@ -58,8 +58,19 @@ impl StackWaker {
 
 impl Wake for StackWaker {
     fn wake(self: Arc<Self>) {
-        for (_k, w) in self.inner.lock().wakers.drain() {
-            w.wake();
+        let mut wakers: Vec<_> = self.inner.lock().wakers.drain().map(|(_k, w)| w).collect();
+
+        // try our best not to wake everything a million times...
+        wakers.sort_by_key(|w| {
+            (
+                w.as_raw().data() as usize,
+                w.as_raw().vtable() as *const _ as usize,
+            )
+        });
+        wakers.dedup_by(|w1, w2| w1.will_wake(w2));
+
+        for w in wakers.into_iter() {
+            w.wake()
         }
     }
 }

@@ -163,3 +163,25 @@ impl<'a, K: Ord, V> VacantExtEntry<'a, K, V> {
         (unsafe { btree_map.as_mut() }, key)
     }
 }
+
+pub fn get_first_vacant<V>(map: &mut BTreeMap<usize, V>) -> VacantExtEntry<'_, usize, V> {
+    let i = get_first_vacant_index(map);
+
+    let vacant = match get_occupied(map, i) {
+        Ok(_) => unreachable!(),
+        Err(v) => v,
+    };
+
+    vacant
+}
+
+pub fn get_first_vacant_index<V>(map: &mut BTreeMap<usize, V>) -> usize {
+    for (i, (k, _)) in map.iter().enumerate() {
+        if i == *k {
+            continue
+        }
+        return i
+    }
+
+    map.len()
+}
