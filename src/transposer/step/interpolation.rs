@@ -1,6 +1,6 @@
 use core::pin::Pin;
 use core::ptr::NonNull;
-use core::task::{Context, Poll, Waker};
+use core::task::{Context, Poll};
 
 use futures_core::Future;
 

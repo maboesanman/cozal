@@ -13,10 +13,9 @@ pub struct InitArg<T: Transposer, S: StorageFamily> {
 
 impl<T: Transposer, S: StorageFamily> Arg<T, S> for InitArg<T, S> {
     type Stored = ();
-    type Passed<'a>
+    type Passed<'a> = ()
     where
-        T::Input: 'a,
-    = ();
+        T::Input: 'a;
 
     fn get_future<'a, C: UpdateContext<T, S>>(
         transposer: &'a mut T,
@@ -43,10 +42,9 @@ pub struct InputArg<T: Transposer, S: StorageFamily> {
 
 impl<T: Transposer, S: StorageFamily> Arg<T, S> for InputArg<T, S> {
     type Stored = Box<[T::Input]>;
-    type Passed<'a>
+    type Passed<'a> = &'a mut [T::Input]
     where
-        T::Input: 'a,
-    = &'a mut [T::Input];
+        T::Input: 'a;
 
     fn get_future<'a, C: UpdateContext<T, S>>(
         transposer: &'a mut T,
@@ -74,10 +72,9 @@ pub struct ScheduledArg<T: Transposer, S: StorageFamily> {
 
 impl<T: Transposer, S: StorageFamily> Arg<T, S> for ScheduledArg<T, S> {
     type Stored = ();
-    type Passed<'a>
+    type Passed<'a> = T::Scheduled
     where
-        T::Input: 'a,
-    = T::Scheduled;
+        T::Input: 'a;
 
     fn get_future<'a, C: UpdateContext<T, S>>(
         transposer: &'a mut T,
