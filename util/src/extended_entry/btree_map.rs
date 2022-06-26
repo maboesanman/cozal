@@ -112,7 +112,7 @@ pub struct VacantExtEntry<'a, K: Ord, V> {
 
 impl<'a, K: Ord, V> VacantExtEntry<'a, K, V> {
     pub fn get_key(&self) -> &K {
-        &self.entry.key()
+        self.entry.key()
     }
 
     pub fn into_key(self) -> K {
@@ -142,12 +142,10 @@ impl<'a, K: Ord, V> VacantExtEntry<'a, K, V> {
             Entry::Vacant(_) => unreachable!(),
         };
 
-        let new_entry = OccupiedExtEntry {
+        OccupiedExtEntry {
             btree_map,
             entry,
-        };
-
-        new_entry
+        }
     }
 
     pub fn into_collection_mut(self) -> (&'a mut BTreeMap<K, V>, K) {

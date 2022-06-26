@@ -46,6 +46,7 @@ impl<'a, T> OccupiedExtEntry<'a, T> {
             mut option,
         } = self;
 
+        #[allow(clippy::drop_ref)]
         drop(inner);
 
         // SAFETY: this is kept alive by the lifetime 'a,

@@ -155,12 +155,10 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> VacantExtEntry<'a, K, V, S> {
             RawEntryMut::Vacant(_) => unreachable!(),
         };
 
-        let new_entry = OccupiedExtEntry {
+        OccupiedExtEntry {
             hash_map,
             entry,
-        };
-
-        new_entry
+        }
     }
 
     pub fn into_collection_mut(self) -> (&'a mut HashMap<K, V, S>, K) {
