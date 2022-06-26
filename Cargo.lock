@@ -55,6 +55,8 @@ dependencies = [
  "pin-project",
  "rand",
  "rand_chacha",
+ "transposer",
+ "util",
  "uuid",
 ]
 
@@ -405,6 +407,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "transposer"
+version = "0.0.2"
+dependencies = [
+ "async-trait",
+ "futures-core",
+ "futures-executor",
+ "futures-test",
+ "im",
+ "im-rc",
+ "matches",
+ "parking_lot",
+ "pin-project",
+ "rand",
+ "rand_chacha",
+ "util",
+ "uuid",
+]
+
+[[package]]
 name = "typenum"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -415,6 +436,24 @@ name = "unicode-xid"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7fe0bb3479651439c9112f72b6c505038574c9fbb575ed1bf3b797fa39dd564"
+
+[[package]]
+name = "util"
+version = "0.0.2"
+dependencies = [
+ "async-trait",
+ "futures-core",
+ "futures-executor",
+ "futures-test",
+ "im",
+ "im-rc",
+ "matches",
+ "parking_lot",
+ "pin-project",
+ "rand",
+ "rand_chacha",
+ "uuid",
+]
 
 [[package]]
 name = "uuid"
