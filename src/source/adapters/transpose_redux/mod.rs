@@ -93,14 +93,14 @@ where
         if let Some(waker) = ReplaceWaker::register(all_channel_waker, caller_all_channel_waker) {
             match source.as_mut().poll_events(*events_poll_time, waker) {
                 Poll::Ready(Ok(poll)) => unhandled_event_info = Some(poll),
-                Poll::Ready(Err(poll)) => {
-                    todo!(/* handle new event info, possibly modifying input buffer, channel status, and output buffer */)
+                Poll::Ready(Err(_err)) => {
+                    todo!(/* not sure what we're doing with errors */)
                 },
                 Poll::Pending => return Poll::Pending,
             }
         }
 
-        let handle_scheduled = |t: T::Time| todo!();
+        let handle_scheduled = |_t: T::Time| todo!(/* record the scheduled time somehow */);
 
         // at this point we only need to poll the source if state is needed.
         // we are ready to start manipulating the status,
@@ -114,8 +114,8 @@ where
             if let Some(poll) = unhandled_event_info {
                 unhandled_event_info = None;
                 // handle poll
-                poll;
-                todo!();
+                drop(poll);
+                todo!(/* handle new event info, possibly modifying input buffer, channel status, and output buffer */)
             }
 
             'inner: loop {
