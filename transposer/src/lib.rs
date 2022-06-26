@@ -2,6 +2,7 @@
 #![feature(generic_associated_types)]
 #![feature(once_cell)]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![allow(clippy::module_inception)]
 
 use async_trait::async_trait;
 use context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext};

@@ -20,7 +20,7 @@ impl<O> OutputCollector<O> for Vec<O> {
         Vec::new()
     }
     fn push(&mut self, item: O) {
-        self.push(item)
+        Vec::push(self, item)
     }
 }
 

@@ -102,15 +102,10 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
             return Err(SaturateTakeErr::IncorrectPrevious)
         }
 
-        enum TakeFromPreviousErr {
-            SaturateErr(SaturateErr),
-            PreviousHasActiveInterpolations,
-        }
-
         fn take_from_previous<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>>(
             prev: &mut StepInner<T, S, M>,
             next: &mut SubStep<T, S>,
-        ) -> Result<(), TakeFromPreviousErr> {
+        ) -> Result<(), SaturateErr> {
             replace_mut::replace_and_return(
                 prev,
                 || StepInner::Unreachable,
@@ -128,7 +123,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                                     steps,
                                     metadata,
                                 };
-                                (replacement, Err(TakeFromPreviousErr::SaturateErr(err)))
+                                (replacement, Err(err))
                             },
                             Ok(()) => {
                                 let replacement = StepInner::RepeatUnsaturated {
@@ -140,12 +135,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                             },
                         }
                     } else {
-                        (
-                            inner,
-                            Err(TakeFromPreviousErr::SaturateErr(
-                                SaturateErr::PreviousNotSaturated,
-                            )),
-                        )
+                        (inner, Err(SaturateErr::PreviousNotSaturated))
                     }
                 },
             )
@@ -153,10 +143,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
 
         self.saturate(|next| take_from_previous(&mut prev.inner, next))
             .map_err(|err| match err {
-                Some(TakeFromPreviousErr::PreviousHasActiveInterpolations) => {
-                    SaturateTakeErr::PreviousHasActiveInterpolations
-                },
-                Some(TakeFromPreviousErr::SaturateErr(e)) => match e {
+                Some(e) => match e {
                     SaturateErr::PreviousNotSaturated => SaturateTakeErr::PreviousNotSaturated,
                     SaturateErr::SelfNotUnsaturated => SaturateTakeErr::SelfNotUnsaturated,
 

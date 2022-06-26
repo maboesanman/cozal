@@ -58,6 +58,7 @@ pub trait HashMapStorage<K: Hash + Eq + Clone, V: Clone>: Clone {
 }
 
 pub trait TransposerPointer<T>: Deref<Target = T> + Unpin {
+    // this must be a stable deref. future calls must not move.
     type Borrowed: Deref<Target = T> + Unpin;
 
     fn new(inner: T) -> Self;

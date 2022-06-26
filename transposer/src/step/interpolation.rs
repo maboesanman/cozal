@@ -13,6 +13,9 @@ pub struct Interpolation<T: Transposer, S: StorageFamily> {
     future:  Pin<Box<dyn Future<Output = T::OutputState>>>,
     context: Box<StepInterpolateContext<T>>,
 
+    // this is referenced by future and context. it's not technically used,
+    // except to keep alive the references until dropped.
+    #[allow(unused)]
     wrapped_transposer: <S::Transposer<WrappedTransposer<T, S>> as TransposerPointer<
         WrappedTransposer<T, S>,
     >>::Borrowed,
@@ -37,8 +40,8 @@ impl<T: Transposer, S: StorageFamily> Interpolation<T, S> {
             unsafe { core::mem::transmute(future) };
 
         Self {
-            context,
             future,
+            context,
             wrapped_transposer: borrowed,
         }
     }

@@ -17,6 +17,7 @@ pub(crate) struct TestTransposer {
     pub handle_record: im::Vector<(HandleRecord, u64)>,
 }
 
+#[allow(dead_code)]
 impl TestTransposer {
     pub fn new(init_events: Vec<(usize, usize)>) -> Self {
         Self {
