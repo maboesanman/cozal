@@ -1,13 +1,13 @@
 pub struct RetentionPolicy<T: Ord + Copy> {
     source_last_finalized: T,
-    caller_last_advanced: T,
+    caller_last_advanced:  T,
 }
 
 impl<T: Ord + Copy> RetentionPolicy<T> {
     pub fn new(initial: T) -> Self {
         Self {
             source_last_finalized: initial,
-            caller_last_advanced: initial,
+            caller_last_advanced:  initial,
         }
     }
 
@@ -24,7 +24,6 @@ impl<T: Ord + Copy> RetentionPolicy<T> {
 
         old != new
     }
-
 
     pub fn caller_advance(&mut self, time: T) -> bool {
         debug_assert!(time >= self.caller_last_advanced);

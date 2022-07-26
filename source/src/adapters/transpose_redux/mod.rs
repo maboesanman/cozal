@@ -3,9 +3,9 @@
 mod channel_statuses;
 mod input_buffer;
 mod output_buffer;
+mod retention_policy;
 mod steps;
 mod storage;
-mod retention_policy;
 // mod transpose_step_metadata;
 
 use std::pin::Pin;
@@ -22,7 +22,7 @@ use self::input_buffer::InputBuffer;
 use self::output_buffer::OutputBuffer;
 use self::retention_policy::RetentionPolicy;
 use crate::adapters::transpose_redux::channel_statuses::CallerChannelStatus;
-use crate::source_poll::{SourcePollOk, SourcePollInner};
+use crate::source_poll::SourcePollOk;
 use crate::traits::SourceContext;
 use crate::{Source, SourcePoll};
 
@@ -71,7 +71,7 @@ where
             channel_statuses: ChannelStatuses::new(transposer, rng_seed),
             input_buffer: InputBuffer::new(),
             output_buffer: OutputBuffer::new(),
-            retention_policy: RetentionPolicy::new(T::Time::default())
+            retention_policy: RetentionPolicy::new(T::Time::default()),
         }
     }
 
@@ -80,8 +80,10 @@ where
         state: T::OutputState,
     ) -> SourcePollOk<T::Time, T::Output, T::OutputState> {
         match (
-            self.output_buffer.first_event_time().or(self.channel_statuses.get_scheduled_time()),
-            self.last_scheduled
+            self.output_buffer
+                .first_event_time()
+                .or(self.channel_statuses.get_scheduled_time()),
+            self.last_scheduled,
         ) {
             (None, None) => SourcePollOk::Ready(state),
             (None, Some(t)) => SourcePollOk::Scheduled(state, t),
@@ -135,8 +137,7 @@ where
         let all_channel_waker = ReplaceWaker::get_waker(all_channel_waker);
 
         'outer: loop {
-            if let Some(poll) = unhandled_event_info {
-                unhandled_event_info = None;
+            if let Some(poll) = unhandled_event_info.take() {
                 // handle poll
                 drop(poll);
                 todo!(/* handle new event info, possibly modifying input buffer, channel status, and output buffer */)
@@ -251,7 +252,8 @@ where
                         };
                     },
                     CallerChannelStatus::InterpolationSourceState(mut inner_status) => {
-                        let (source_channel, never_remebered) = inner_status.get_args_for_source_poll(forget);
+                        let (source_channel, never_remebered) =
+                            inner_status.get_args_for_source_poll(forget);
 
                         let cx = SourceContext {
                             channel:           source_channel,
@@ -297,7 +299,7 @@ where
                             },
                         };
 
-                        break 'outer Poll::Ready(Ok(self.ready_or_scheduled(output_state)));
+                        break 'outer Poll::Ready(Ok(self.ready_or_scheduled(output_state)))
                     },
                 }
             }
@@ -351,7 +353,7 @@ where
     }
 
     fn max_channel(&self) -> std::num::NonZeroUsize {
-        // this works out mathematically, as 
+        // this works out mathematically, as
         self.source.max_channel()
     }
 

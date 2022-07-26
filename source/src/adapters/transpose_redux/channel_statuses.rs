@@ -4,7 +4,7 @@ use std::sync::Weak;
 use std::task::{Context, Poll, Waker};
 
 use futures_core::Future;
-use transposer::step::{Interpolation, StepPoll, NextInputs};
+use transposer::step::{Interpolation, NextInputs, StepPoll};
 use transposer::Transposer;
 use util::extended_entry::btree_map::{
     get_first_vacant,
@@ -383,9 +383,9 @@ impl<'a, T: Transposer> OriginalStepFuture<'a, T> {
     pub fn poll(
         self,
         all_channel_waker: &Waker,
-        next_inputs: &mut NextInputs<T>
+        next_inputs: &mut NextInputs<T>,
     ) -> (CallerChannelStatus<'a, T>, Vec<T::Output>) {
-        // if this step resolves, add a new original step and return 
+        // if this step resolves, add a new original step and return
         todo!()
     }
 
@@ -616,7 +616,10 @@ impl<'a, T: Transposer> InterpolationFuture<'a, T> {
 
 impl<'a, T: Transposer> InterpolationSourceState<'a, T> {
     // don't need time or waker because they're just passed through for interpolations.
-    pub fn get_args_for_source_poll(&mut self, can_forget: bool) -> (/* source channel */ usize, /* forget */ bool) {
+    pub fn get_args_for_source_poll(
+        &mut self,
+        can_forget: bool,
+    ) -> (/* source channel */ usize, /* forget */ bool) {
         match self.caller_channel.get_value_mut() {
             CallerChannelBlockedReason::InterpolationSourceState {
                 source_channel,
