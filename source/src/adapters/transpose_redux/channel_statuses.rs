@@ -4,7 +4,7 @@ use std::sync::Weak;
 use std::task::{Context, Poll, Waker};
 
 use futures_core::Future;
-use transposer::step::{Interpolation, StepPoll};
+use transposer::step::{Interpolation, StepPoll, NextInputs};
 use transposer::Transposer;
 use util::extended_entry::btree_map::{
     get_first_vacant,
@@ -44,7 +44,7 @@ pub struct ChannelStatuses<T: Transposer> {
     pub steps: Steps<T>,
 
     // These are all the source channels currently in use.
-    // this is just a hack to use the entry api.
+    // this would be a BTreeSet but that doesn't have the entry api...
     pub blocked_source_channels: BTreeMap</* source_channel */ usize, ()>,
 
     // These are all the currently pending operations, from the perspective of the caller.
@@ -55,7 +55,7 @@ pub struct ChannelStatuses<T: Transposer> {
     // these are the currently blocked repeat steps, including the stack wakers
     pub repeat_step_blocked_reasons: HashMap</* step_id */ usize, RepeatStepBlockedReason>,
 
-    // this is the currently blocked original step if it exists, including the stack wakers
+    // this is the currently blocked original step if it is blocked, including the stack wakers
     pub original_step_blocked_reasons: Option<OriginalStepBlockedReason>,
 }
 
@@ -94,6 +94,7 @@ impl<T: Transposer> ChannelStatuses<T> {
 
         let caller_channel_entry = hash_map_get_occupied(blocked_caller_channels, caller_channel);
 
+        // get current blocker, or free if it isn't blocked.
         let mut caller_channel = match caller_channel_entry {
             Err(caller_channel) => {
                 return CallerChannelStatus::Free(Free {
@@ -379,7 +380,12 @@ impl<'a, T: Transposer> Free<'a, T> {
 }
 
 impl<'a, T: Transposer> OriginalStepFuture<'a, T> {
-    pub fn poll(self, all_channel_waker: &Waker) -> (CallerChannelStatus<'a, T>, Vec<T::Output>) {
+    pub fn poll(
+        self,
+        all_channel_waker: &Waker,
+        next_inputs: &mut NextInputs<T>
+    ) -> (CallerChannelStatus<'a, T>, Vec<T::Output>) {
+        // if this step resolves, add a new original step and return 
         todo!()
     }
 
@@ -610,13 +616,16 @@ impl<'a, T: Transposer> InterpolationFuture<'a, T> {
 
 impl<'a, T: Transposer> InterpolationSourceState<'a, T> {
     // don't need time or waker because they're just passed through for interpolations.
-    pub fn get_args_for_source_poll(&self) -> (/* source channel */ usize, /* forget */ bool) {
-        match self.caller_channel.get_value() {
+    pub fn get_args_for_source_poll(&mut self, can_forget: bool) -> (/* source channel */ usize, /* forget */ bool) {
+        match self.caller_channel.get_value_mut() {
             CallerChannelBlockedReason::InterpolationSourceState {
                 source_channel,
                 interpolation: _,
                 forget,
-            } => (*source_channel, *forget),
+            } => {
+                *forget &= can_forget;
+                (*source_channel, *forget)
+            },
             _ => unreachable!("CallerChannelBlockedReason does not match CallerChannelStatus"),
         }
     }

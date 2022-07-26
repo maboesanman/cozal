@@ -5,6 +5,7 @@ mod input_buffer;
 mod output_buffer;
 mod steps;
 mod storage;
+mod retention_policy;
 // mod transpose_step_metadata;
 
 use std::pin::Pin;
@@ -19,8 +20,9 @@ use util::stack_waker::StackWaker;
 use self::channel_statuses::ChannelStatuses;
 use self::input_buffer::InputBuffer;
 use self::output_buffer::OutputBuffer;
+use self::retention_policy::RetentionPolicy;
 use crate::adapters::transpose_redux::channel_statuses::CallerChannelStatus;
-use crate::source_poll::SourcePollOk;
+use crate::source_poll::{SourcePollOk, SourcePollInner};
 use crate::traits::SourceContext;
 use crate::{Source, SourcePoll};
 
@@ -29,6 +31,8 @@ pub struct Transpose<Src: Source, T: Transposer> {
     // the source we pull from
     #[pin]
     source: Src,
+
+    last_scheduled: Option<T::Time>,
 
     // the all channel waker to keep up to date.
     all_channel_waker: Weak<ReplaceWaker>,
@@ -45,6 +49,8 @@ pub struct Transpose<Src: Source, T: Transposer> {
     input_buffer: InputBuffer<T>,
 
     output_buffer: OutputBuffer<T>,
+
+    retention_policy: RetentionPolicy<T::Time>,
 }
 
 enum SourcePollToHandle {}
@@ -59,27 +65,47 @@ where
     pub fn new(source: Src, transposer: T, rng_seed: [u8; 32]) -> Self {
         Self {
             source,
+            last_scheduled: None,
             all_channel_waker: ReplaceWaker::new_empty(),
             events_poll_time: T::Time::default(),
             channel_statuses: ChannelStatuses::new(transposer, rng_seed),
             input_buffer: InputBuffer::new(),
             output_buffer: OutputBuffer::new(),
+            retention_policy: RetentionPolicy::new(T::Time::default())
+        }
+    }
+
+    pub fn ready_or_scheduled(
+        &self,
+        state: T::OutputState,
+    ) -> SourcePollOk<T::Time, T::Output, T::OutputState> {
+        match (
+            self.output_buffer.first_event_time().or(self.channel_statuses.get_scheduled_time()),
+            self.last_scheduled
+        ) {
+            (None, None) => SourcePollOk::Ready(state),
+            (None, Some(t)) => SourcePollOk::Scheduled(state, t),
+            (Some(t), None) => SourcePollOk::Scheduled(state, t),
+            (Some(t1), Some(t2)) => SourcePollOk::Scheduled(state, std::cmp::min(t1, t2)),
         }
     }
 
     pub fn poll_inner(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         poll_time: T::Time,
         cx: SourceContext,
+        forget: bool,
     ) -> SourcePoll<T::Time, T::Output, T::OutputState, Src::Error> {
         let TransposeProject {
             mut source,
+            last_scheduled,
             all_channel_waker,
             events_poll_time,
             channel_statuses,
             input_buffer,
             output_buffer,
-        } = self.project();
+            retention_policy,
+        } = self.as_mut().project();
 
         let SourceContext {
             channel: caller_channel,
@@ -94,13 +120,11 @@ where
             match source.as_mut().poll_events(*events_poll_time, waker) {
                 Poll::Ready(Ok(poll)) => unhandled_event_info = Some(poll),
                 Poll::Ready(Err(_err)) => {
-                    todo!(/* not sure what we're doing with errors */)
+                    panic!("source poll error")
                 },
                 Poll::Pending => return Poll::Pending,
             }
         }
-
-        let handle_scheduled = |_t: T::Time| todo!(/* record the scheduled time somehow */);
 
         // at this point we only need to poll the source if state is needed.
         // we are ready to start manipulating the status,
@@ -122,9 +146,7 @@ where
                 match core::mem::replace(&mut status, CallerChannelStatus::Limbo) {
                     CallerChannelStatus::Limbo => unreachable!(),
                     CallerChannelStatus::Free(inner_status) => {
-                        // TODO THIS NEEDS TO ACCOUNT FOR FORGET / EVENTS
-                        status = inner_status.poll(false, poll_time);
-                        continue 'inner
+                        status = inner_status.poll(forget, poll_time);
                     },
                     CallerChannelStatus::OriginalStepSourceState(mut inner_status) => {
                         let (time, source_channel) = inner_status.get_args_for_source_poll();
@@ -138,16 +160,19 @@ where
                         };
 
                         let state = match source.as_mut().poll(time, cx) {
-                            Poll::Ready(Ok(SourcePollOk::Ready(s))) => s,
+                            Poll::Ready(Ok(SourcePollOk::Ready(s))) => {
+                                *last_scheduled = None;
+                                s
+                            },
                             Poll::Ready(Ok(SourcePollOk::Scheduled(s, t))) => {
-                                handle_scheduled(t);
+                                *last_scheduled = Some(t);
                                 s
                             },
                             Poll::Ready(Ok(poll)) => {
                                 unhandled_event_info = Some(poll.supress_state());
                                 continue 'outer
                             },
-                            Poll::Ready(Err(_)) => todo!(),
+                            Poll::Ready(Err(_)) => panic!("source poll error"),
                             Poll::Pending => break 'outer Poll::Pending,
                         };
 
@@ -156,11 +181,22 @@ where
 
                         // now loop again, polling the future on the next pass.
                         status = CallerChannelStatus::OriginalStepFuture(inner_status);
-                        continue 'inner
                     },
                     CallerChannelStatus::OriginalStepFuture(inner_status) => {
                         let t = inner_status.time();
-                        let (s, outputs) = inner_status.poll(&all_channel_waker);
+
+                        // get the first item, so it can be pulled if needed by poll
+                        // (if original completes it needs to make a new original future)
+                        let mut first = input_buffer.pop_first();
+
+                        let (s, outputs) = inner_status.poll(&all_channel_waker, &mut first);
+
+                        // if poll didn't need the input, put it back in the buffer
+                        if let Some((t, inputs)) = first {
+                            input_buffer.extend_front(t, inputs)
+                        }
+
+                        // handle all the generated outputs
                         for o in outputs {
                             output_buffer.handle_output_event(t, o);
                         }
@@ -186,16 +222,19 @@ where
                         };
 
                         let state = match source.as_mut().poll(time, cx) {
-                            Poll::Ready(Ok(SourcePollOk::Ready(s))) => s,
+                            Poll::Ready(Ok(SourcePollOk::Ready(s))) => {
+                                *last_scheduled = None;
+                                s
+                            },
                             Poll::Ready(Ok(SourcePollOk::Scheduled(s, t))) => {
-                                handle_scheduled(t);
+                                *last_scheduled = Some(t);
                                 s
                             },
                             Poll::Ready(Ok(poll)) => {
                                 unhandled_event_info = Some(poll.supress_state());
                                 continue 'outer
                             },
-                            Poll::Ready(Err(_)) => todo!(),
+                            Poll::Ready(Err(_)) => panic!("source poll error"),
                             Poll::Pending => break 'outer Poll::Pending,
                         };
 
@@ -204,22 +243,50 @@ where
 
                         // now loop again, polling the future on the next pass.
                         status = CallerChannelStatus::RepeatStepFuture(inner_status);
-                        continue 'inner
                     },
                     CallerChannelStatus::RepeatStepFuture(inner_status) => {
-                        let stacked_waker = match StackWaker::register(
-                            todo!(), // stack_waker,
-                            caller_channel,
-                            one_channel_waker.clone(),
-                        ) {
-                            Some(w) => w,
-                            None => break 'outer Poll::Pending,
+                        status = match inner_status.poll(&one_channel_waker) {
+                            Poll::Ready(status) => status,
+                            Poll::Pending => break 'outer Poll::Pending,
                         };
-                        // this needs to poll with the stack waker.
-                        todo!();
-                        // status = inner_status.poll(&one_channel_waker);
                     },
-                    CallerChannelStatus::InterpolationSourceState(_) => todo!(),
+                    CallerChannelStatus::InterpolationSourceState(mut inner_status) => {
+                        let (source_channel, never_remebered) = inner_status.get_args_for_source_poll(forget);
+
+                        let cx = SourceContext {
+                            channel:           source_channel,
+                            one_channel_waker: one_channel_waker.clone(),
+                            all_channel_waker: all_channel_waker.clone(),
+                        };
+
+                        let poll = if never_remebered {
+                            source.as_mut().poll_forget(poll_time, cx)
+                        } else {
+                            source.as_mut().poll(poll_time, cx)
+                        };
+
+                        let state = match poll {
+                            Poll::Ready(Ok(SourcePollOk::Ready(s))) => {
+                                *last_scheduled = None;
+                                s
+                            },
+                            Poll::Ready(Ok(SourcePollOk::Scheduled(s, t))) => {
+                                *last_scheduled = Some(t);
+                                s
+                            },
+                            Poll::Ready(Ok(poll)) => {
+                                unhandled_event_info = Some(poll.supress_state());
+                                continue 'outer
+                            },
+                            Poll::Ready(Err(_)) => panic!("source poll error"),
+                            Poll::Pending => break 'outer Poll::Pending,
+                        };
+
+                        let inner_status = inner_status.provide_state(state, false);
+
+                        // now loop again, polling the future on the next pass.
+                        status = CallerChannelStatus::InterpolationFuture(inner_status);
+                    },
                     CallerChannelStatus::InterpolationFuture(inner_status) => {
                         let output_state = match inner_status.poll(&one_channel_waker) {
                             Ok(Poll::Ready(output_state)) => output_state,
@@ -230,7 +297,7 @@ where
                             },
                         };
 
-                        todo!()
+                        break 'outer Poll::Ready(Ok(self.ready_or_scheduled(output_state)));
                     },
                 }
             }
@@ -258,7 +325,7 @@ where
         poll_time: Self::Time,
         cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
-        todo!()
+        self.poll_inner(poll_time, cx, false)
     }
 
     fn poll_forget(
@@ -266,7 +333,7 @@ where
         poll_time: Self::Time,
         cx: SourceContext,
     ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
-        todo!()
+        self.poll_inner(poll_time, cx, true)
     }
 
     fn poll_events(
@@ -274,18 +341,24 @@ where
         poll_time: Self::Time,
         all_channel_waker: Waker,
     ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error> {
-        todo!()
+        todo!(/* some variant of poll_inner? */)
     }
 
     fn advance(self: Pin<&mut Self>, time: Self::Time) {
-        todo!()
+        todo!(/*
+            move the caller advance header, mark old steps for deletion
+        */)
     }
 
     fn max_channel(&self) -> std::num::NonZeroUsize {
+        // this works out mathematically, as 
         self.source.max_channel()
     }
 
     fn release_channel(self: Pin<&mut Self>, channel: usize) {
-        todo!()
+        todo!(/*
+            delete the entry from the channel statuses,
+            and forward the held channel if it was exclusively held
+        */)
     }
 }
