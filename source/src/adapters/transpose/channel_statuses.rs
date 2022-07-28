@@ -27,13 +27,10 @@ use util::extended_entry::vecdeque::{
     ExtEntry as VecDequeEntry,
 };
 use util::replace_mut::replace;
-use util::replace_waker::ReplaceWaker;
 use util::stack_waker::StackWaker;
 
 use super::steps::{StepWrapper, Steps};
 use super::storage::TransposeStorage;
-// use crate::adapters::transpose_redux::transpose_step_metadata::unwrap_repeat_saturating;
-use crate::traits::SourceContext;
 
 // manage the association of source and caller channels.
 // own steps.
@@ -343,33 +340,34 @@ impl<'a, T: Transposer> Free<'a, T> {
             repeat_step_blocked_reasons,
             original_step_blocked_reasons,
         } = self;
-        match steps.get_before_or_at(time).unwrap() {
-            super::steps::BeforeStatus::SaturatedImmediate(step) => {
-                let interpolation = step.step.interpolate(time).unwrap();
-                let blocked_reason = CallerChannelBlockedReason::InterpolationFuture {
-                    interpolation,
-                    forget,
-                };
-                let caller_channel = caller_channel.occupy(blocked_reason);
-
-                CallerChannelStatus::InterpolationFuture(InterpolationFuture {
-                    caller_channel,
-                    steps,
-                    blocked_source_channels,
-                    repeat_step_blocked_reasons,
-                    original_step_blocked_reasons,
-                })
-            },
-            super::steps::BeforeStatus::SaturatedDistant(saturated, next) => {
-                // start saturating next
-
-                todo!()
-            },
-            super::steps::BeforeStatus::Saturating(step) => {
-                // join the saturating.
-
-                todo!()
-            },
+        loop {
+            match steps.get_before_or_at(time).unwrap() {
+                super::steps::BeforeStatus::SaturatedImmediate(step) => {
+                    let interpolation = step.step.interpolate(time).unwrap();
+                    let blocked_reason = CallerChannelBlockedReason::InterpolationFuture {
+                        interpolation,
+                        forget,
+                    };
+                    let caller_channel = caller_channel.occupy(blocked_reason);
+    
+                    break CallerChannelStatus::InterpolationFuture(InterpolationFuture {
+                        caller_channel,
+                        steps,
+                        blocked_source_channels,
+                        repeat_step_blocked_reasons,
+                        original_step_blocked_reasons,
+                    })
+                },
+                super::steps::BeforeStatus::SaturatedDistant(saturated, next) => {
+                    // OPTIMIZATION: determine whether to saturate_take or saturate_clone
+                    next.step.saturate_clone(&saturated.step);
+                },
+                super::steps::BeforeStatus::Saturating(step) => {
+                    // join the saturating.
+    
+                    todo!()
+                },
+            }
         }
     }
 
@@ -381,10 +379,11 @@ impl<'a, T: Transposer> Free<'a, T> {
 
 impl<'a, T: Transposer> OriginalStepFuture<'a, T> {
     pub fn poll(
-        self,
+        mut self,
         all_channel_waker: &Waker,
         next_inputs: &mut NextInputs<T>,
     ) -> (CallerChannelStatus<'a, T>, Vec<T::Output>) {
+        self.step.get_value_mut().step.poll(all_channel_waker.clone());
         // if this step resolves, add a new original step and return
         todo!()
     }
