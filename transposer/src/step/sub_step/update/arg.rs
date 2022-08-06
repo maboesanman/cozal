@@ -1,6 +1,5 @@
+use core::future::Future;
 use core::pin::Pin;
-
-use futures_core::Future;
 
 use super::{UpdateContext, WrappedTransposer};
 use crate::schedule_storage::StorageFamily;

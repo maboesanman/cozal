@@ -69,7 +69,7 @@ pub enum ExpireEventError {
 }
 
 pub trait EmitEventContext<T: Transposer> {
-    fn emit_event(&mut self, payload: T::Output);
+    fn emit_event(&mut self, payload: T::Output) -> Pin<Box<dyn '_ + Future<Output = ()>>>;
 }
 
 pub trait RngContext {

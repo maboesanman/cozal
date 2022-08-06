@@ -3,7 +3,7 @@ use core::task::{Context, Poll};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use futures_core::Future;
+use core::future::Future;
 use matches::assert_matches;
 use rand::Rng;
 use util::dummy_waker::DummyWaker;
@@ -47,7 +47,7 @@ impl Transposer for TestTransposer {
         cx.schedule_event(time + 1, ()).unwrap();
 
         self.counter += 1;
-        cx.emit_event(self.counter * 10);
+        cx.emit_event(self.counter * 10).await;
     }
 
     async fn interpolate(

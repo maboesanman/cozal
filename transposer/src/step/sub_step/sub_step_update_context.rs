@@ -12,21 +12,59 @@ use crate::{ExpireHandle, Transposer};
 
 pub trait OutputCollector<O> {
     fn new() -> Self;
-    fn push(&mut self, item: O);
+    fn set(&mut self, output: O) -> Pin<Box<dyn '_ + Future<Output = ()>>>;
+    fn take(&mut self) -> Option<O>;
 }
 
-impl<O> OutputCollector<O> for Vec<O> {
+pub enum AsyncCollector<O> {
+    Some {
+        output: O,
+        notify: futures_channel::oneshot::Sender<()>,
+    },
+    None,
+}
+
+impl<O> OutputCollector<O> for AsyncCollector<O> {
     fn new() -> Self {
-        Vec::new()
+        Self::None
     }
-    fn push(&mut self, item: O) {
-        Vec::push(self, item)
+    fn set(&mut self, output: O) -> Pin<Box<dyn '_ + Future<Output = ()>>> {
+        let (notify, recv) = futures_channel::oneshot::channel();
+        debug_assert!(matches!(self, AsyncCollector::None));
+
+        *self = AsyncCollector::Some {
+            output,
+            notify,
+        };
+
+        Box::pin(async { recv.await.unwrap() })
+    }
+    fn take(&mut self) -> Option<O> {
+        match core::mem::replace(self, AsyncCollector::None) {
+            AsyncCollector::None => None,
+            AsyncCollector::Some {
+                output,
+                notify,
+            } => {
+                let _ = notify.send(());
+                Some(output)
+            },
+        }
     }
 }
 
-impl<O> OutputCollector<O> for () {
-    fn new() -> Self {}
-    fn push(&mut self, _item: O) {}
+pub struct DiscardCollector;
+
+impl<O> OutputCollector<O> for DiscardCollector {
+    fn new() -> Self {
+        DiscardCollector
+    }
+    fn set(&mut self, _output: O) -> Pin<Box<dyn '_ + Future<Output = ()>>> {
+        Box::pin(std::future::ready(()))
+    }
+    fn take(&mut self) -> Option<O> {
+        None
+    }
 }
 
 /// This is the interface through which you can do a variety of functions in your transposer.
@@ -61,7 +99,7 @@ impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>>
 impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> UpdateContext<T, S>
     for SubStepUpdateContext<T, S, C>
 {
-    type Outputs = C;
+    type Output = C;
 
     // SAFETY: need to gurantee the metadata pointer outlives this object.
     unsafe fn new(
@@ -78,8 +116,8 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> UpdateConte
         }
     }
 
-    fn recover_outputs(self) -> Self::Outputs {
-        self.output_collector
+    fn recover_output(&mut self) -> Option<T::Output> {
+        self.output_collector.take()
     }
 }
 
@@ -156,8 +194,8 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> ExpireEvent
 impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> EmitEventContext<T>
     for SubStepUpdateContext<T, S, C>
 {
-    fn emit_event(&mut self, payload: T::Output) {
-        self.output_collector.push(payload);
+    fn emit_event(&mut self, payload: T::Output) -> Pin<Box<dyn '_ + Future<Output = ()>>> {
+        self.output_collector.set(payload)
     }
 }
 

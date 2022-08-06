@@ -1,8 +1,7 @@
+use core::future::Future;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::task::{Context, Poll};
-
-use futures_core::Future;
 
 use super::interpolate_context::StepInterpolateContext;
 use super::sub_step::WrappedTransposer;

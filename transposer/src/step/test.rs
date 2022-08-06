@@ -42,7 +42,7 @@ impl Transposer for TestTransposer {
         cx.schedule_event(time + 1, ()).unwrap();
 
         self.counter += 1;
-        cx.emit_event(());
+        cx.emit_event(()).await;
     }
 
     async fn handle_input(
@@ -52,7 +52,7 @@ impl Transposer for TestTransposer {
         cx: &mut dyn HandleInputContext<'_, Self>,
     ) {
         self.counter += 1;
-        cx.emit_event(());
+        cx.emit_event(()).await;
     }
 
     async fn interpolate(

@@ -79,20 +79,17 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
         drop(inner);
         arg
     }
-}
 
-impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Future
-    for Update<T, S, C, A>
-{
-    type Output = UpdateResult<T, S, C>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    pub fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> UpdatePoll<T, S> {
         let inner = match &mut self.inner {
             Some(inner) => inner,
-            None => return Poll::Pending,
+            None => return UpdatePoll::Pending,
         };
         match inner.future.as_mut().poll(cx) {
-            Poll::Pending => Poll::Pending,
+            Poll::Pending => match inner.context.recover_output() {
+                Some(o) => UpdatePoll::Event(o),
+                None => UpdatePoll::Pending,
+            },
             Poll::Ready(()) => {
                 let UpdateInner {
                     future,
@@ -101,21 +98,15 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Futu
                 } = core::mem::take(&mut self.inner).unwrap();
 
                 drop(future);
-
-                let outputs = C::recover_outputs(*context);
-
-                let update_result = UpdateResult {
-                    wrapped_transposer,
-                    outputs,
-                };
-
-                Poll::Ready(update_result)
+                drop(context);
+                UpdatePoll::Ready(wrapped_transposer)
             },
         }
     }
 }
 
-pub struct UpdateResult<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>> {
-    pub wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
-    pub outputs:            C::Outputs,
+pub enum UpdatePoll<T: Transposer, S: StorageFamily> {
+    Pending,
+    Event(T::Output),
+    Ready(S::Transposer<WrappedTransposer<T, S>>),
 }

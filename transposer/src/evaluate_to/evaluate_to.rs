@@ -4,7 +4,7 @@ use core::task::{Context, Poll};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use futures_core::Future;
+use core::future::Future;
 use util::replace_mut;
 
 use crate::schedule_storage::StorageFamily;

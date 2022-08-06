@@ -1,7 +1,6 @@
+use core::future::Future;
 use core::pin::Pin;
 use core::ptr::NonNull;
-
-use futures_core::Future;
 
 use super::lazy_state::LazyState;
 use crate::context::{InputStateContext, InterpolateContext};

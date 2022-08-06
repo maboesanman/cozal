@@ -1,7 +1,6 @@
 use core::pin::Pin;
-use core::task::{Context, Poll, Waker};
+use core::task::{Context, Waker};
 
-use futures_core::Future;
 use util::replace_mut;
 
 use super::interpolation::Interpolation;
@@ -312,37 +311,29 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
     }
 
     pub fn poll(&mut self, waker: Waker) -> Result<StepPoll<T>, PollErr> {
-        let mut outputs = Vec::new();
         loop {
             let CurrentSaturating {
-                step,
+                sub_step,
             } = match self.current_saturating() {
                 Ok(x) => x,
                 Err(CurrentSaturatingErr::Unsaturated) => return Err(PollErr::Unsaturated),
                 Err(CurrentSaturatingErr::Saturated) => unreachable!(),
             };
-            let step = Pin::new(step);
+            let sub_step = Pin::new(sub_step);
             let mut cx = Context::from_waker(&waker);
-            let poll_result = step.poll(&mut cx).map_err(|e| match e {
+            let poll_result = sub_step.poll(&mut cx).map_err(|e| match e {
                 StepPollErr::Unsaturated => PollErr::Unsaturated,
                 StepPollErr::Saturated => PollErr::Saturated,
             })?;
 
             match poll_result {
-                Poll::Pending => {
-                    break Ok(if self.input_state.requested() {
-                        StepPoll::new_needs_state(outputs)
-                    } else {
-                        StepPoll::new_pending(outputs)
-                    })
-                },
-                Poll::Ready(Some(mut o)) => outputs.append(&mut o),
-                Poll::Ready(None) => {},
+                StepPoll::Ready => {},
+                other => break Ok(other),
             };
 
             // now we are ready, we need to advance to the next sub-step.
             if self.advance_saturation_index().is_saturated() {
-                break Ok(StepPoll::new_ready(outputs))
+                break Ok(StepPoll::Ready)
             }
         }
     }
@@ -450,14 +441,14 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                 steps,
                 metadata: _,
             } => Ok(CurrentSaturating {
-                step: steps.get_mut(*current_saturating_index).unwrap(),
+                sub_step: steps.get_mut(*current_saturating_index).unwrap(),
             }),
             StepInner::RepeatSaturating {
                 current_saturating_index,
                 steps,
                 metadata: _,
             } => Ok(CurrentSaturating {
-                step: steps.get_mut(*current_saturating_index).unwrap(),
+                sub_step: steps.get_mut(*current_saturating_index).unwrap(),
             }),
             StepInner::OriginalUnsaturated {
                 ..
@@ -608,7 +599,7 @@ impl AdvanceSaturationIndex {
 }
 
 struct CurrentSaturating<'a, T: Transposer, S: StorageFamily> {
-    step: &'a mut SubStep<T, S>,
+    sub_step: &'a mut SubStep<T, S>,
 }
 
 #[derive(Clone, Copy)]
@@ -668,35 +659,9 @@ enum StepInner<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> {
     Unreachable,
 }
 
-pub struct StepPoll<T: Transposer> {
-    pub result:  StepPollResult,
-    pub outputs: Vec<T::Output>,
-}
-
-impl<T: Transposer> StepPoll<T> {
-    pub fn new_pending(outputs: Vec<T::Output>) -> Self {
-        Self {
-            result: StepPollResult::Pending,
-            outputs,
-        }
-    }
-    pub fn new_needs_state(outputs: Vec<T::Output>) -> Self {
-        Self {
-            result: StepPollResult::NeedsState,
-            outputs,
-        }
-    }
-    pub fn new_ready(outputs: Vec<T::Output>) -> Self {
-        Self {
-            result: StepPollResult::Ready,
-            outputs,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum StepPollResult {
+pub enum StepPoll<T: Transposer> {
     NeedsState,
+    Emitted(T::Output),
     Pending,
     Ready,
 }

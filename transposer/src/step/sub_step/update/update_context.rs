@@ -9,7 +9,7 @@ use crate::Transposer;
 pub trait UpdateContext<T: Transposer, S: StorageFamily>:
     InitContext<'static, T> + HandleInputContext<'static, T> + HandleScheduleContext<'static, T>
 {
-    type Outputs;
+    type Output;
 
     // SAFETY: ensure this UpdateContext is dropped before metadata.
     unsafe fn new(
@@ -18,5 +18,5 @@ pub trait UpdateContext<T: Transposer, S: StorageFamily>:
         input_state: S::LazyState<LazyState<T::InputState>>,
     ) -> Self;
 
-    fn recover_outputs(self) -> Self::Outputs;
+    fn recover_output(&mut self) -> Option<T::Output>;
 }

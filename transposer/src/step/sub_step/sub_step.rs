@@ -1,17 +1,17 @@
 use core::cmp::Ordering;
 use core::pin::Pin;
-use core::task::{Context, Poll};
+use core::task::Context;
 
-use futures_core::Future;
 use util::replace_mut;
 
 use super::args::{InitArg, InputArg, ScheduledArg};
-use super::sub_step_update_context::SubStepUpdateContext;
+use super::sub_step_update_context::{AsyncCollector, DiscardCollector, SubStepUpdateContext};
 use super::time::SubStepTime;
-use super::update::{Arg, Update, UpdateResult, WrappedTransposer};
+use super::update::{Arg, Update, WrappedTransposer};
 use crate::schedule_storage::{StorageFamily, TransposerPointer};
 use crate::step::lazy_state::LazyState;
-use crate::step::NextInputs;
+use crate::step::sub_step::update::UpdatePoll;
+use crate::step::{NextInputs, StepPoll};
 use crate::Transposer;
 
 pub struct SubStep<T: Transposer, S: StorageFamily> {
@@ -418,20 +418,8 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
             _ => None,
         }
     }
-}
 
-impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
-    type Output = Result<Option<Vec<T::Output>>, PollErr>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        fn handle_original_outputs<O>(outputs: Vec<O>) -> Poll<Result<Option<Vec<O>>, PollErr>> {
-            Poll::Ready(Ok(if outputs.is_empty() {
-                None
-            } else {
-                Some(outputs)
-            }))
-        }
-
+    pub fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Result<StepPoll<T>, PollErr> {
         replace_mut::replace_and_return(
             &mut self.inner,
             || SubStepInner::Unreachable,
@@ -439,108 +427,109 @@ impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
                 SubStepInner::SaturatingInit {
                     mut update,
                 } => match Pin::new(&mut update).poll(cx) {
-                    Poll::Ready(UpdateResult {
-                        wrapped_transposer,
-                        outputs,
-                    }) => {
-                        let inner = SubStepInner::SaturatedInit {
-                            wrapped_transposer,
-                        };
-
-                        (inner, handle_original_outputs(outputs))
-                    },
-                    Poll::Pending => (
+                    UpdatePoll::Pending => (
                         SubStepInner::SaturatingInit {
                             update,
                         },
-                        Poll::Pending,
+                        Ok(StepPoll::Pending),
+                    ),
+                    UpdatePoll::Event(output) => (
+                        SubStepInner::SaturatingInit {
+                            update,
+                        },
+                        Ok(StepPoll::Emitted(output)),
+                    ),
+                    UpdatePoll::Ready(wrapped_transposer) => (
+                        SubStepInner::SaturatedInit {
+                            wrapped_transposer,
+                        },
+                        Ok(StepPoll::Ready),
                     ),
                 },
                 SubStepInner::OriginalSaturatingInput {
                     mut update,
                 } => match Pin::new(&mut update).poll(cx) {
-                    Poll::Ready(UpdateResult {
-                        wrapped_transposer,
-                        outputs,
-                    }) => {
-                        let inputs = update.reclaim_pending();
-                        let inner = SubStepInner::SaturatedInput {
-                            wrapped_transposer,
-                            inputs,
-                        };
-
-                        (inner, handle_original_outputs(outputs))
-                    },
-                    Poll::Pending => (
+                    UpdatePoll::Pending => (
                         SubStepInner::OriginalSaturatingInput {
                             update,
                         },
-                        Poll::Pending,
+                        Ok(StepPoll::Pending),
                     ),
+                    UpdatePoll::Event(output) => (
+                        SubStepInner::OriginalSaturatingInput {
+                            update,
+                        },
+                        Ok(StepPoll::Emitted(output)),
+                    ),
+                    UpdatePoll::Ready(wrapped_transposer) => {
+                        let inputs = update.reclaim_pending();
+                        (
+                            SubStepInner::SaturatedInput {
+                                wrapped_transposer,
+                                inputs,
+                            },
+                            Ok(StepPoll::Ready),
+                        )
+                    },
                 },
-
                 SubStepInner::RepeatSaturatingInput {
                     mut update,
                 } => match Pin::new(&mut update).poll(cx) {
-                    Poll::Ready(result) => {
-                        let UpdateResult {
-                            wrapped_transposer,
-                            outputs: (),
-                        } = result;
-                        let inputs = update.reclaim_pending();
-                        let inner = SubStepInner::SaturatedInput {
-                            wrapped_transposer,
-                            inputs,
-                        };
-
-                        (inner, Poll::Ready(Ok(None)))
-                    },
-                    Poll::Pending => (
+                    UpdatePoll::Pending => (
                         SubStepInner::RepeatSaturatingInput {
                             update,
                         },
-                        Poll::Pending,
+                        Ok(StepPoll::Pending),
                     ),
+                    UpdatePoll::Event(_) => unreachable!(),
+                    UpdatePoll::Ready(wrapped_transposer) => {
+                        let inputs = update.reclaim_pending();
+                        (
+                            SubStepInner::SaturatedInput {
+                                wrapped_transposer,
+                                inputs,
+                            },
+                            Ok(StepPoll::Ready),
+                        )
+                    },
                 },
                 SubStepInner::OriginalSaturatingScheduled {
                     mut update,
                 } => match Pin::new(&mut update).poll(cx) {
-                    Poll::Ready(UpdateResult {
-                        wrapped_transposer,
-                        outputs,
-                    }) => {
-                        let inner = SubStepInner::SaturatedScheduled {
-                            wrapped_transposer,
-                        };
-
-                        (inner, handle_original_outputs(outputs))
-                    },
-                    Poll::Pending => (
+                    UpdatePoll::Pending => (
                         SubStepInner::OriginalSaturatingScheduled {
                             update,
                         },
-                        Poll::Pending,
+                        Ok(StepPoll::Pending),
+                    ),
+                    UpdatePoll::Event(output) => (
+                        SubStepInner::OriginalSaturatingScheduled {
+                            update,
+                        },
+                        Ok(StepPoll::Emitted(output)),
+                    ),
+                    UpdatePoll::Ready(wrapped_transposer) => (
+                        SubStepInner::SaturatedScheduled {
+                            wrapped_transposer,
+                        },
+                        Ok(StepPoll::Ready),
                     ),
                 },
                 SubStepInner::RepeatSaturatingScheduled {
                     mut update,
                 } => match Pin::new(&mut update).poll(cx) {
-                    Poll::Ready(result) => {
-                        let UpdateResult {
-                            wrapped_transposer,
-                            outputs: (),
-                        } = result;
-                        let inner = SubStepInner::SaturatedScheduled {
-                            wrapped_transposer,
-                        };
-
-                        (inner, Poll::Ready(Ok(None)))
-                    },
-                    Poll::Pending => (
+                    UpdatePoll::Pending => (
                         SubStepInner::RepeatSaturatingScheduled {
                             update,
                         },
-                        Poll::Pending,
+                        Ok(StepPoll::Pending),
+                    ),
+                    UpdatePoll::Event(_) => unreachable!(),
+                    UpdatePoll::Ready(wrapped_transposer) => (
+                        SubStepInner::SaturatedScheduled {
+                            wrapped_transposer,
+                        },
+                        Ok(StepPoll::Ready),
                     ),
                 },
                 SubStepInner::UnsaturatedInit
@@ -551,9 +540,7 @@ impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
                 | SubStepInner::RepeatUnsaturatedInput {
                     ..
                 }
-                | SubStepInner::RepeatUnsaturatedScheduled => {
-                    (inner, Poll::Ready(Err(PollErr::Unsaturated)))
-                },
+                | SubStepInner::RepeatUnsaturatedScheduled => (inner, Err(PollErr::Unsaturated)),
                 SubStepInner::SaturatedInit {
                     ..
                 }
@@ -562,7 +549,7 @@ impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
                 }
                 | SubStepInner::SaturatedScheduled {
                     ..
-                } => (inner, Poll::Ready(Err(PollErr::Saturated))),
+                } => (inner, Err(PollErr::Saturated)),
                 SubStepInner::Unreachable => unreachable!(),
             },
         )
@@ -570,8 +557,8 @@ impl<T: Transposer, S: StorageFamily> Future for SubStep<T, S> {
 }
 
 // context types
-type OriginalContext<T, S> = SubStepUpdateContext<T, S, Vec<<T as Transposer>::Output>>;
-type RepeatContext<T, S> = SubStepUpdateContext<T, S, ()>;
+type OriginalContext<T, S> = SubStepUpdateContext<T, S, AsyncCollector<<T as Transposer>::Output>>;
+type RepeatContext<T, S> = SubStepUpdateContext<T, S, DiscardCollector>;
 
 // arg types
 type InitUpdate<T, S> = Update<T, S, OriginalContext<T, S>, InitArg<T, S>>;

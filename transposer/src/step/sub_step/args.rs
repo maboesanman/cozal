@@ -1,7 +1,6 @@
+use core::future::Future;
 use core::pin::Pin;
 use std::marker::PhantomData;
-
-use futures_core::Future;
 
 use super::update::{Arg, UpdateContext, WrappedTransposer};
 use crate::schedule_storage::StorageFamily;
