@@ -1,10 +1,11 @@
 use core::pin::Pin;
+use matches::assert_matches;
 
 use async_trait::async_trait;
 use rand::Rng;
 use util::dummy_waker::DummyWaker;
 
-use super::{StepPoll, StepPollResult};
+use super::StepPoll;
 use crate::context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext};
 use crate::step::Step;
 use crate::Transposer;
@@ -82,16 +83,8 @@ fn next_unsaturated_same_time() {
         next.saturate_take(&mut step).unwrap();
 
         let mut pin = Pin::new(&mut next);
-        let poll_result = pin.poll(DummyWaker::dummy());
-        if let Ok(StepPoll {
-            result: StepPollResult::Ready {
-                ..
-            },
-            outputs,
-        }) = poll_result
-        {
-            assert_eq!(outputs.len(), 1);
-        }
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
 
         step = next;
     }
@@ -100,16 +93,9 @@ fn next_unsaturated_same_time() {
         next.saturate_take(&mut step).unwrap();
 
         let mut pin = Pin::new(&mut next);
-        let poll_result = pin.poll(DummyWaker::dummy());
-        if let Ok(StepPoll {
-            result: StepPollResult::Ready {
-                ..
-            },
-            outputs,
-        }) = poll_result
-        {
-            assert_eq!(outputs.len(), 2);
-        }
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
 
         step = next;
     }
@@ -118,16 +104,8 @@ fn next_unsaturated_same_time() {
         next.saturate_take(&mut step).unwrap();
 
         let mut pin = Pin::new(&mut next);
-        let poll_result = pin.poll(DummyWaker::dummy());
-        if let Ok(StepPoll {
-            result: StepPollResult::Ready {
-                ..
-            },
-            outputs,
-        }) = poll_result
-        {
-            assert_eq!(outputs.len(), 1);
-        }
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
 
         step = next;
     }
@@ -152,16 +130,8 @@ fn do_some_clones() {
         next.saturate_clone(&step).unwrap();
 
         let mut pin = Pin::new(&mut next);
-        let poll_result = pin.poll(DummyWaker::dummy());
-        if let Ok(StepPoll {
-            result: StepPollResult::Ready {
-                ..
-            },
-            outputs,
-        }) = poll_result
-        {
-            assert_eq!(outputs.len(), 1);
-        }
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
 
         step = next;
     }
@@ -170,16 +140,9 @@ fn do_some_clones() {
         next.saturate_clone(&step).unwrap();
 
         let mut pin = Pin::new(&mut next);
-        let poll_result = pin.poll(DummyWaker::dummy());
-        if let Ok(StepPoll {
-            result: StepPollResult::Ready {
-                ..
-            },
-            outputs,
-        }) = poll_result
-        {
-            assert_eq!(outputs.len(), 2);
-        }
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
 
         step = next;
     }
@@ -188,16 +151,8 @@ fn do_some_clones() {
         next.saturate_clone(&step).unwrap();
 
         let mut pin = Pin::new(&mut next);
-        let poll_result = pin.poll(DummyWaker::dummy());
-        if let Ok(StepPoll {
-            result: StepPollResult::Ready {
-                ..
-            },
-            outputs,
-        }) = poll_result
-        {
-            assert_eq!(outputs.len(), 1);
-        }
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
+        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
 
         step = next;
     }
