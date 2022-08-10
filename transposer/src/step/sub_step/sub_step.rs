@@ -26,13 +26,13 @@ pub struct SubStep<T: Transposer, S: StorageFamily> {
     uuid_prev: Option<uuid::Uuid>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum NextUnsaturatedErr {
     NotSaturated,
     #[cfg(debug_assertions)]
     InputPastOrPresent,
 }
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SaturateErr {
     PreviousNotSaturated,
     SelfNotUnsaturated,
@@ -40,12 +40,12 @@ pub enum SaturateErr {
     IncorrectPrevious,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum DesaturateErr {
     AlreadyUnsaturated,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PollErr {
     Unsaturated,
     Saturated,

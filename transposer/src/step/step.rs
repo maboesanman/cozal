@@ -659,6 +659,7 @@ enum StepInner<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> {
     Unreachable,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum StepPoll<T: Transposer> {
     NeedsState,
     Emitted(T::Output),
@@ -682,7 +683,7 @@ pub enum MetadataMut<'a, T: Transposer, S: StorageFamily, M: StepMetadata<T, S>>
     Saturated(&'a mut M::Saturated),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PollErr {
     Unsaturated,
     Saturated,

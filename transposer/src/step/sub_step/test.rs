@@ -1,9 +1,8 @@
 use core::pin::Pin;
-use core::task::{Context, Poll};
+use core::task::Context;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use core::future::Future;
 use matches::assert_matches;
 use rand::Rng;
 use util::dummy_waker::DummyWaker;
@@ -12,9 +11,10 @@ use crate::context::{HandleScheduleContext, InitContext, InterpolateContext};
 use crate::schedule_storage::DefaultStorage;
 use crate::step::lazy_state::LazyState;
 use crate::step::sub_step::SubStep;
+use crate::step::StepPoll;
 use crate::Transposer;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct TestTransposer {
     counter: usize,
 }
@@ -74,7 +74,7 @@ fn saturate_take() {
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
 
-    assert_matches!(Pin::new(&mut init).poll(&mut cx), Poll::Ready(Ok(None)));
+    assert_matches!(Pin::new(&mut init).poll(&mut cx), Ok(StepPoll::Ready));
 
     let s = Arc::new(LazyState::new());
     let mut scheduled = init;
@@ -87,10 +87,10 @@ fn saturate_take() {
         scheduled_next.saturate_take(&mut scheduled).unwrap();
 
         let poll_result = Pin::new(&mut scheduled_next).poll(&mut cx);
-        if let Poll::Ready(Ok(Some(o))) = poll_result {
-            assert_eq!(o.len(), 1);
-            assert_eq!(*o.first().unwrap(), i * 10);
-        }
+        assert_eq!(poll_result, Ok(StepPoll::Emitted(i * 10)));
+
+        let poll_result = Pin::new(&mut scheduled_next).poll(&mut cx);
+        assert_eq!(poll_result, Ok(StepPoll::Ready));
 
         scheduled = scheduled_next;
     }
@@ -110,7 +110,7 @@ fn saturate_clone() {
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
 
-    assert_matches!(Pin::new(&mut init).poll(&mut cx), Poll::Ready(Ok(None)));
+    assert_matches!(Pin::new(&mut init).poll(&mut cx), Ok(StepPoll::Ready));
 
     let s = Arc::new(LazyState::new());
     let mut scheduled = init;
@@ -123,13 +123,12 @@ fn saturate_clone() {
         scheduled_next.saturate_clone(&mut scheduled).unwrap();
 
         let poll_result = Pin::new(&mut scheduled_next).poll(&mut cx);
-        if let Poll::Ready(Ok(Some(o))) = poll_result {
-            assert_eq!(o.len(), 1);
-            assert_eq!(*o.first().unwrap(), i * 10);
-        }
+        assert_eq!(poll_result, Ok(StepPoll::Emitted(i * 10)));
+
+        let poll_result = Pin::new(&mut scheduled_next).poll(&mut cx);
+        assert_eq!(poll_result, Ok(StepPoll::Ready));
 
         scheduled = scheduled_next;
-        // s = Arc::new(LazyState::new());
     }
 }
 
@@ -146,12 +145,16 @@ fn desaturate() {
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
 
-    let _ = Pin::new(&mut init).poll(&mut cx);
+    assert_matches!(Pin::new(&mut init).poll(&mut cx), Ok(StepPoll::Ready));
 
     let s = Arc::new(LazyState::new());
     let mut scheduled1 = init.next_unsaturated(&mut next_input, &s).unwrap().unwrap();
     scheduled1.saturate_clone(&mut init).unwrap();
-    assert_matches!(Pin::new(&mut scheduled1).poll(&mut cx), Poll::Ready(Ok(_)));
+    assert_matches!(
+        Pin::new(&mut scheduled1).poll(&mut cx),
+        Ok(StepPoll::Emitted(10))
+    );
+    assert_matches!(Pin::new(&mut scheduled1).poll(&mut cx), Ok(StepPoll::Ready));
 
     let s = Arc::new(LazyState::new());
     let mut scheduled2 = scheduled1
@@ -159,15 +162,21 @@ fn desaturate() {
         .unwrap()
         .unwrap();
     scheduled2.saturate_clone(&mut scheduled1).unwrap();
-    assert_matches!(Pin::new(&mut scheduled2).poll(&mut cx), Poll::Ready(Ok(_)));
+    assert_matches!(
+        Pin::new(&mut scheduled2).poll(&mut cx),
+        Ok(StepPoll::Emitted(20))
+    );
+    assert_matches!(Pin::new(&mut scheduled2).poll(&mut cx), Ok(StepPoll::Ready));
 
     scheduled1.desaturate().unwrap();
     scheduled1.saturate_clone(&mut init).unwrap();
-    assert_matches!(Pin::new(&mut scheduled1).poll(&mut cx), Poll::Ready(Ok(_)));
+    // second time they don't emit
+    assert_matches!(Pin::new(&mut scheduled1).poll(&mut cx), Ok(StepPoll::Ready));
 
     scheduled2.desaturate().unwrap();
     scheduled2.saturate_clone(&mut scheduled1).unwrap();
-    assert_matches!(Pin::new(&mut scheduled2).poll(&mut cx), Poll::Ready(Ok(_)));
+    // second time they don't emit
+    assert_matches!(Pin::new(&mut scheduled2).poll(&mut cx), Ok(StepPoll::Ready));
 
     init.desaturate().unwrap();
 }
@@ -186,7 +195,7 @@ fn next_unsaturated_same_time() {
     let waker = DummyWaker::dummy();
     let mut cx = Context::from_waker(&waker);
 
-    assert_matches!(Pin::new(&mut step).poll(&mut cx), Poll::Ready(Ok(None)));
+    assert_matches!(Pin::new(&mut step).poll(&mut cx), Ok(StepPoll::Ready));
 
     let s = Arc::new(LazyState::new());
 
@@ -196,10 +205,8 @@ fn next_unsaturated_same_time() {
         let mut next = step.next_unsaturated(&mut next_input, &s).unwrap().unwrap();
         next.saturate_take(&mut step).unwrap();
 
-        let poll_result = Pin::new(&mut next).poll(&mut cx);
-        if let Poll::Ready(Ok(Some(o))) = poll_result {
-            assert_eq!(o.len(), 1);
-        }
+        assert_matches!(Pin::new(&mut next).poll(&mut cx), Ok(StepPoll::Emitted(10)));
+        assert_matches!(Pin::new(&mut next).poll(&mut cx), Ok(StepPoll::Ready));
 
         step = next;
     }
@@ -207,10 +214,7 @@ fn next_unsaturated_same_time() {
         let mut next = step.next_unsaturated(&mut next_input, &s).unwrap().unwrap();
         next.saturate_take(&mut step).unwrap();
 
-        let poll_result = Pin::new(&mut next).poll(&mut cx);
-        if let Poll::Ready(Ok(Some(o))) = poll_result {
-            assert_eq!(o.len(), 1);
-        }
+        assert_matches!(Pin::new(&mut next).poll(&mut cx), Ok(StepPoll::Ready));
 
         step = next;
     }
@@ -218,10 +222,8 @@ fn next_unsaturated_same_time() {
         let mut next = step.next_unsaturated_same_time().unwrap().unwrap();
         next.saturate_take(&mut step).unwrap();
 
-        let poll_result = Pin::new(&mut next).poll(&mut cx);
-        if let Poll::Ready(Ok(Some(o))) = poll_result {
-            assert_eq!(o.len(), 1);
-        }
+        assert_matches!(Pin::new(&mut next).poll(&mut cx), Ok(StepPoll::Emitted(20)));
+        assert_matches!(Pin::new(&mut next).poll(&mut cx), Ok(StepPoll::Ready));
 
         step = next;
     }
@@ -229,10 +231,8 @@ fn next_unsaturated_same_time() {
         let mut next = step.next_unsaturated(&mut next_input, &s).unwrap().unwrap();
         next.saturate_take(&mut step).unwrap();
 
-        let poll_result = Pin::new(&mut next).poll(&mut cx);
-        if let Poll::Ready(Ok(Some(o))) = poll_result {
-            assert_eq!(o.len(), 1);
-        }
+        assert_matches!(Pin::new(&mut next).poll(&mut cx), Ok(StepPoll::Emitted(30)));
+        assert_matches!(Pin::new(&mut next).poll(&mut cx), Ok(StepPoll::Ready));
 
         step = next;
     }
