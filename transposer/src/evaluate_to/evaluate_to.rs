@@ -1,14 +1,14 @@
+use core::future::Future;
 use core::hash::Hash;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use core::future::Future;
 use util::replace_mut;
 
 use crate::schedule_storage::StorageFamily;
-use crate::step::{Interpolation, Step, StepPollResult};
+use crate::step::{Interpolation, Step, StepPoll};
 use crate::Transposer;
 
 #[derive(Clone, Copy)]
@@ -97,7 +97,7 @@ where
     Terminated,
 }
 
-pub type EmittedEvents<T> = Vec<(<T as Transposer>::Time, Vec<<T as Transposer>::Output>)>;
+pub type EmittedEvents<T> = Vec<(<T as Transposer>::Time, <T as Transposer>::Output)>;
 
 impl<T: Transposer, S, Fs> Future for EvaluateTo<T, S, Fs>
 where
@@ -148,11 +148,8 @@ where
                             }
                             let time = frame.raw_time();
                             let progress = frame.poll(cx.waker().clone()).unwrap();
-                            outputs.push((time, progress.outputs));
-                            match progress.result {
-                                StepPollResult::NeedsState {
-                                    ..
-                                } => {
+                            match progress {
+                                StepPoll::NeedsState => {
                                     state_fut = Some(Box::pin((state)(time)));
                                     return (
                                         EvaluateToInner::Step {
@@ -166,9 +163,7 @@ where
                                         Poll::Ready(None),
                                     )
                                 },
-                                StepPollResult::Pending {
-                                    ..
-                                } => {
+                                StepPoll::Pending => {
                                     return (
                                         EvaluateToInner::Step {
                                             frame,
@@ -181,9 +176,21 @@ where
                                         Poll::Pending,
                                     )
                                 },
-                                StepPollResult::Ready {
-                                    ..
-                                } => {},
+                                StepPoll::Emitted(o) => {
+                                    outputs.push((time, o));
+                                    return (
+                                        EvaluateToInner::Step {
+                                            frame,
+                                            events,
+                                            state,
+                                            state_fut,
+                                            until,
+                                            outputs,
+                                        },
+                                        Poll::Ready(None),
+                                    )
+                                },
+                                StepPoll::Ready => {},
                             }
 
                             let next = {

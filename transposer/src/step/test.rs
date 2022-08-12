@@ -1,7 +1,7 @@
 use core::pin::Pin;
-use matches::assert_matches;
 
 use async_trait::async_trait;
+use matches::assert_matches;
 use rand::Rng;
 use util::dummy_waker::DummyWaker;
 

@@ -9,15 +9,16 @@ use super::sub_step_update_context::{AsyncCollector, DiscardCollector, SubStepUp
 use super::time::SubStepTime;
 use super::update::{Arg, Update, WrappedTransposer};
 use crate::schedule_storage::{StorageFamily, TransposerPointer};
-use crate::step::lazy_state::LazyState;
+use crate::step::lazy_state::{LazyState, LazyStateProxy};
 use crate::step::sub_step::update::UpdatePoll;
 use crate::step::{NextInputs, StepPoll};
 use crate::Transposer;
+use crate::schedule_storage::LazyStatePointer;
 
 pub struct SubStep<T: Transposer, S: StorageFamily> {
     time:        SubStepTime<T::Time>,
     inner:       SubStepInner<T, S>,
-    input_state: S::LazyState<LazyState<T::InputState>>,
+    input_state: S::LazyState<LazyStateProxy<T::InputState>>,
 
     // these are used purely for enforcing that saturate calls use the previous step.
     #[cfg(debug_assertions)]
@@ -55,7 +56,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
     pub fn new_init(
         transposer: T,
         rng_seed: [u8; 32],
-        input_state: &S::LazyState<LazyState<T::InputState>>,
+        input_state: &LazyState<T::InputState>,
     ) -> Self {
         let time = SubStepTime::new_init();
         let wrapped_transposer = WrappedTransposer::new(transposer, rng_seed);
@@ -63,6 +64,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
             <S::Transposer<WrappedTransposer<T, S>> as TransposerPointer<_>>::new(
                 wrapped_transposer,
             );
+        let input_state = S::LazyState::new(input_state.get_proxy());
         let update = Update::new(wrapped_transposer, (), time.clone(), input_state.clone());
         let inner = SubStepInner::SaturatingInit {
             update,
@@ -70,7 +72,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
         SubStep {
             time,
             inner,
-            input_state: input_state.clone(),
+            input_state,
 
             #[cfg(debug_assertions)]
             uuid_self: uuid::Uuid::new_v4(),
@@ -82,7 +84,7 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
     pub fn next_unsaturated(
         &self,
         next_inputs: &mut NextInputs<T>,
-        input_state: &S::LazyState<LazyState<T::InputState>>,
+        input_state: &LazyState<T::InputState>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         #[cfg(debug_assertions)]
         if let Some((t, _)) = next_inputs {
@@ -143,10 +145,12 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
             SubStepInner::OriginalUnsaturatedScheduled
         };
 
+        let input_state = S::LazyState::new(input_state.get_proxy());
+
         let item = SubStep {
             time,
             inner,
-            input_state: input_state.clone(),
+            input_state,
 
             #[cfg(debug_assertions)]
             uuid_self: uuid::Uuid::new_v4(),

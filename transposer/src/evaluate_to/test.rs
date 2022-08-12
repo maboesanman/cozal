@@ -29,7 +29,7 @@ impl Transposer for TestTransposer {
         async {
             self.counter = 0;
             cx.schedule_event(1, ()).unwrap();
-            let _s = cx.get_input_state().await;
+            // let _s = cx.get_input_state().await;
         }
         .pending_once()
         .await
@@ -43,8 +43,8 @@ impl Transposer for TestTransposer {
     ) {
         async {
             self.counter += inputs.len();
-            cx.emit_event(self.counter * 10);
-            let _s = cx.get_input_state().await;
+            cx.emit_event(self.counter * 10).await;
+            // let _s = cx.get_input_state().await;
         }
         .pending_once()
         .await
@@ -60,8 +60,8 @@ impl Transposer for TestTransposer {
             cx.schedule_event(time + 1, ()).unwrap();
 
             self.counter += 1;
-            cx.emit_event(self.counter * 10);
-            let _s = cx.get_input_state().await;
+            cx.emit_event(self.counter * 10).await;
+            // let _s = cx.get_input_state().await;
         }
         .pending_once()
         .await
@@ -85,16 +85,19 @@ fn basic() {
     };
     let rng_seed = rand::thread_rng().gen();
 
+    let state_fn = |_| async { core::future::ready(()).await };
+
     let fut = evaluate_to(
         transposer,
         100,
         vec![(10, ()), (15, ()), (27, ()), (200, ())],
-        |_| core::future::ready(()).pending_once(),
+        state_fn,
         rng_seed,
     );
 
-    let (_, value) = futures_executor::block_on(fut);
+    let (x, value) = futures_executor::block_on(fut);
 
     // 100 from scheduled events, 3 from input events
-    assert_eq!(value, 100 + 3)
+    assert_eq!(x.len(), 103);
+    assert_eq!(value, 100 + 3);
 }

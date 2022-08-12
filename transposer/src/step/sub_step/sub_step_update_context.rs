@@ -2,12 +2,13 @@ use core::future::Future;
 use core::ops::Deref;
 use core::pin::Pin;
 use core::ptr::NonNull;
+use std::future::IntoFuture;
 
 use super::time::SubStepTime;
 use super::update::{TransposerMetaData, UpdateContext};
 use crate::context::*;
 use crate::schedule_storage::StorageFamily;
-use crate::step::lazy_state::LazyState;
+use crate::step::lazy_state::{LazyState, LazyStateProxy};
 use crate::{ExpireHandle, Transposer};
 
 pub trait OutputCollector<O> {
@@ -81,7 +82,7 @@ pub struct SubStepUpdateContext<T: Transposer, S: StorageFamily, C: OutputCollec
     // values to output
     output_collector: C,
 
-    input_state: S::LazyState<LazyState<T::InputState>>,
+    input_state: S::LazyState<LazyStateProxy<T::InputState>>,
 }
 
 impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> InitContext<'a, T>
@@ -105,7 +106,7 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> UpdateConte
     unsafe fn new(
         time: SubStepTime<T::Time>,
         metadata: NonNull<TransposerMetaData<T, S>>,
-        input_state: S::LazyState<LazyState<T::InputState>>,
+        input_state: S::LazyState<LazyStateProxy<T::InputState>>,
     ) -> Self {
         Self {
             metadata,

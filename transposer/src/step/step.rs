@@ -1,5 +1,6 @@
 use core::pin::Pin;
 use core::task::{Context, Waker};
+use std::sync::Arc;
 
 use util::replace_mut;
 
@@ -19,7 +20,7 @@ pub struct Step<
     inner: StepInner<T, S, M>,
 
     // boxed to make self reference easier.
-    input_state: S::LazyState<LazyState<T::InputState>>,
+    input_state: LazyState<T::InputState>,
 
     // these are used purely for enforcing that saturate calls use the previous step_group.
     #[cfg(debug_assertions)]
@@ -33,7 +34,7 @@ pub type NextInputs<T> = Option<(<T as Transposer>::Time, Box<[<T as Transposer>
 impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         let mut steps = Vec::with_capacity(1);
-        let input_state = S::LazyState::<LazyState<T::InputState>>::new(LazyState::new());
+        let input_state = LazyState::new();
 
         steps.push(SubStep::new_init(transposer, rng_seed, &input_state));
 
@@ -61,7 +62,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
             metadata,
         } = &self.inner
         {
-            let input_state = S::LazyState::<LazyState<T::InputState>>::new(LazyState::new());
+            let input_state = LazyState::new();
 
             let next = steps
                 .last()
@@ -328,7 +329,9 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
 
             match poll_result {
                 StepPoll::Ready => {},
-                other => break Ok(other),
+                StepPoll::NeedsState => return Ok(StepPoll::NeedsState),
+                StepPoll::Emitted(o) => return Ok(StepPoll::Emitted(o)),
+                StepPoll::Pending => return Ok(StepPoll::Pending),
             };
 
             // now we are ready, we need to advance to the next sub-step.
@@ -342,7 +345,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
         &mut self,
         state: T::InputState,
         skip_wake: bool,
-    ) -> Result<(), Box<T::InputState>> {
+    ) -> Result<(), Arc<T::InputState>> {
         self.input_state.set(state, skip_wake)
     }
 

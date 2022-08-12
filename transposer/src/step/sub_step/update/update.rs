@@ -5,7 +5,7 @@ use core::task::{Context, Poll};
 
 use super::{Arg, SubStepTime, UpdateContext, WrappedTransposer};
 use crate::schedule_storage::{StorageFamily, TransposerPointer};
-use crate::step::lazy_state::LazyState;
+use crate::step::lazy_state::LazyStateProxy;
 use crate::Transposer;
 
 pub struct Update<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> {
@@ -31,7 +31,7 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
         mut wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
         mut arg: A::Stored,
         time: SubStepTime<T::Time>,
-        input_state: S::LazyState<LazyState<T::InputState>>,
+        input_state: S::LazyState<LazyStateProxy<T::InputState>>,
     ) -> Self {
         // update 'current time'
         let raw_time = time.raw_time();

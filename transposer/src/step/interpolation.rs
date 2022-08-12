@@ -2,6 +2,7 @@ use core::future::Future;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::task::{Context, Poll};
+use std::sync::Arc;
 
 use super::interpolate_context::StepInterpolateContext;
 use super::sub_step::WrappedTransposer;
@@ -50,10 +51,10 @@ impl<T: Transposer, S: StorageFamily> Interpolation<T, S> {
     }
 
     pub fn set_state(
-        &self,
+        &mut self,
         state: T::InputState,
         skip_wake: bool,
-    ) -> Result<(), Box<T::InputState>> {
+    ) -> Result<(), Arc<T::InputState>> {
         self.context.state.set(state, skip_wake)
     }
 }
