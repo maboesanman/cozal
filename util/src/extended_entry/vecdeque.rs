@@ -47,8 +47,4 @@ impl<'a, T> ExtEntry<'a, T> {
     pub fn into_collection_mut(self) -> &'a mut VecDeque<T> {
         self.vec_deque
     }
-
-    // pub fn get_prev(self) -> Result<Self, Self> {
-
-    // }
 }

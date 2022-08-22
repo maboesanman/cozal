@@ -48,8 +48,6 @@ pub struct Transpose<Src: Source, T: Transposer> {
 
     input_buffer: InputBuffer<T>,
 
-    output_buffer: OutputBuffer<T>,
-
     retention_policy: RetentionPolicy<T::Time>,
 }
 
@@ -70,7 +68,6 @@ where
             events_poll_time: T::Time::default(),
             channel_statuses: ChannelStatuses::new(transposer, rng_seed),
             input_buffer: InputBuffer::new(),
-            output_buffer: OutputBuffer::new(),
             retention_policy: RetentionPolicy::new(T::Time::default()),
         }
     }
@@ -80,9 +77,7 @@ where
         state: T::OutputState,
     ) -> SourcePollOk<T::Time, T::Output, T::OutputState> {
         match (
-            self.output_buffer
-                .first_event_time()
-                .or(self.channel_statuses.get_scheduled_time()),
+            self.channel_statuses.get_scheduled_time(),
             self.last_scheduled,
         ) {
             (None, None) => SourcePollOk::Ready(state),
@@ -105,7 +100,6 @@ where
             events_poll_time,
             channel_statuses,
             input_buffer,
-            output_buffer,
             retention_policy,
         } = self.as_mut().project();
 
@@ -178,7 +172,7 @@ where
                         };
 
                         // this provide state call will not poll the future.
-                        let inner_status = inner_status.provide_state(state, false);
+                        let inner_status = inner_status.provide_state(state);
 
                         // now loop again, polling the future on the next pass.
                         status = CallerChannelStatus::OriginalStepFuture(inner_status);
@@ -190,7 +184,7 @@ where
                         // (if original completes it needs to make a new original future)
                         let mut first = input_buffer.pop_first();
 
-                        let (s, outputs) = inner_status.poll(&all_channel_waker, &mut first);
+                        let (s, output) = inner_status.poll(&all_channel_waker, &mut first);
 
                         // if poll didn't need the input, put it back in the buffer
                         if let Some((t, inputs)) = first {
@@ -198,9 +192,10 @@ where
                         }
 
                         // handle all the generated outputs
-                        for o in outputs {
-                            output_buffer.handle_output_event(t, o);
+                        if let Some(output) = output {
+                            return Poll::Ready(Ok(SourcePollOk::Event(output, t)))
                         }
+
                         status = s;
                     },
                     CallerChannelStatus::RepeatStepSourceState(mut inner_status) => {
@@ -240,7 +235,7 @@ where
                         };
 
                         // this provide state call will not poll the future.
-                        let inner_status = inner_status.provide_state(state, false);
+                        let inner_status = inner_status.provide_state(state);
 
                         // now loop again, polling the future on the next pass.
                         status = CallerChannelStatus::RepeatStepFuture(inner_status);
@@ -284,7 +279,7 @@ where
                             Poll::Pending => break 'outer Poll::Pending,
                         };
 
-                        let inner_status = inner_status.provide_state(state, false);
+                        let inner_status = inner_status.provide_state(state);
 
                         // now loop again, polling the future on the next pass.
                         status = CallerChannelStatus::InterpolationFuture(inner_status);

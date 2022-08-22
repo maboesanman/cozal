@@ -24,12 +24,11 @@ use util::extended_entry::option::{
 };
 use util::extended_entry::vecdeque::{
     get_ext_entry as vecdeque_get_ext_entry,
-    ExtEntry as VecDequeEntry,
 };
 use util::replace_mut::replace;
 use util::stack_waker::StackWaker;
 
-use super::steps::{StepWrapper, Steps};
+use super::steps::{StepWrapper, Steps, StepsEntry};
 use super::storage::TransposeStorage;
 
 // manage the association of source and caller channels.
@@ -267,7 +266,7 @@ pub struct Free<'a, T: Transposer> {
 pub struct OriginalStepSourceState<'a, T: Transposer> {
     // entries
     caller_channel: HashMapOccupiedEntry<'a, usize, CallerChannelBlockedReason<T>>,
-    step:           VecDequeEntry<'a, StepWrapper<T>>,
+    step:           StepsEntry<'a, T>,
     block_reason:   OptionOccupiedEntry<'a, OriginalStepBlockedReason>,
     source_channel: BTreeMapOccupiedEntry<'a, usize, ()>,
 
@@ -278,7 +277,7 @@ pub struct OriginalStepSourceState<'a, T: Transposer> {
 pub struct OriginalStepFuture<'a, T: Transposer> {
     // entries
     caller_channel: HashMapOccupiedEntry<'a, usize, CallerChannelBlockedReason<T>>,
-    step:           VecDequeEntry<'a, StepWrapper<T>>,
+    step:           StepsEntry<'a, T>,
     block_reason:   OptionOccupiedEntry<'a, OriginalStepBlockedReason>,
 
     // extra
@@ -289,7 +288,7 @@ pub struct OriginalStepFuture<'a, T: Transposer> {
 pub struct RepeatStepSourceState<'a, T: Transposer> {
     // entries
     caller_channel: HashMapOccupiedEntry<'a, usize, CallerChannelBlockedReason<T>>,
-    step:           VecDequeEntry<'a, StepWrapper<T>>,
+    step:           StepsEntry<'a, T>,
     block_reason:   HashMapOccupiedEntry<'a, usize, RepeatStepBlockedReason>,
     source_channel: BTreeMapOccupiedEntry<'a, usize, ()>,
 
@@ -300,7 +299,7 @@ pub struct RepeatStepSourceState<'a, T: Transposer> {
 pub struct RepeatStepFuture<'a, T: Transposer> {
     // entries
     caller_channel: HashMapOccupiedEntry<'a, usize, CallerChannelBlockedReason<T>>,
-    step:           VecDequeEntry<'a, StepWrapper<T>>,
+    step:           StepsEntry<'a, T>,
     block_reason:   HashMapOccupiedEntry<'a, usize, RepeatStepBlockedReason>,
 
     // extra
@@ -382,10 +381,19 @@ impl<'a, T: Transposer> OriginalStepFuture<'a, T> {
         mut self,
         all_channel_waker: &Waker,
         next_inputs: &mut NextInputs<T>,
-    ) -> (CallerChannelStatus<'a, T>, Vec<T::Output>) {
-        self.step.get_value_mut().step.poll(all_channel_waker.clone());
-        // if this step resolves, add a new original step and return
-        todo!()
+    ) -> (CallerChannelStatus<'a, T>, Option<T::Output>) {
+        match self.step.get_value_mut().step.poll(all_channel_waker.clone()).unwrap() {
+            StepPoll::NeedsState => todo!(),
+            StepPoll::Emitted(e) => (CallerChannelStatus::OriginalStepFuture(self), Some(e)),
+            StepPoll::Pending => (CallerChannelStatus::OriginalStepFuture(self), None),
+            StepPoll::Ready => (CallerChannelStatus::Free(Free {
+                caller_channel: self.caller_channel.vacate().0,
+                steps: self.step.into_collection_mut(),
+                blocked_source_channels: todo!(),
+                repeat_step_blocked_reasons: todo!(),
+                original_step_blocked_reasons: todo!(),
+            }), None),
+        }
     }
 
     pub fn time(&self) -> T::Time {
@@ -406,7 +414,7 @@ impl<'a, T: Transposer> OriginalStepSourceState<'a, T> {
         }
     }
 
-    pub fn provide_state(self, state: T::InputState, skip_wake: bool) -> OriginalStepFuture<'a, T> {
+    pub fn provide_state(self, state: T::InputState) -> OriginalStepFuture<'a, T> {
         let OriginalStepSourceState {
             // entries
             caller_channel,
@@ -418,7 +426,7 @@ impl<'a, T: Transposer> OriginalStepSourceState<'a, T> {
             repeat_step_blocked_reasons,
         } = self;
 
-        let x = step.get_value_mut().step.set_input_state(state, skip_wake);
+        let x = step.get_value_mut().step.set_input_state(state);
 
         // TODO figure out error handling strategy.
         debug_assert!(x.is_ok());
@@ -456,13 +464,7 @@ impl<'a, T: Transposer> RepeatStepFuture<'a, T> {
             None => return Poll::Pending,
         };
 
-        let StepPoll {
-            result,
-            outputs,
-        } = self.step.get_value_mut().step.poll(waker).unwrap();
-
-        #[cfg(debug_assertions)]
-        assert!(outputs.is_empty());
+        let result = self.step.get_value_mut().step.poll(waker).unwrap();
 
         let Self {
             caller_channel,
@@ -473,15 +475,16 @@ impl<'a, T: Transposer> RepeatStepFuture<'a, T> {
         } = self;
 
         let next_status = match result {
-            transposer::step::StepPollResult::NeedsState => RepeatStepSourceState {
+            StepPoll::NeedsState => RepeatStepSourceState {
                 caller_channel,
                 step,
                 block_reason,
                 source_channel: get_first_vacant(blocked_source_channels).occupy(()),
                 original_step_blocked_reasons,
             },
-            transposer::step::StepPollResult::Pending => return Poll::Pending,
-            transposer::step::StepPollResult::Ready => {
+            StepPoll::Emitted(_) => unreachable!(),
+            StepPoll::Pending => return Poll::Pending,
+            StepPoll::Ready => {
                 let (caller_channel, _) = caller_channel.vacate();
 
                 return todo!()
@@ -519,7 +522,7 @@ impl<'a, T: Transposer> RepeatStepSourceState<'a, T> {
             _ => unreachable!(),
         }
     }
-    pub fn provide_state(self, state: T::InputState, skip_wake: bool) -> RepeatStepFuture<'a, T> {
+    pub fn provide_state(self, state: T::InputState) -> RepeatStepFuture<'a, T> {
         let RepeatStepSourceState {
             // entries
             caller_channel,
@@ -530,7 +533,7 @@ impl<'a, T: Transposer> RepeatStepSourceState<'a, T> {
             original_step_blocked_reasons,
         } = self;
 
-        let x = step.get_value_mut().step.set_input_state(state, skip_wake);
+        let x = step.get_value_mut().step.set_input_state(state);
 
         // TODO figure out error handling strategy.
         debug_assert!(x.is_ok());
@@ -634,7 +637,6 @@ impl<'a, T: Transposer> InterpolationSourceState<'a, T> {
     pub fn provide_state(
         self,
         state: T::InputState,
-        skip_wake: bool,
     ) -> InterpolationFuture<'a, T> {
         let InterpolationSourceState {
             // entries
@@ -651,7 +653,7 @@ impl<'a, T: Transposer> InterpolationSourceState<'a, T> {
             interpolation, ..
         } = caller_channel.get_value_mut()
         {
-            let x = interpolation.set_state(state, skip_wake);
+            let x = interpolation.set_state(state);
 
             // TODO figure out error handling strategy.
             debug_assert!(x.is_ok())

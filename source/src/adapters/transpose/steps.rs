@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::ptr::NonNull;
 use std::slice::SliceIndex;
 
 // use super::transpose_step_metadata::TransposeStepMetadata;
@@ -43,16 +44,17 @@ impl<T: Transposer> Steps<T> {
     pub fn get_entry_by_sequence_number(
         &mut self,
         i: usize,
-    ) -> Option<ExtEntry<'_, StepWrapper<T>>> {
+    ) -> Option<StepsEntry<'_, T>> {
         let i = i.checked_sub(self.num_deleted_steps)?;
 
-        get_ext_entry(&mut self.steps, i)
+        StepsEntry::new(self, i)
     }
 
-    pub fn get_last_entry(&mut self) -> Option<ExtEntry<'_, StepWrapper<T>>> {
+    pub fn get_last_entry(&mut self) -> Option<StepsEntry<'_, T>> {
         let i = self.steps.len().checked_sub(1)?;
+        
 
-        get_ext_entry(&mut self.steps, i)
+        StepsEntry::new(self, i)
     }
 
     pub fn get_last(&self) -> &StepWrapper<T> {
@@ -106,6 +108,44 @@ impl<T: Transposer> Steps<T> {
         }
 
         Err(())
+    }
+}
+
+pub struct StepsEntry<'a, T: Transposer> {
+    steps: NonNull<Steps<T>>,
+    step: ExtEntry<'a, StepWrapper<T>>, 
+}
+
+
+
+impl<'a, T: Transposer> StepsEntry<'a, T> {
+    pub fn new(steps: &'a mut Steps<T>, index: usize) -> Option<Self> {
+        let steps_ptr: NonNull<_> = steps.into();
+        let step = get_ext_entry(&mut steps.steps, index)?;
+
+        Some(Self {
+            steps: steps_ptr,
+            step
+        })
+    }
+    pub fn get_index(&self) -> usize {
+        self.step.get_index()
+    }
+
+    pub fn get_value(&self) -> &StepWrapper<T> {
+        self.step.get_value()
+    }
+
+    pub fn get_value_mut(&mut self) -> &mut StepWrapper<T> {
+        self.step.get_value_mut()
+    }
+
+    pub fn into_value_mut(self) -> &'a mut StepWrapper<T> {
+        self.step.into_value_mut()
+    }
+
+    pub fn into_collection_mut(mut self) -> &'a mut Steps<T> {
+        unsafe { self.steps.as_mut() }
     }
 }
 
