@@ -41,10 +41,7 @@ impl<T: Transposer> Steps<T> {
         self.steps.get_mut(i)
     }
 
-    pub fn get_entry_by_sequence_number(
-        &mut self,
-        i: usize,
-    ) -> Option<StepsEntry<'_, T>> {
+    pub fn get_entry_by_sequence_number(&mut self, i: usize) -> Option<StepsEntry<'_, T>> {
         let i = i.checked_sub(self.num_deleted_steps)?;
 
         StepsEntry::new(self, i)
@@ -52,7 +49,6 @@ impl<T: Transposer> Steps<T> {
 
     pub fn get_last_entry(&mut self) -> Option<StepsEntry<'_, T>> {
         let i = self.steps.len().checked_sub(1)?;
-        
 
         StepsEntry::new(self, i)
     }
@@ -113,10 +109,8 @@ impl<T: Transposer> Steps<T> {
 
 pub struct StepsEntry<'a, T: Transposer> {
     steps: NonNull<Steps<T>>,
-    step: ExtEntry<'a, StepWrapper<T>>, 
+    step:  ExtEntry<'a, StepWrapper<T>>,
 }
-
-
 
 impl<'a, T: Transposer> StepsEntry<'a, T> {
     pub fn new(steps: &'a mut Steps<T>, index: usize) -> Option<Self> {
@@ -125,7 +119,7 @@ impl<'a, T: Transposer> StepsEntry<'a, T> {
 
         Some(Self {
             steps: steps_ptr,
-            step
+            step,
         })
     }
     pub fn get_index(&self) -> usize {

@@ -22,9 +22,7 @@ use util::extended_entry::option::{
     OccupiedExtEntry as OptionOccupiedEntry,
     VacantExtEntry as OptionVacantEntry,
 };
-use util::extended_entry::vecdeque::{
-    get_ext_entry as vecdeque_get_ext_entry,
-};
+use util::extended_entry::vecdeque::get_ext_entry as vecdeque_get_ext_entry;
 use util::replace_mut::replace;
 use util::stack_waker::StackWaker;
 
@@ -348,7 +346,7 @@ impl<'a, T: Transposer> Free<'a, T> {
                         forget,
                     };
                     let caller_channel = caller_channel.occupy(blocked_reason);
-    
+
                     break CallerChannelStatus::InterpolationFuture(InterpolationFuture {
                         caller_channel,
                         steps,
@@ -363,7 +361,7 @@ impl<'a, T: Transposer> Free<'a, T> {
                 },
                 super::steps::BeforeStatus::Saturating(step) => {
                     // join the saturating.
-    
+
                     todo!()
                 },
             }
@@ -382,17 +380,26 @@ impl<'a, T: Transposer> OriginalStepFuture<'a, T> {
         all_channel_waker: &Waker,
         next_inputs: &mut NextInputs<T>,
     ) -> (CallerChannelStatus<'a, T>, Option<T::Output>) {
-        match self.step.get_value_mut().step.poll(all_channel_waker.clone()).unwrap() {
+        match self
+            .step
+            .get_value_mut()
+            .step
+            .poll(all_channel_waker.clone())
+            .unwrap()
+        {
             StepPoll::NeedsState => todo!(),
             StepPoll::Emitted(e) => (CallerChannelStatus::OriginalStepFuture(self), Some(e)),
             StepPoll::Pending => (CallerChannelStatus::OriginalStepFuture(self), None),
-            StepPoll::Ready => (CallerChannelStatus::Free(Free {
-                caller_channel: self.caller_channel.vacate().0,
-                steps: self.step.into_collection_mut(),
-                blocked_source_channels: todo!(),
-                repeat_step_blocked_reasons: todo!(),
-                original_step_blocked_reasons: todo!(),
-            }), None),
+            StepPoll::Ready => (
+                CallerChannelStatus::Free(Free {
+                    caller_channel: self.caller_channel.vacate().0,
+                    steps: self.step.into_collection_mut(),
+                    blocked_source_channels: todo!(),
+                    repeat_step_blocked_reasons: todo!(),
+                    original_step_blocked_reasons: todo!(),
+                }),
+                None,
+            ),
         }
     }
 
@@ -634,10 +641,7 @@ impl<'a, T: Transposer> InterpolationSourceState<'a, T> {
             _ => unreachable!("CallerChannelBlockedReason does not match CallerChannelStatus"),
         }
     }
-    pub fn provide_state(
-        self,
-        state: T::InputState,
-    ) -> InterpolationFuture<'a, T> {
+    pub fn provide_state(self, state: T::InputState) -> InterpolationFuture<'a, T> {
         let InterpolationSourceState {
             // entries
             mut caller_channel,

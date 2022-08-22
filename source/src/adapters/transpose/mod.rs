@@ -2,7 +2,6 @@
 // mod channel_assignments;
 mod channel_statuses;
 mod input_buffer;
-mod output_buffer;
 mod retention_policy;
 mod steps;
 mod storage;
@@ -19,7 +18,6 @@ use util::stack_waker::StackWaker;
 
 use self::channel_statuses::ChannelStatuses;
 use self::input_buffer::InputBuffer;
-use self::output_buffer::OutputBuffer;
 use self::retention_policy::RetentionPolicy;
 use crate::adapters::transpose::channel_statuses::CallerChannelStatus;
 use crate::source_poll::SourcePollOk;
@@ -134,7 +132,7 @@ where
             if let Some(poll) = unhandled_event_info.take() {
                 // handle poll
                 drop(poll);
-                todo!(/* handle new event info, possibly modifying input buffer, channel status, and output buffer */)
+                todo!(/* handle new event info, possibly modifying input buffer and channel status */)
             }
 
             'inner: loop {
