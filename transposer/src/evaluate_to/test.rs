@@ -29,7 +29,7 @@ impl Transposer for TestTransposer {
         async {
             self.counter = 0;
             cx.schedule_event(1, ()).unwrap();
-            // let _s = cx.get_input_state().await;
+            let _s = cx.get_input_state().await;
         }
         .pending_once()
         .await
@@ -44,7 +44,7 @@ impl Transposer for TestTransposer {
         async {
             self.counter += inputs.len();
             cx.emit_event(self.counter * 10).await;
-            // let _s = cx.get_input_state().await;
+            let _s = cx.get_input_state().await;
         }
         .pending_once()
         .await
@@ -61,7 +61,7 @@ impl Transposer for TestTransposer {
 
             self.counter += 1;
             cx.emit_event(self.counter * 10).await;
-            // let _s = cx.get_input_state().await;
+            let _s = cx.get_input_state().await;
         }
         .pending_once()
         .await
@@ -85,8 +85,7 @@ fn basic() {
     };
     let rng_seed = rand::thread_rng().gen();
 
-    // let state_fn = |_| async { core::future::ready(()).pending_once().await };
-    let state_fn = |_| async { core::future::ready(()).await };
+    let state_fn = |_| async { core::future::ready(()).pending_once().await };
 
     let fut = evaluate_to(
         transposer,

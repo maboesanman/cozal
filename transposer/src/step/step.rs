@@ -328,9 +328,15 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
 
             match poll_result {
                 StepPoll::Ready => {},
-                StepPoll::NeedsState => return Ok(StepPoll::NeedsState),
+                StepPoll::NeedsState => unreachable!(),
                 StepPoll::Emitted(o) => return Ok(StepPoll::Emitted(o)),
-                StepPoll::Pending => return Ok(StepPoll::Pending),
+                StepPoll::Pending => {
+                    if self.input_state.requested() {
+                        return Ok(StepPoll::NeedsState);
+                    } else {
+                        return Ok(StepPoll::Pending);
+                    }
+                },
             };
 
             // now we are ready, we need to advance to the next sub-step.
