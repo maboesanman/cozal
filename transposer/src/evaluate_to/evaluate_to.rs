@@ -3,9 +3,10 @@ use core::hash::Hash;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use std::collections::VecDeque;
+use std::mem::replace;
 use std::sync::Arc;
 
-use util::replace_mut;
+use futures_util::FutureExt;
 
 use crate::schedule_storage::StorageFamily;
 use crate::step::{Interpolation, Step, StepPoll};
@@ -53,14 +54,13 @@ where
         }
     }
     EvaluateTo {
-        inner: EvaluateToInner::Step {
-            frame: Box::new(Step::new_init(transposer, seed)),
-            events: collected_events,
-            state,
-            state_fut: None,
-            until,
-            outputs: Vec::new(),
-        },
+        frame: Box::new(Step::new_init(transposer, seed)),
+        interpolate: None,
+        events: collected_events,
+        state,
+        state_fut: None,
+        until,
+        outputs: Vec::new(),
     }
 }
 
@@ -69,33 +69,16 @@ where
     S: Unpin + Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
-    inner: EvaluateToInner<T, S, Fs>,
+    frame:     Box<Step<T, Storage>>,
+    interpolate: Option<Box<Interpolation<T, Storage>>>,
+    events:    VecDeque<EventGroup<T>>,
+    state:     S,
+    state_fut: Option<Pin<Box<Fs>>>,
+    until:     T::Time,
+    outputs:   EmittedEvents<T>,
 }
 
 type EventGroup<T> = (<T as Transposer>::Time, Box<[<T as Transposer>::Input]>);
-
-enum EvaluateToInner<T: Transposer, S, Fs>
-where
-    S: Unpin + Fn(T::Time) -> Fs,
-    Fs: Future<Output = T::InputState>,
-{
-    Step {
-        frame:     Box<Step<T, Storage>>,
-        events:    VecDeque<EventGroup<T>>,
-        state:     S,
-        state_fut: Option<Pin<Box<Fs>>>,
-        until:     T::Time,
-        outputs:   EmittedEvents<T>,
-    },
-    Interpolate {
-        interpolate: Pin<Box<Interpolation<T, Storage>>>,
-        state:       S,
-        state_fut:   Option<Pin<Box<Fs>>>,
-        until:       T::Time,
-        outputs:     EmittedEvents<T>,
-    },
-    Terminated,
-}
 
 pub type EmittedEvents<T> = Vec<(<T as Transposer>::Time, <T as Transposer>::Output)>;
 
@@ -111,197 +94,91 @@ where
         let this = self.get_mut();
 
         loop {
-            let poll_result = replace_mut::replace_and_return(
-                &mut this.inner,
-                || EvaluateToInner::Terminated,
-                |inner| {
-                    match inner {
-                        EvaluateToInner::Step {
-                            mut frame,
-                            mut events,
-                            state,
-                            mut state_fut,
-                            until,
-                            mut outputs,
-                        } => {
-                            if let Some(fut) = &mut state_fut {
-                                let fut = Pin::new(fut);
-                                match fut.poll(cx) {
-                                    Poll::Ready(s) => {
-                                        let _ = frame.set_input_state(s, false);
-                                        state_fut = None;
-                                    },
-                                    Poll::Pending => {
-                                        return (
-                                            EvaluateToInner::Step {
-                                                frame,
-                                                events,
-                                                state,
-                                                state_fut,
-                                                until,
-                                                outputs,
-                                            },
-                                            Poll::Pending,
-                                        )
-                                    },
-                                }
-                            }
-                            let time = frame.raw_time();
-                            let progress = frame.poll(cx.waker().clone()).unwrap();
-                            match progress {
-                                StepPoll::NeedsState => {
-                                    state_fut = Some(Box::pin((state)(time)));
-                                    return (
-                                        EvaluateToInner::Step {
-                                            frame,
-                                            events,
-                                            state,
-                                            state_fut,
-                                            until,
-                                            outputs,
-                                        },
-                                        Poll::Ready(None),
-                                    )
-                                },
-                                StepPoll::Pending => {
-                                    return (
-                                        EvaluateToInner::Step {
-                                            frame,
-                                            events,
-                                            state,
-                                            state_fut,
-                                            until,
-                                            outputs,
-                                        },
-                                        Poll::Pending,
-                                    )
-                                },
-                                StepPoll::Emitted(o) => {
-                                    outputs.push((time, o));
-                                    return (
-                                        EvaluateToInner::Step {
-                                            frame,
-                                            events,
-                                            state,
-                                            state_fut,
-                                            until,
-                                            outputs,
-                                        },
-                                        Poll::Ready(None),
-                                    )
-                                },
-                                StepPoll::Ready => {},
-                            }
-
-                            let next = {
-                                let mut event = events.pop_front();
-                                let next = frame.next_unsaturated(&mut event).unwrap();
-                                if let Some((time, inputs)) = event {
-                                    events.push_front((time, inputs));
-                                }
-
-                                next
-                            };
-
-                            if let Some(mut next_frame) = next {
-                                if next_frame.raw_time() <= until {
-                                    next_frame.saturate_take(&mut frame).unwrap();
-                                    *frame = next_frame;
-                                    return (
-                                        EvaluateToInner::Step {
-                                            frame,
-                                            events,
-                                            state,
-                                            state_fut,
-                                            until,
-                                            outputs,
-                                        },
-                                        Poll::Ready(None),
-                                    )
-                                }
-                            };
-
-                            // no updates or updates after "until"
-
-                            let interpolate = Box::pin(frame.interpolate(until).unwrap());
-
-                            (
-                                EvaluateToInner::Interpolate {
-                                    interpolate,
-                                    state,
-                                    state_fut: None,
-                                    until,
-                                    outputs,
-                                },
-                                Poll::Ready(None),
-                            )
-                        },
-                        EvaluateToInner::Interpolate {
-                            mut interpolate,
-                            state,
-                            mut state_fut,
-                            until,
-                            outputs,
-                        } => {
-                            if let Some(fut) = &mut state_fut {
-                                let fut = Pin::new(fut);
-                                match fut.poll(cx) {
-                                    Poll::Ready(s) => {
-                                        if interpolate.set_state(s, false).is_err() {
-                                            panic!()
-                                        };
-                                        state_fut = None;
-                                    },
-                                    Poll::Pending => {
-                                        return (
-                                            EvaluateToInner::Interpolate {
-                                                interpolate,
-                                                state,
-                                                state_fut,
-                                                until,
-                                                outputs,
-                                            },
-                                            Poll::Pending,
-                                        )
-                                    },
-                                }
-                            }
-
-                            let poll = interpolate.as_mut().poll(cx);
-
-                            match poll {
-                                Poll::Pending => {
-                                    let result = if interpolate.needs_state() {
-                                        state_fut = Some(Box::pin((state)(until)));
-                                        Poll::Ready(None)
-                                    } else {
-                                        Poll::Pending
-                                    };
-                                    (
-                                        EvaluateToInner::Interpolate {
-                                            interpolate,
-                                            state,
-                                            state_fut,
-                                            until,
-                                            outputs,
-                                        },
-                                        result,
-                                    )
-                                },
-                                Poll::Ready(s) => {
-                                    (EvaluateToInner::Terminated, Poll::Ready(Some((outputs, s))))
-                                },
-                            }
-                        },
-                        EvaluateToInner::Terminated => unreachable!(),
+            // deal with pending state futures
+            if let Some(state_fut) = &mut this.state_fut {
+                let state = state_fut.poll_unpin(cx);
+                let state = match state {
+                    Poll::Ready(s) => {
+                        this.state_fut = None;
+                        s
                     }
-                },
-            );
+                    Poll::Pending => return Poll::Pending,
+                };
+                if let Some(interpolate) = &mut this.interpolate {
+                    if interpolate.set_state(state).is_err() {
+                        panic!()
+                    }
+                } else {
+                    if this.frame.set_input_state(state).is_err() {
+                        panic!()
+                    }
+                }
+            }
 
-            match poll_result {
-                Poll::Ready(Some(s)) => break Poll::Ready(s),
-                Poll::Ready(None) => continue,
-                Poll::Pending => break Poll::Pending,
+            // deal with the current interpolation
+            if let Some(interpolate) = &mut this.interpolate {
+                let result = interpolate.poll_unpin(cx);
+                let result = match result {
+                    Poll::Ready(r) => {
+                        this.interpolate = None;
+                        r
+                    }
+                    Poll::Pending => {
+                        if interpolate.needs_state() {
+                            let fut = (this.state)(this.until);
+                            this.state_fut = Some(Box::pin(fut));
+                            continue
+                        } else {
+                            return Poll::Pending
+                        }
+                    },
+                };
+                let outputs = replace(&mut this.outputs, Vec::new());
+                return Poll::Ready((outputs, result))
+            }
+
+            // deal with the step.
+            let poll = this.frame.poll(cx.waker().clone()).unwrap();
+            match poll {
+                StepPoll::NeedsState => {
+                    let fut = (this.state)(this.frame.raw_time());
+                    this.state_fut = Some(Box::pin(fut));
+                    continue
+                },
+                StepPoll::Emitted(e) => {
+                    this.outputs.push((this.frame.raw_time(), e));
+                    continue
+                },
+                StepPoll::Pending => {
+                    return Poll::Pending
+                },
+                StepPoll::Ready => {
+                    let mut next_event = this.events.pop_front();
+                    let mut next_frame = this.frame.next_unsaturated(&mut next_event).unwrap();
+                    if let Some(next_event) = next_event {
+                        this.events.push_front(next_event)
+                    };
+
+                    if let Some(f) = &next_frame {
+                        if f.raw_time() > this.until {
+                            next_frame = None
+                        }
+                    }
+
+                    match next_frame {
+                        Some(mut f) => {
+                            f.saturate_take(&mut this.frame).unwrap();
+                            this.frame = Box::new(f);
+                            continue
+                        },
+                        None => {
+                            this.interpolate = Some(Box::new(
+                                this.frame.interpolate(this.until).unwrap()
+                            ));
+                            continue
+                        }
+                    };
+                },
             }
         }
     }

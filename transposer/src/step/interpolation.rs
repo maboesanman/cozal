@@ -53,9 +53,8 @@ impl<T: Transposer, S: StorageFamily> Interpolation<T, S> {
     pub fn set_state(
         &mut self,
         state: T::InputState,
-        skip_wake: bool,
     ) -> Result<(), Arc<T::InputState>> {
-        self.context.state.set(state, skip_wake)
+        self.context.state.set(state)
     }
 }
 

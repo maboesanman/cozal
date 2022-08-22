@@ -85,6 +85,7 @@ fn basic() {
     };
     let rng_seed = rand::thread_rng().gen();
 
+    // let state_fn = |_| async { core::future::ready(()).pending_once().await };
     let state_fn = |_| async { core::future::ready(()).await };
 
     let fut = evaluate_to(

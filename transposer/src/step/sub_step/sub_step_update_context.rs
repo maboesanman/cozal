@@ -2,13 +2,12 @@ use core::future::Future;
 use core::ops::Deref;
 use core::pin::Pin;
 use core::ptr::NonNull;
-use std::future::IntoFuture;
 
 use super::time::SubStepTime;
 use super::update::{TransposerMetaData, UpdateContext};
 use crate::context::*;
 use crate::schedule_storage::StorageFamily;
-use crate::step::lazy_state::{LazyState, LazyStateProxy};
+use crate::step::lazy_state::LazyStateProxy;
 use crate::{ExpireHandle, Transposer};
 
 pub trait OutputCollector<O> {

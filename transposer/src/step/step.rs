@@ -8,7 +8,7 @@ use super::interpolation::Interpolation;
 use super::lazy_state::LazyState;
 use super::step_metadata::{EmptyStepMetadata, StepMetadata};
 use super::sub_step::{PollErr as StepPollErr, SubStep, SubStepTime, WrappedTransposer};
-use crate::schedule_storage::{DefaultStorage, LazyStatePointer, StorageFamily, TransposerPointer};
+use crate::schedule_storage::{DefaultStorage, StorageFamily, TransposerPointer};
 use crate::step::sub_step::SaturateErr;
 use crate::Transposer;
 
@@ -19,7 +19,6 @@ pub struct Step<
 > {
     inner: StepInner<T, S, M>,
 
-    // boxed to make self reference easier.
     input_state: LazyState<T::InputState>,
 
     // these are used purely for enforcing that saturate calls use the previous step_group.
@@ -344,9 +343,8 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
     pub fn set_input_state(
         &mut self,
         state: T::InputState,
-        skip_wake: bool,
     ) -> Result<(), Arc<T::InputState>> {
-        self.input_state.set(state, skip_wake)
+        self.input_state.set(state)
     }
 
     pub fn interpolate(&self, time: T::Time) -> Result<Interpolation<T, S>, InterpolateErr> {

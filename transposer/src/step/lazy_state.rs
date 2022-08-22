@@ -33,7 +33,7 @@ impl<S> LazyState<S> {
         }
     }
 
-    pub fn set(&mut self, state: S, skip_wake: bool) -> Result<(), Arc<S>> {
+    pub fn set(&mut self, state: S) -> Result<(), Arc<S>> {
         let state = Arc::new(state);
         match self.sender.take() {
             Some(sender) => sender.send(state),
