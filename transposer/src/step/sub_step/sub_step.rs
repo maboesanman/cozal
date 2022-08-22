@@ -8,12 +8,11 @@ use super::args::{InitArg, InputArg, ScheduledArg};
 use super::sub_step_update_context::{AsyncCollector, DiscardCollector, SubStepUpdateContext};
 use super::time::SubStepTime;
 use super::update::{Arg, Update, WrappedTransposer};
-use crate::schedule_storage::{StorageFamily, TransposerPointer};
+use crate::schedule_storage::{LazyStatePointer, StorageFamily, TransposerPointer};
 use crate::step::lazy_state::{LazyState, LazyStateProxy};
 use crate::step::sub_step::update::UpdatePoll;
 use crate::step::{NextInputs, StepPoll};
 use crate::Transposer;
-use crate::schedule_storage::LazyStatePointer;
 
 pub struct SubStep<T: Transposer, S: StorageFamily> {
     time:        SubStepTime<T::Time>,

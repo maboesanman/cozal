@@ -332,9 +332,9 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
                 StepPoll::Emitted(o) => return Ok(StepPoll::Emitted(o)),
                 StepPoll::Pending => {
                     if self.input_state.requested() {
-                        return Ok(StepPoll::NeedsState);
+                        return Ok(StepPoll::NeedsState)
                     } else {
-                        return Ok(StepPoll::Pending);
+                        return Ok(StepPoll::Pending)
                     }
                 },
             };
@@ -346,10 +346,7 @@ impl<T: Transposer, S: StorageFamily, M: StepMetadata<T, S>> Step<T, S, M> {
         }
     }
 
-    pub fn set_input_state(
-        &mut self,
-        state: T::InputState,
-    ) -> Result<(), Arc<T::InputState>> {
+    pub fn set_input_state(&mut self, state: T::InputState) -> Result<(), Arc<T::InputState>> {
         self.input_state.set(state)
     }
 

@@ -69,13 +69,13 @@ where
     S: Unpin + Fn(T::Time) -> Fs,
     Fs: Future<Output = T::InputState>,
 {
-    frame:     Box<Step<T, Storage>>,
+    frame:       Box<Step<T, Storage>>,
     interpolate: Option<Box<Interpolation<T, Storage>>>,
-    events:    VecDeque<EventGroup<T>>,
-    state:     S,
-    state_fut: Option<Pin<Box<Fs>>>,
-    until:     T::Time,
-    outputs:   EmittedEvents<T>,
+    events:      VecDeque<EventGroup<T>>,
+    state:       S,
+    state_fut:   Option<Pin<Box<Fs>>>,
+    until:       T::Time,
+    outputs:     EmittedEvents<T>,
 }
 
 type EventGroup<T> = (<T as Transposer>::Time, Box<[<T as Transposer>::Input]>);
@@ -101,7 +101,7 @@ where
                     Poll::Ready(s) => {
                         this.state_fut = None;
                         s
-                    }
+                    },
                     Poll::Pending => return Poll::Pending,
                 };
                 if let Some(interpolate) = &mut this.interpolate {
@@ -122,7 +122,7 @@ where
                     Poll::Ready(r) => {
                         this.interpolate = None;
                         r
-                    }
+                    },
                     Poll::Pending => {
                         if interpolate.needs_state() {
                             let fut = (this.state)(this.until);
@@ -149,9 +149,7 @@ where
                     this.outputs.push((this.frame.raw_time(), e));
                     continue
                 },
-                StepPoll::Pending => {
-                    return Poll::Pending
-                },
+                StepPoll::Pending => return Poll::Pending,
                 StepPoll::Ready => {
                     let mut next_event = this.events.pop_front();
                     let mut next_frame = this.frame.next_unsaturated(&mut next_event).unwrap();
@@ -172,11 +170,10 @@ where
                             continue
                         },
                         None => {
-                            this.interpolate = Some(Box::new(
-                                this.frame.interpolate(this.until).unwrap()
-                            ));
+                            this.interpolate =
+                                Some(Box::new(this.frame.interpolate(this.until).unwrap()));
                             continue
-                        }
+                        },
                     };
                 },
             }

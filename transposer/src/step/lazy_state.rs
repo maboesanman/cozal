@@ -93,29 +93,28 @@ impl<'a, S> Future for &'a LazyStateProxy<S> {
     fn poll(self: Pin<&'_ mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut lock = self.get_mut().inner.lock();
         let ptr: Option<NonNull<S>> = replace_and_return(
-            lock.deref_mut(), 
-        || LazyStateProxyInner::Limbo,
-        |inner| match inner {
-            LazyStateProxyInner::Pending(requested, mut fut) => {
-                requested.fetch_max(1, Ordering::SeqCst);
-                match Pin::new(&mut fut).poll(cx) {
-                    Poll::Ready(arc) => {
-                        let arc = arc.unwrap();
-                        let ptr = NonNull::from(&*arc);
-                        requested.store(2, Ordering::SeqCst);
-                        (LazyStateProxyInner::Ready(arc), Some(ptr))
-                    },
-                    Poll::Pending => {
-                        (LazyStateProxyInner::Pending(requested, fut), None)
-                    },
-                }
+            lock.deref_mut(),
+            || LazyStateProxyInner::Limbo,
+            |inner| match inner {
+                LazyStateProxyInner::Pending(requested, mut fut) => {
+                    requested.fetch_max(1, Ordering::SeqCst);
+                    match Pin::new(&mut fut).poll(cx) {
+                        Poll::Ready(arc) => {
+                            let arc = arc.unwrap();
+                            let ptr = NonNull::from(&*arc);
+                            requested.store(2, Ordering::SeqCst);
+                            (LazyStateProxyInner::Ready(arc), Some(ptr))
+                        },
+                        Poll::Pending => (LazyStateProxyInner::Pending(requested, fut), None),
+                    }
+                },
+                LazyStateProxyInner::Ready(arc) => {
+                    let ptr = NonNull::from(&*arc);
+                    (LazyStateProxyInner::Ready(arc), Some(ptr))
+                },
+                LazyStateProxyInner::Limbo => panic!(),
             },
-            LazyStateProxyInner::Ready(arc) => {
-                let ptr = NonNull::from(&*arc);
-                (LazyStateProxyInner::Ready(arc), Some(ptr))
-            },
-            LazyStateProxyInner::Limbo => panic!(),
-        });
+        );
         let ptr = match ptr {
             Some(p) => p,
             None => return Poll::Pending,
