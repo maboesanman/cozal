@@ -106,13 +106,9 @@ impl<T: Transposer> InputBuffer<T> {
             },
         }
     }
-
-    pub fn first_time(&self) -> Option<T::Time> {
-        self.0.first_key_value().map(|(&k, _)| k)
-    }
-
-    pub fn pop_first(&mut self) -> Option<(T::Time, Box<[T::Input]>)> {
-        self.0.pop_first().map(|(t, v)| (t, v.into()))
+    
+    pub fn first_entry(&mut self) -> Option<InputBufferEntry<'_, T>> {
+        Some(InputBufferEntry(self.0.first_entry()?))
     }
 
     pub fn rollback(&mut self, time: T::Time) {
@@ -124,5 +120,19 @@ impl<T: Transposer> InputBuffer<T> {
 impl<T: Transposer> Default for InputBuffer<T> {
     fn default() -> Self {
         Self(BTreeMap::new())
+    }
+}
+
+pub struct InputBufferEntry<'a, T: Transposer>(
+    std::collections::btree_map::OccupiedEntry<'a, T::Time, InputContainer<T::Input>>
+);
+
+impl<'a, T: Transposer> InputBufferEntry<'a, T> {
+    pub fn time(&self) -> T::Time {
+        *self.0.key()
+    }
+
+    pub fn take(self) -> Box<[T::Input]> {
+        self.0.remove().into()
     }
 }

@@ -1,14 +1,16 @@
 use std::collections::VecDeque;
+use std::ops::{Range, RangeInclusive};
 use std::ptr::NonNull;
 use std::slice::SliceIndex;
 
+use transposer::schedule_storage::StorageFamily;
 // use super::transpose_step_metadata::TransposeStepMetadata;
-use transposer::step::Step;
+use transposer::step::{Step, Interpolation};
 use transposer::Transposer;
 use util::extended_entry::vecdeque::{get_ext_entry, ExtEntry};
 use util::vecdeque_helpers::get_with_next_mut;
 
-use super::input_buffer::InputBuffer;
+use super::input_buffer::{InputBuffer, InputBufferEntry};
 use super::storage::{DummySendStorage, TransposeStorage};
 
 // a collection of Rc which are guranteed not to be cloned outside the collection is Send
@@ -30,37 +32,43 @@ impl<T: Transposer> Steps<T> {
         }
     }
 
-    pub fn get_by_sequence_number(&self, i: usize) -> Option<&StepWrapper<T>> {
+    pub fn poll<S: StorageFamily>(&mut self, time: T::Time, input_buffer: &mut InputBuffer<T>) -> StepsPoll<T, S> {
+        todo!()
+    }
+
+    pub fn rollback(&mut self, time: T::Time, input_buffer: &mut InputBuffer<T>) -> StepsRollback<T> {
+        todo!()
+    }
+
+    pub fn finalize(&mut self, time: T::Time) {
+        todo!()
+    }
+
+    pub fn advance(&mut self, time: T::Time) {
+        todo!()
+    }
+
+    fn get_by_sequence_number(&self, i: usize) -> Option<&StepWrapper<T>> {
         let i = i.checked_sub(self.num_deleted_steps)?;
 
         self.steps.get(i)
     }
-    pub fn get_mut_by_sequence_number(&mut self, i: usize) -> Option<&mut StepWrapper<T>> {
+
+    fn get_mut_by_sequence_number(&mut self, i: usize) -> Option<&mut StepWrapper<T>> {
         let i = i.checked_sub(self.num_deleted_steps)?;
 
         self.steps.get_mut(i)
     }
 
-    pub fn get_entry_by_sequence_number(&mut self, i: usize) -> Option<StepsEntry<'_, T>> {
-        let i = i.checked_sub(self.num_deleted_steps)?;
-
-        StepsEntry::new(self, i)
-    }
-
-    pub fn get_last_entry(&mut self) -> Option<StepsEntry<'_, T>> {
-        let i = self.steps.len().checked_sub(1)?;
-
-        StepsEntry::new(self, i)
-    }
-
-    pub fn get_last(&self) -> &StepWrapper<T> {
+    fn get_last(&self) -> &StepWrapper<T> {
         self.steps.back().unwrap()
     }
 
-    pub fn get_last_mut(&mut self) -> &mut StepWrapper<T> {
+    fn get_last_mut(&mut self) -> &mut StepWrapper<T> {
         self.steps.back_mut().unwrap()
     }
-    pub fn get_before_or_at(&mut self, time: T::Time) -> Result<BeforeStatus<'_, T>, ()> {
+
+    fn get_before_or_at(&mut self, time: T::Time) -> Result<BeforeStatus<'_, T>, ()> {
         // this is just mimicking partition_point, because vecdeque isn't actually contiguous
         let mut i = match self
             .steps
@@ -107,40 +115,21 @@ impl<T: Transposer> Steps<T> {
     }
 }
 
-pub struct StepsEntry<'a, T: Transposer> {
-    steps: NonNull<Steps<T>>,
-    step:  ExtEntry<'a, StepWrapper<T>>,
+pub struct StepsPoll<T: Transposer, S: StorageFamily> {
+    completed_steps: Option<RangeInclusive<usize>>,
+    result: StepsPollResult<T, S>
 }
 
-impl<'a, T: Transposer> StepsEntry<'a, T> {
-    pub fn new(steps: &'a mut Steps<T>, index: usize) -> Option<Self> {
-        let steps_ptr: NonNull<_> = steps.into();
-        let step = get_ext_entry(&mut steps.steps, index)?;
+pub enum StepsPollResult<T: Transposer, S: StorageFamily> {
+    Ready(Interpolation<T, S>),
+    Pending(/* step_id */ usize),
+    NeedsState(/* step_id */ usize),
+    Event(/* step_id */ usize, T::Time, T::Output)
+}
 
-        Some(Self {
-            steps: steps_ptr,
-            step,
-        })
-    }
-    pub fn get_index(&self) -> usize {
-        self.step.get_index()
-    }
-
-    pub fn get_value(&self) -> &StepWrapper<T> {
-        self.step.get_value()
-    }
-
-    pub fn get_value_mut(&mut self) -> &mut StepWrapper<T> {
-        self.step.get_value_mut()
-    }
-
-    pub fn into_value_mut(self) -> &'a mut StepWrapper<T> {
-        self.step.into_value_mut()
-    }
-
-    pub fn into_collection_mut(mut self) -> &'a mut Steps<T> {
-        unsafe { self.steps.as_mut() }
-    }
+pub struct StepsRollback<T: Transposer> {
+    rollback_steps: Option<Range</* step_id */ usize>>, 
+    rollback_time: Option<T::Time>,
 }
 
 pub struct StepWrapper<T: Transposer> {

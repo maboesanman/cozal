@@ -1,6 +1,6 @@
 // mod caller_channel_status;
 // mod channel_assignments;
-mod channel_statuses;
+mod channels;
 mod input_buffer;
 mod retention_policy;
 mod steps;
@@ -16,10 +16,10 @@ use transposer::Transposer;
 use util::replace_waker::ReplaceWaker;
 use util::stack_waker::StackWaker;
 
-use self::channel_statuses::ChannelStatuses;
+use self::channels::ChannelStatuses;
 use self::input_buffer::InputBuffer;
 use self::retention_policy::RetentionPolicy;
-use crate::adapters::transpose::channel_statuses::CallerChannelStatus;
+use crate::adapters::transpose::channels::CallerChannelStatus;
 use crate::source_poll::SourcePollOk;
 use crate::traits::SourceContext;
 use crate::{Source, SourcePoll};
@@ -176,25 +176,26 @@ where
                         status = CallerChannelStatus::OriginalStepFuture(inner_status);
                     },
                     CallerChannelStatus::OriginalStepFuture(inner_status) => {
-                        let t = inner_status.time();
+                        todo!()
+                        // let t = inner_status.time();
 
-                        // get the first item, so it can be pulled if needed by poll
-                        // (if original completes it needs to make a new original future)
-                        let mut first = input_buffer.pop_first();
+                        // // get the first item, so it can be pulled if needed by poll
+                        // // (if original completes it needs to make a new original future)
+                        // let mut first = input_buffer.pop_first();
 
-                        let (s, output) = inner_status.poll(&all_channel_waker, &mut first);
+                        // let (s, output) = inner_status.poll(&all_channel_waker, &mut first);
 
-                        // if poll didn't need the input, put it back in the buffer
-                        if let Some((t, inputs)) = first {
-                            input_buffer.extend_front(t, inputs)
-                        }
+                        // // if poll didn't need the input, put it back in the buffer
+                        // if let Some((t, inputs)) = first {
+                        //     input_buffer.extend_front(t, inputs)
+                        // }
 
-                        // handle all the generated outputs
-                        if let Some(output) = output {
-                            return Poll::Ready(Ok(SourcePollOk::Event(output, t)))
-                        }
+                        // // handle all the generated outputs
+                        // if let Some(output) = output {
+                        //     return Poll::Ready(Ok(SourcePollOk::Event(output, t)))
+                        // }
 
-                        status = s;
+                        // status = s;
                     },
                     CallerChannelStatus::RepeatStepSourceState(mut inner_status) => {
                         let (time, stack_waker, source_channel) =
