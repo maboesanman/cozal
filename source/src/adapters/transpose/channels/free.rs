@@ -7,17 +7,16 @@ use util::extended_entry::hash_map::{
     VacantExtEntry as HashMapVacantEntry,
 };
 
-use super::{CallerChannelBlockedReason, StepBlockedReason, CallerChannelStatus};
+use super::{CallerChannelBlockedReason, StepBlockedReason, CallerChannelStatus, RepeatStepBlockedReason};
 
 pub struct Free<'a, T: Transposer> {
     // entries
-    caller_channel: HashMapVacantEntry<'a, usize, CallerChannelBlockedReason<T>>,
+    pub caller_channel: HashMapVacantEntry<'a, usize, CallerChannelBlockedReason<T>>,
 
     // extra
-    blocked_source_channels: &'a mut BTreeMap<usize, ()>,
-    blocked_repeat_steps: &'a mut HashMap<usize, StepBlockedReason>,
-    blocked_original_steps: &'a mut Option<StepBlockedReason>,
-    repeat_step_wakers: &'a mut BTreeMap<usize, HashMap<usize, Waker>>
+    pub blocked_source_channels: &'a mut BTreeMap<usize, ()>,
+    pub blocked_repeat_steps: &'a mut HashMap<usize, RepeatStepBlockedReason>,
+    pub blocked_original_steps: &'a mut Option<StepBlockedReason>,
 }
 
 impl<'a, T: Transposer> Free<'a, T> {

@@ -27,18 +27,17 @@ use util::replace_mut::replace;
 use util::stack_waker::StackWaker;
 
 use super::interpolation_future::InterpolationFuture;
-use super::{CallerChannelBlockedReason, StepBlockedReason};
+use super::{CallerChannelBlockedReason, StepBlockedReason, RepeatStepBlockedReason};
 
 
 pub struct InterpolationSourceState<'a, T: Transposer> {
     // entries
-    caller_channel: HashMapOccupiedEntry<'a, usize, CallerChannelBlockedReason<T>>,
-    source_channel: BTreeMapOccupiedEntry<'a, usize, ()>,
+    pub caller_channel: HashMapOccupiedEntry<'a, usize, CallerChannelBlockedReason<T>>,
+    pub source_channel: BTreeMapOccupiedEntry<'a, usize, ()>,
 
     // extra
-    blocked_repeat_steps: &'a mut HashMap<usize, StepBlockedReason>,
-    blocked_original_step: &'a mut Option<StepBlockedReason>,
-    repeat_step_wakers: &'a mut BTreeMap<usize, HashMap<usize, Waker>>
+    pub blocked_repeat_steps: &'a mut HashMap<usize, RepeatStepBlockedReason>,
+    pub blocked_original_step: &'a mut Option<StepBlockedReason>,
 }
 
 impl<'a, T: Transposer> InterpolationSourceState<'a, T> {
@@ -69,7 +68,6 @@ impl<'a, T: Transposer> InterpolationSourceState<'a, T> {
             // extra
             blocked_repeat_steps,
             blocked_original_step,
-            repeat_step_wakers,
         } = self;
 
         if let CallerChannelBlockedReason::InterpolationSourceState {
@@ -96,7 +94,6 @@ impl<'a, T: Transposer> InterpolationSourceState<'a, T> {
             blocked_source_channels,
             blocked_repeat_steps,
             blocked_original_step,
-            repeat_step_wakers,
         }
     }
 }

@@ -26,16 +26,18 @@ use util::extended_entry::vecdeque::get_ext_entry as vecdeque_get_ext_entry;
 use util::replace_mut::replace;
 use util::stack_waker::StackWaker;
 
+use super::repeat_step_future::RepeatStepFuture;
+use super::{CallerChannelBlockedReason, StepBlockedReason, RepeatStepBlockedReason};
+
 
 pub struct RepeatStepSourceState<'a, T: Transposer> {
     // entries
-    caller_channel: HashMapOccupiedEntry<'a, usize, CallerChannelBlockedReason<T>>,
-    step:           StepsEntry<'a, T>,
-    block_reason:   HashMapOccupiedEntry<'a, usize, RepeatStepBlockedReason>,
-    source_channel: BTreeMapOccupiedEntry<'a, usize, ()>,
+    pub caller_channel: HashMapOccupiedEntry<'a, usize, CallerChannelBlockedReason<T>>,
+    pub block_reason:   HashMapOccupiedEntry<'a, usize, RepeatStepBlockedReason>,
+    pub source_channel: BTreeMapOccupiedEntry<'a, usize, ()>,
 
     // extra
-    original_step_blocked_reasons: &'a mut Option<OriginalStepBlockedReason>,
+    pub blocked_original_steps: &'a mut Option<StepBlockedReason>,
 }
 
 impl<'a, T: Transposer> RepeatStepSourceState<'a, T> {
@@ -46,46 +48,48 @@ impl<'a, T: Transposer> RepeatStepSourceState<'a, T> {
         &mut Weak<StackWaker>,
         /* source channel */ usize,
     ) {
-        match self.block_reason.get_value_mut() {
-            RepeatStepBlockedReason::SourceState {
-                source_channel,
-                stack_waker,
-            } => {
-                let time = self.step.get_value().step.raw_time();
-                (time, stack_waker, *source_channel)
-            },
-            _ => unreachable!(),
-        }
+        // match self.block_reason.get_value_mut() {
+        //     RepeatStepBlockedReason::SourceState {
+        //         source_channel,
+        //         stack_waker,
+        //     } => {
+        //         let time = self.step.get_value().step.raw_time();
+        //         (time, stack_waker, *source_channel)
+        //     },
+        //     _ => unreachable!(),
+        // }
+        todo!()
     }
     pub fn provide_state(self, state: T::InputState) -> RepeatStepFuture<'a, T> {
-        let RepeatStepSourceState {
-            // entries
-            caller_channel,
-            mut step,
-            block_reason,
-            source_channel,
-            // extra
-            original_step_blocked_reasons,
-        } = self;
+        // let RepeatStepSourceState {
+        //     // entries
+        //     caller_channel,
+        //     mut step,
+        //     block_reason,
+        //     source_channel,
+        //     // extra
+        //     original_step_blocked_reasons,
+        // } = self;
 
-        let x = step.get_value_mut().step.set_input_state(state);
+        // let x = step.get_value_mut().step.set_input_state(state);
 
-        // TODO figure out error handling strategy.
-        debug_assert!(x.is_ok());
+        // // TODO figure out error handling strategy.
+        // debug_assert!(x.is_ok());
 
-        // we're not blocked anymore, so we can remove the blocked source channel.
-        let (vacant, ()) = source_channel.vacate();
-        let (blocked_source_channels, _) = vacant.into_collection_mut();
+        // // we're not blocked anymore, so we can remove the blocked source channel.
+        // let (vacant, ()) = source_channel.vacate();
+        // let (blocked_source_channels, _) = vacant.into_collection_mut();
 
-        RepeatStepFuture {
-            // entries
-            caller_channel,
-            step,
-            block_reason,
+        // RepeatStepFuture {
+        //     // entries
+        //     caller_channel,
+        //     step,
+        //     block_reason,
 
-            // extra
-            blocked_source_channels,
-            original_step_blocked_reasons,
-        }
+        //     // extra
+        //     blocked_source_channels,
+        //     original_step_blocked_reasons,
+        // }
+        todo!()
     }
 }

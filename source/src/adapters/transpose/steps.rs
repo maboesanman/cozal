@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::ops::{Range, RangeInclusive};
 use std::ptr::NonNull;
 use std::slice::SliceIndex;
+use std::task::Poll;
 
 use transposer::schedule_storage::StorageFamily;
 // use super::transpose_step_metadata::TransposeStepMetadata;
@@ -33,6 +34,10 @@ impl<T: Transposer> Steps<T> {
     }
 
     pub fn poll<S: StorageFamily>(&mut self, time: T::Time, input_buffer: &mut InputBuffer<T>) -> StepsPoll<T, S> {
+        todo!()
+    }
+
+    pub fn try_poll_shared<S: StorageFamily>(&self, time: T::Time) -> Option<Interpolation<T, S>> {
         todo!()
     }
 

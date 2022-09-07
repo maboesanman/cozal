@@ -19,6 +19,7 @@ use util::stack_waker::StackWaker;
 use self::channels::ChannelStatuses;
 use self::input_buffer::InputBuffer;
 use self::retention_policy::RetentionPolicy;
+use self::steps::Steps;
 use crate::adapters::transpose::channels::CallerChannelStatus;
 use crate::source_poll::SourcePollOk;
 use crate::traits::SourceContext;
@@ -41,15 +42,13 @@ pub struct Transpose<Src: Source, T: Transposer> {
     // whichever is later
     events_poll_time: T::Time,
 
-    // current statuses. this contains most of the state.
+    // current channel obligations
     channel_statuses: ChannelStatuses<T>,
 
+    steps: Steps<T>,
+
     input_buffer: InputBuffer<T>,
-
-    retention_policy: RetentionPolicy<T::Time>,
 }
-
-enum SourcePollToHandle {}
 
 impl<Src, T> Transpose<Src, T>
 where
@@ -64,28 +63,29 @@ where
             last_scheduled: None,
             all_channel_waker: ReplaceWaker::new_empty(),
             events_poll_time: T::Time::default(),
-            channel_statuses: ChannelStatuses::new(transposer, rng_seed),
+            channel_statuses: ChannelStatuses::new(),
+            steps: Steps::new(transposer, rng_seed),
             input_buffer: InputBuffer::new(),
-            retention_policy: RetentionPolicy::new(T::Time::default()),
         }
     }
 
-    pub fn ready_or_scheduled(
+    fn ready_or_scheduled(
         &self,
         state: T::OutputState,
     ) -> SourcePollOk<T::Time, T::Output, T::OutputState> {
-        match (
-            self.channel_statuses.get_scheduled_time(),
-            self.last_scheduled,
-        ) {
-            (None, None) => SourcePollOk::Ready(state),
-            (None, Some(t)) => SourcePollOk::Scheduled(state, t),
-            (Some(t), None) => SourcePollOk::Scheduled(state, t),
-            (Some(t1), Some(t2)) => SourcePollOk::Scheduled(state, std::cmp::min(t1, t2)),
-        }
+        // match (
+        //     self.channel_statuses.get_scheduled_time(),
+        //     self.last_scheduled,
+        // ) {
+        //     (None, None) => SourcePollOk::Ready(state),
+        //     (None, Some(t)) => SourcePollOk::Scheduled(state, t),
+        //     (Some(t), None) => SourcePollOk::Scheduled(state, t),
+        //     (Some(t1), Some(t2)) => SourcePollOk::Scheduled(state, std::cmp::min(t1, t2)),
+        // }
+        todo!()
     }
 
-    pub fn poll_inner(
+    fn poll_inner(
         mut self: Pin<&mut Self>,
         poll_time: T::Time,
         cx: SourceContext,
@@ -97,8 +97,8 @@ where
             all_channel_waker,
             events_poll_time,
             channel_statuses,
+            steps,
             input_buffer,
-            retention_policy,
         } = self.as_mut().project();
 
         let SourceContext {
