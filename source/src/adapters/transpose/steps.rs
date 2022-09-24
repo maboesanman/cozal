@@ -118,6 +118,10 @@ impl<T: Transposer> Steps<T> {
 
         Err(())
     }
+
+    pub fn delete_before(&mut self, time: T::Time) {
+
+    }
 }
 
 pub struct StepsPoll<T: Transposer, S: StorageFamily> {

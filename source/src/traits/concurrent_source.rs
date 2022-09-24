@@ -1,7 +1,7 @@
 use core::task::Waker;
 
 use super::{Source, SourceContext};
-use crate::SourcePoll;
+use crate::source_poll::TrySourcePoll;
 
 /// An interface for querying partially complete sources of [states](`Source::State`) and [events](`Source::Events`)
 ///
@@ -18,14 +18,14 @@ pub trait ConcurrentSource: Source {
         &self,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error>;
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error>;
 
     /// caller must ensure this channel is not in use by any other caller.
     unsafe fn poll_concurrent_unchecked(
         &self,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         self.poll_concurrent(time, cx)
     }
 
@@ -34,7 +34,7 @@ pub trait ConcurrentSource: Source {
         &self,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         self.poll_concurrent(time, cx)
     }
 
@@ -43,7 +43,7 @@ pub trait ConcurrentSource: Source {
         &self,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         self.poll_forget_concurrent(time, cx)
     }
 
@@ -52,14 +52,14 @@ pub trait ConcurrentSource: Source {
         &self,
         time: Self::Time,
         all_channel_waker: Waker,
-    ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error>;
+    ) -> TrySourcePoll<Self::Time, Self::Event, (), Self::Error>;
 
     /// caller must ensure this channel is not in use by any other caller.
     unsafe fn poll_events_concurrent_unchecked(
         &self,
         time: Self::Time,
         all_channel_waker: Waker,
-    ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, (), Self::Error> {
         self.poll_events_concurrent(time, all_channel_waker)
     }
 

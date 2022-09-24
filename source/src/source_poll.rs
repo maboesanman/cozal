@@ -1,39 +1,47 @@
-use core::task::Poll;
-
 /// A modified version of [`futures::task::Poll`], which has two new variants:
 /// [`Scheduled`](self::SchedulePoll::Scheduled) and [`Done`](self::SchedulePoll::Done).
-pub enum SourcePollOk<T, E, S>
-where
-    T: Ord + Copy,
-{
-    /// Indicates all events at or after time T, and all states returned on any channel at or after time T from poll (not poll_forget) should be discarded.
-    Rollback(T),
-
-    /// Indicates an unprocessed event is available at or before poll_time.
-    Event(E, T),
-
-    /// Indicates no rollback will ever be returned before or at time T.
-    Finalize(T),
-
-    /// Indicates all event information up to poll_time is up to date (including if something is scheduled), and returns state.
-    /// additionally caller may be woken again until this source is polled at or after time T.
-    Scheduled(S, T),
-
-    /// Indicates all event information up to poll_time is up to date (including if something is scheduled), and returns state.
-    Ready(S),
+pub enum SourcePoll<T, E, S> {
+    /// Indicates the poll is complete
+    Ready {
+        /// The requested state
+        state: S,
+        /// The time of the next known event, if known.
+        next_event_at: Option<T>,
+    },
+    
+    /// Indicates information must be handled before state is emitted
+    Interrupt {
+        /// The time the information pertains to
+        time: T,
+        
+        /// The type of interrupt
+        interrupt: Interrupt<E>
+    },
+    
+    /// pending operation. caller will be woken up when progress can be made
+    /// the channel this poll used must be retained.
+    Pending,
 }
 
-impl<T, E, S> SourcePollOk<T, E, S>
+/// The type of interrupt emitted from the source
+pub enum Interrupt<E> {
+    /// A new event is available.
+    Event(E),
+    /// All events before at or after time T must be discarded.
+    Rollback,
+    /// No event will ever be emitted before time T again.
+    Finalize,
+}
+
+impl<T, E, S> SourcePoll<T, E, S>
 where
     T: Ord + Copy,
 {
-    pub(crate) fn supress_state(self) -> SourcePollOk<T, E, ()> {
+    pub(crate) fn supress_state(self) -> SourcePoll<T, E, ()> {
         match self {
-            Self::Rollback(t) => SourcePollOk::Rollback(t),
-            Self::Event(e, t) => SourcePollOk::Event(e, t),
-            Self::Finalize(t) => SourcePollOk::Finalize(t),
-            Self::Scheduled(_, t) => SourcePollOk::Scheduled((), t),
-            Self::Ready(_) => SourcePollOk::Ready(()),
+            Self::Ready { state, next_event_at } => SourcePoll::Ready { state: (), next_event_at },
+            Self::Interrupt { time, interrupt: interrupt_type } => SourcePoll::Interrupt { time, interrupt: interrupt_type },
+            Self::Pending => SourcePoll::Pending,
         }
     }
 }
@@ -46,6 +54,4 @@ pub enum SourcePollErr<T, Err> {
     SpecificError(Err),
 }
 
-pub type SourcePollInner<T, E, S, Err> = Result<SourcePollOk<T, E, S>, SourcePollErr<T, Err>>;
-
-pub type SourcePoll<T, E, S, Err> = Poll<SourcePollInner<T, E, S, Err>>;
+pub type TrySourcePoll<T, E, S, Err> = Result<SourcePoll<T, E, S>, SourcePollErr<T, Err>>;

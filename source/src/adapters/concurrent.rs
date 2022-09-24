@@ -2,8 +2,9 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::task::Waker;
 
+use crate::source_poll::TrySourcePoll;
 use crate::traits::{ConcurrentSource, SourceContext};
-use crate::{Source, SourcePoll};
+use crate::Source;
 
 pub struct MutexSource<Src: Source>(parking_lot::Mutex<Src>);
 
@@ -26,7 +27,7 @@ impl<Src: Source> Source for MutexSource<Src> {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         self.poll_concurrent(time, cx)
     }
 
@@ -34,7 +35,7 @@ impl<Src: Source> Source for MutexSource<Src> {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         self.poll_forget_concurrent(time, cx)
     }
 
@@ -42,7 +43,7 @@ impl<Src: Source> Source for MutexSource<Src> {
         self: Pin<&mut Self>,
         time: Self::Time,
         all_channel_waker: Waker,
-    ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, (), Self::Error> {
         self.poll_events_concurrent(time, all_channel_waker)
     }
 
@@ -64,7 +65,7 @@ impl<Src: Source> ConcurrentSource for MutexSource<Src> {
         &self,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         let mut source = self.0.lock();
         unsafe { Pin::new_unchecked(&mut *source) }.poll(time, cx)
     }
@@ -73,7 +74,7 @@ impl<Src: Source> ConcurrentSource for MutexSource<Src> {
         &self,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         let mut source = self.0.lock();
         unsafe { Pin::new_unchecked(&mut *source) }.poll_forget(time, cx)
     }
@@ -82,7 +83,7 @@ impl<Src: Source> ConcurrentSource for MutexSource<Src> {
         &self,
         time: Self::Time,
         all_channel_waker: Waker,
-    ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, (), Self::Error> {
         let mut source = self.0.lock();
         unsafe { Pin::new_unchecked(&mut *source) }.poll_events(time, all_channel_waker)
     }

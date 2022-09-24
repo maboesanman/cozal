@@ -11,6 +11,7 @@ use pin_project::pin_project;
 use self::affinity_map::AffinityMap;
 use self::assignment_map::AssignmentMap;
 use crate::adapters::multiplex::assignment_map::{Assignment, PollType};
+use crate::source_poll::TrySourcePoll;
 use crate::traits::SourceContext;
 use crate::{Source, SourcePoll};
 
@@ -44,13 +45,13 @@ impl<Src: Source> Multiplex<Src> {
         mut cx: SourceContext,
         poll_fn: F,
         poll_type: PollType,
-    ) -> SourcePoll<Src::Time, Src::Event, S, Src::Error>
+    ) -> TrySourcePoll<Src::Time, Src::Event, S, Src::Error>
     where
         F: Fn(
             Pin<&mut Src>,
             Src::Time,
             SourceContext,
-        ) -> SourcePoll<Src::Time, Src::Event, S, Src::Error>,
+        ) -> TrySourcePoll<Src::Time, Src::Event, S, Src::Error>,
     {
         let this = self.project();
         let source: Pin<&mut Src> = this.source;
@@ -160,7 +161,7 @@ impl<Src: Source> Multiplex<Src> {
                         for pending in pending_channels.iter_mut() {
                             if pending.out_channel == out_channel {
                                 *pending = new_pending;
-                                return Poll::Pending
+                                return SourcePoll::Pending
                             }
                         }
                         pending_channels.push_back(new_pending);
@@ -207,7 +208,7 @@ impl<Src: Source> Source for Multiplex<Src> {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         self.poll_internal(time, cx, Src::poll, PollType::Normal)
     }
 
@@ -215,7 +216,7 @@ impl<Src: Source> Source for Multiplex<Src> {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Src::Error> {
         self.poll_internal(time, cx, Src::poll_forget, PollType::Forget)
     }
 
@@ -223,7 +224,7 @@ impl<Src: Source> Source for Multiplex<Src> {
         self: Pin<&mut Self>,
         time: Self::Time,
         all_channel_waker: Waker,
-    ) -> SourcePoll<Self::Time, Self::Event, (), Src::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, (), Src::Error> {
         self.project().source.poll_events(time, all_channel_waker)
     }
 

@@ -2,7 +2,7 @@ use core::num::NonZeroUsize;
 use core::pin::Pin;
 use core::task::Waker;
 
-use crate::SourcePoll;
+use crate::source_poll::TrySourcePoll;
 
 #[derive(Clone)]
 pub struct SourceContext {
@@ -58,7 +58,7 @@ pub trait Source {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error>;
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error>;
 
     /// Attempt to retrieve the state of the source at `time`, registering the current task for wakeup in certain situations. Also inform the source that the state emitted from this call is exempt from the requirement to be informed of future invalidations (that the source can "forget" about this call to poll when determining how far to roll back).
     ///
@@ -67,7 +67,7 @@ pub trait Source {
         self: Pin<&mut Self>,
         time: Self::Time,
         cx: SourceContext,
-    ) -> SourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
+    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
         self.poll(time, cx)
     }
 
@@ -78,7 +78,7 @@ pub trait Source {
         self: Pin<&mut Self>,
         time: Self::Time,
         all_channel_waker: Waker,
-    ) -> SourcePoll<Self::Time, Self::Event, (), Self::Error>;
+    ) -> TrySourcePoll<Self::Time, Self::Event, (), Self::Error>;
 
     /// Inform the source it is no longer obligated to retain progress made on `channel`
     fn release_channel(self: Pin<&mut Self>, channel: usize);

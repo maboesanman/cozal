@@ -1,7 +1,7 @@
 use transposer::Transposer;
 
 use super::Source;
-use crate::adapters::{Multiplex, MutexSource, Transpose};
+use crate::adapters::{MutexSource, Transpose};
 
 impl<S> SourceExt for S where S: Source {}
 
@@ -43,9 +43,9 @@ pub trait SourceExt: Source + Sized {
     // }
 
     /// Adapter for calling a limited-channel source on any number of channels
-    fn multiplex(self) -> Multiplex<Self> {
-        Multiplex::new(self)
-    }
+    // fn multiplex(self) -> Multiplex<Self> {
+    //     Multiplex::new(self)
+    // }
 
     fn concurrent(self) -> MutexSource<Self> {
         MutexSource::new(self)
