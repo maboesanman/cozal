@@ -8,12 +8,12 @@ use super::Transposer;
 use crate::TransposerInput;
 
 pub trait InitContext<'a, T: Transposer>:
-    InputStateContext<T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
+    InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
 {
 }
 
 pub trait HandleInputContext<'a, T: Transposer>:
-    InputStateContext<T>
+    InputStateContext<'a, T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
@@ -22,7 +22,7 @@ pub trait HandleInputContext<'a, T: Transposer>:
 }
 
 pub trait HandleScheduleContext<'a, T: Transposer>:
-    InputStateContext<T>
+    InputStateContext<'a, T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
@@ -30,10 +30,10 @@ pub trait HandleScheduleContext<'a, T: Transposer>:
 {
 }
 
-pub trait InterpolateContext<'a, T: Transposer>: InputStateContext<T> {}
+pub trait InterpolateContext<'a, T: Transposer>: InputStateContext<'a, T> {}
 
-pub trait InputStateContext<T: Transposer> {
-    fn get_input_state_requester(&mut self) -> &mut T::InputStateProvider;
+pub trait InputStateContext<'a, T: Transposer> {
+    fn get_input_state_requester(&mut self) -> &'a mut T::InputStateProvider;
 }
 
 pub trait ScheduleEventContext<T: Transposer> {
@@ -77,9 +77,8 @@ pub trait RngContext {
     fn get_rng(&mut self) -> &mut dyn RngCore;
 }
 
-trait TransposerInputStateProvider<'t, I: TransposerInput + ?Sized>
-where
-    I::InputState: 't,
+trait TransposerInputStateProvider<I: TransposerInput + ?Sized>
 {
-    async fn get_input_state(&mut self) -> &'t I::InputState;
+    async fn get_input_state<'a>(&'a mut self) -> &'a I::InputState
+    where I::InputState: 'a;
 }

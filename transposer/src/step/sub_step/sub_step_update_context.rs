@@ -116,7 +116,7 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> Update
     }
 
     fn recover_output(&mut self) -> Option<T::OutputEvent> {
-        self.output_collector.take()
+        OutputCollector::take(&mut self.output_collector)
     }
 }
 
@@ -127,10 +127,10 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> SubSte
     }
 }
 
-impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> InputStateContext<T>
+impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> InputStateContext<'a, T>
     for SubStepUpdateContext<T, S, C>
 {
-    fn get_input_state_requester(&mut self) -> &mut T::InputStateProvider {
+    fn get_input_state_requester(&mut self) -> &'a mut T::InputStateProvider {
         unsafe { self.input_state.as_mut() }
     }
 }

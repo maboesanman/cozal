@@ -91,7 +91,7 @@ pub trait Transposer: Clone {
     ) -> Self::OutputState;
 }
 
-pub trait TransposerInput {
+pub trait TransposerInput: 'static {
     type Base: Transposer;
     type InputEvent;
     type InputState;

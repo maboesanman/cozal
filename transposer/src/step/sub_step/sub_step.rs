@@ -560,13 +560,13 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
 }
 
 // context types
-type OriginalContext<T, S> = SubStepUpdateContext<T, S, AsyncCollector<<T as Transposer>::Output>>;
+type OriginalContext<T, S> = SubStepUpdateContext<T, S, AsyncCollector<<T as Transposer>::OutputEvent>>;
 type RepeatContext<T, S> = SubStepUpdateContext<T, S, DiscardCollector>;
 
 // arg types
-type InitUpdate<T, S> = Update<T, S, OriginalContext<T, S>, InitArg<T, S>>;
-type InputUpdate<T, S, C> = Update<T, S, C, InputArg<T, S>>;
-type ScheduledUpdate<T, S, C> = Update<T, S, C, ScheduledArg<T, S>>;
+type InitUpdate<T, S> = Update<T, S, OriginalContext<T, S>, InitArg>;
+type InputUpdate<T, S, C> = Update<T, S, C, Box<dyn Arg<T, S>>>;
+type ScheduledUpdate<T, S, C> = Update<T, S, C, ScheduledArg>;
 
 // arg + context types
 type OriginalInputUpdate<T, S> = InputUpdate<T, S, OriginalContext<T, S>>;
@@ -579,11 +579,11 @@ enum SubStepInner<T: Transposer, S: StorageFamily> {
     // and there isn't one, because this is init.
     UnsaturatedInit,
     OriginalUnsaturatedInput {
-        inputs: <InputArg<T, S> as Arg<T, S>>::Stored,
+        inputs: Box<dyn Arg<T, S>>,
     },
     OriginalUnsaturatedScheduled,
     RepeatUnsaturatedInput {
-        inputs: <InputArg<T, S> as Arg<T, S>>::Stored,
+        inputs: Box<dyn Arg<T, S>>,
     },
     RepeatUnsaturatedScheduled,
     SaturatingInit {
@@ -605,7 +605,7 @@ enum SubStepInner<T: Transposer, S: StorageFamily> {
         wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     },
     SaturatedInput {
-        inputs:             <InputArg<T, S> as Arg<T, S>>::Stored,
+        inputs: Box<dyn Arg<T, S>>,
         wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     },
     SaturatedScheduled {
