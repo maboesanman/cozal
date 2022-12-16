@@ -3,6 +3,7 @@ use core::ptr::NonNull;
 use super::{SubStepTime, TransposerMetaData};
 use crate::context::*;
 use crate::schedule_storage::StorageFamily;
+use crate::step::lazy_state::LazyStateProxy;
 use crate::Transposer;
 
 pub trait UpdateContext<T: Transposer, S: StorageFamily>:
@@ -10,12 +11,12 @@ pub trait UpdateContext<T: Transposer, S: StorageFamily>:
 {
     type Output;
 
-    // SAFETY: ensure this UpdateContext is dropped before metadata and input_state.
+    // SAFETY: ensure this UpdateContext is dropped before metadata.
     unsafe fn new(
         time: SubStepTime<T::Time>,
         metadata: NonNull<TransposerMetaData<T, S>>,
-        input_state: NonNull<T::InputStateProvider>,
+        input_state: S::LazyState<LazyStateProxy<T::InputState>>,
     ) -> Self;
 
-    fn recover_output(&mut self) -> Option<T::OutputEvent>;
+    fn recover_output(&mut self) -> Option<T::Output>;
 }

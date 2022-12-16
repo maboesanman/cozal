@@ -27,8 +27,7 @@ use util::replace_mut::replace;
 use util::stack_waker::StackWaker;
 
 use super::interpolation_future::InterpolationFuture;
-use super::{CallerChannelBlockedReason, StepBlockedReason, RepeatStepBlockedReason};
-
+use super::{CallerChannelBlockedReason, RepeatStepBlockedReason, StepBlockedReason};
 
 pub struct InterpolationSourceState<'a, T: Transposer> {
     // entries
@@ -36,7 +35,7 @@ pub struct InterpolationSourceState<'a, T: Transposer> {
     pub source_channel: BTreeMapOccupiedEntry<'a, usize, ()>,
 
     // extra
-    pub blocked_repeat_steps: &'a mut HashMap<usize, RepeatStepBlockedReason>,
+    pub blocked_repeat_steps:  &'a mut HashMap<usize, RepeatStepBlockedReason>,
     pub blocked_original_step: &'a mut Option<StepBlockedReason>,
 }
 

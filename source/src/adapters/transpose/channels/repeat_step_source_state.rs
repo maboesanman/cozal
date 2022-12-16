@@ -27,8 +27,7 @@ use util::replace_mut::replace;
 use util::stack_waker::StackWaker;
 
 use super::repeat_step_future::RepeatStepFuture;
-use super::{CallerChannelBlockedReason, StepBlockedReason, RepeatStepBlockedReason};
-
+use super::{CallerChannelBlockedReason, RepeatStepBlockedReason, StepBlockedReason};
 
 pub struct RepeatStepSourceState<'a, T: Transposer> {
     // entries

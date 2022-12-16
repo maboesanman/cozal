@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use rand::Rng;
 
 use super::{ScheduledTime, TransposerMetaData, WrappedTransposer};
@@ -8,16 +9,19 @@ use crate::Transposer;
 #[derive(Clone)]
 struct TestTransposer {}
 
+#[async_trait(?Send)]
 impl Transposer for TestTransposer {
     type Time = usize;
 
+    type InputState = ();
+
     type OutputState = ();
+
+    type Input = ();
 
     type Scheduled = usize;
 
-    type OutputEvent = ();
-
-    type InputStateProvider = ();
+    type Output = ();
 
     async fn interpolate(
         &self,

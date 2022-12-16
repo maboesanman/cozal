@@ -5,14 +5,15 @@ use rand::RngCore;
 
 use super::expire_handle::ExpireHandle;
 use super::Transposer;
+use crate::TransposerInput;
 
 pub trait InitContext<'a, T: Transposer>:
-    InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
+    InputStateContext<T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
 {
 }
 
 pub trait HandleInputContext<'a, T: Transposer>:
-    InputStateContext<'a, T>
+    InputStateContext<T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
@@ -21,7 +22,7 @@ pub trait HandleInputContext<'a, T: Transposer>:
 }
 
 pub trait HandleScheduleContext<'a, T: Transposer>:
-    InputStateContext<'a, T>
+    InputStateContext<T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
@@ -29,10 +30,10 @@ pub trait HandleScheduleContext<'a, T: Transposer>:
 {
 }
 
-pub trait InterpolateContext<'a, T: Transposer>: InputStateContext<'a, T> {}
+pub trait InterpolateContext<'a, T: Transposer>: InputStateContext<T> {}
 
-pub trait InputStateContext<'a, T: Transposer> {
-    fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>>;
+pub trait InputStateContext<T: Transposer> {
+    fn get_input_state_requester(&mut self) -> &mut T::InputStateProvider;
 }
 
 pub trait ScheduleEventContext<T: Transposer> {
@@ -69,9 +70,16 @@ pub enum ExpireEventError {
 }
 
 pub trait EmitEventContext<T: Transposer> {
-    fn emit_event(&mut self, payload: T::Output) -> Pin<Box<dyn '_ + Future<Output = ()>>>;
+    fn emit_event(&mut self, payload: T::OutputEvent) -> Pin<Box<dyn '_ + Future<Output = ()>>>;
 }
 
 pub trait RngContext {
     fn get_rng(&mut self) -> &mut dyn RngCore;
+}
+
+trait TransposerInputStateProvider<'t, I: TransposerInput + ?Sized>
+where
+    I::InputState: 't,
+{
+    async fn get_input_state(&mut self) -> &'t I::InputState;
 }

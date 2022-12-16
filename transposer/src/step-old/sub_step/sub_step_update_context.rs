@@ -7,11 +7,12 @@ use super::time::SubStepTime;
 use super::update::{TransposerMetaData, UpdateContext};
 use crate::context::*;
 use crate::schedule_storage::StorageFamily;
+use crate::step::lazy_state::LazyStateProxy;
 use crate::{ExpireHandle, Transposer};
 
 pub trait OutputCollector<O> {
     fn new() -> Self;
-    async fn set(&mut self, output: O);
+    fn set(&mut self, output: O) -> Pin<Box<dyn '_ + Future<Output = ()>>>;
     fn take(&mut self) -> Option<O>;
 }
 
@@ -27,7 +28,7 @@ impl<O> OutputCollector<O> for AsyncCollector<O> {
     fn new() -> Self {
         Self::None
     }
-    async fn set(&mut self, output: O) {
+    fn set(&mut self, output: O) -> Pin<Box<dyn '_ + Future<Output = ()>>> {
         let (notify, recv) = futures_channel::oneshot::channel();
         debug_assert!(matches!(self, AsyncCollector::None));
 
@@ -36,7 +37,7 @@ impl<O> OutputCollector<O> for AsyncCollector<O> {
             notify,
         };
 
-        recv.await.unwrap()
+        Box::pin(async { recv.await.unwrap() })
     }
     fn take(&mut self) -> Option<O> {
         match core::mem::replace(self, AsyncCollector::None) {
@@ -58,8 +59,8 @@ impl<O> OutputCollector<O> for DiscardCollector {
     fn new() -> Self {
         DiscardCollector
     }
-    async fn set(&mut self, output: O) {
-        drop(output)
+    fn set(&mut self, _output: O) -> Pin<Box<dyn '_ + Future<Output = ()>>> {
+        Box::pin(std::future::ready(()))
     }
     fn take(&mut self) -> Option<O> {
         None
@@ -70,7 +71,7 @@ impl<O> OutputCollector<O> for DiscardCollector {
 ///
 /// the primary features are scheduling and expiring events,
 /// though there are more methods to interact with the engine.
-pub struct SubStepUpdateContext<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> {
+pub struct SubStepUpdateContext<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> {
     // these are pointers because this is stored next to the targets.
     metadata: NonNull<TransposerMetaData<T, S>>,
 
@@ -80,22 +81,22 @@ pub struct SubStepUpdateContext<T: Transposer, S: StorageFamily, C: OutputCollec
     // values to output
     output_collector: C,
 
-    input_state: NonNull<T::InputStateProvider>,
+    input_state: S::LazyState<LazyStateProxy<T::InputState>>,
 }
 
-impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> InitContext<'a, T>
+impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> InitContext<'a, T>
     for SubStepUpdateContext<T, S, C>
 {
 }
-impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> HandleInputContext<'a, T>
+impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> HandleInputContext<'a, T>
     for SubStepUpdateContext<T, S, C>
 {
 }
-impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>>
+impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>>
     HandleScheduleContext<'a, T> for SubStepUpdateContext<T, S, C>
 {
 }
-impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> UpdateContext<T, S>
+impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> UpdateContext<T, S>
     for SubStepUpdateContext<T, S, C>
 {
     type Output = C;
@@ -104,7 +105,7 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> Update
     unsafe fn new(
         time: SubStepTime<T::Time>,
         metadata: NonNull<TransposerMetaData<T, S>>,
-        input_state: NonNull<T::InputStateProvider>,
+        input_state: S::LazyState<LazyStateProxy<T::InputState>>,
     ) -> Self {
         Self {
             metadata,
@@ -115,27 +116,31 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> Update
         }
     }
 
-    fn recover_output(&mut self) -> Option<T::OutputEvent> {
+    fn recover_output(&mut self) -> Option<T::Output> {
         self.output_collector.take()
     }
 }
 
-impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> SubStepUpdateContext<T, S, C> {
+impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> SubStepUpdateContext<T, S, C> {
     fn get_metadata_mut(&mut self) -> &mut TransposerMetaData<T, S> {
         // SAFETY: this is good as long as the constructor's criteria are met.
         unsafe { self.metadata.as_mut() }
     }
 }
 
-impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> InputStateContext<T>
+impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> InputStateContext<'a, T>
     for SubStepUpdateContext<T, S, C>
 {
-    fn get_input_state_requester(&mut self) -> &mut T::InputStateProvider {
-        unsafe { self.input_state.as_mut() }
+    fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
+        let ptr: NonNull<_> = self.input_state.deref().into();
+
+        // SAFETY: 'a is scoped to the transposer's handler future, which must outlive this scope
+        // because that's where this function gets called from.
+        Box::pin(unsafe { ptr.as_ref() })
     }
 }
 
-impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> ScheduleEventContext<T>
+impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> ScheduleEventContext<T>
     for SubStepUpdateContext<T, S, C>
 {
     fn schedule_event(
@@ -175,7 +180,7 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> Schedu
     }
 }
 
-impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> ExpireEventContext<T>
+impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> ExpireEventContext<T>
     for SubStepUpdateContext<T, S, C>
 {
     fn expire_event(
@@ -186,15 +191,15 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> Expire
     }
 }
 
-impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> EmitEventContext<T>
+impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> EmitEventContext<T>
     for SubStepUpdateContext<T, S, C>
 {
-    fn emit_event(&mut self, payload: <T as Transposer>::OutputEvent) -> Pin<Box<dyn '_ + Future<Output = ()>>> {
-        Box::pin(self.output_collector.set(payload))
+    fn emit_event(&mut self, payload: T::Output) -> Pin<Box<dyn '_ + Future<Output = ()>>> {
+        self.output_collector.set(payload)
     }
 }
 
-impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> RngContext
+impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::Output>> RngContext
     for SubStepUpdateContext<T, S, C>
 {
     fn get_rng(&mut self) -> &mut dyn rand::RngCore {

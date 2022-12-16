@@ -4,7 +4,8 @@ use core::ptr::NonNull;
 use core::task::{Context, Poll};
 
 use super::{Arg, SubStepTime, UpdateContext, WrappedTransposer};
-use crate::schedule_storage::{StorageFamily, TransposerPointer, LazyStatePointer};
+use crate::schedule_storage::{StorageFamily, TransposerPointer};
+use crate::step::lazy_state::LazyStateProxy;
 use crate::Transposer;
 
 pub struct Update<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> {
@@ -30,7 +31,7 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
         mut wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
         mut arg: A::Stored,
         time: SubStepTime<T::Time>,
-        input_state: S::LazyState<T::InputStateProvider>,
+        input_state: S::LazyState<LazyStateProxy<T::InputState>>,
     ) -> Self {
         // update 'current time'
         let raw_time = time.raw_time();
@@ -45,17 +46,15 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
         let metadata = &mut wrapped_transposer_mut.metadata;
 
         // SAFETY: metadata is stable, and contained in wrapped_transposer
-        let context = unsafe { C::new(time, metadata.into(), input_state.into_non_null()) };
-        let context = Box::new(context);
-        let mut context_ptr: NonNull<C> = context.as_ref().into();
+        let context = unsafe { C::new(time, metadata.into(), input_state) };
+        let mut context = Box::new(context);
+        let mut context_mut: NonNull<_> = context.as_mut().into();
+
+        // SAFETY: this is owned by future, so it will not dangle as future is dropped before context.
+        let context_mut = unsafe { context_mut.as_mut() };
 
         // get future, filling box if we can.
-        let future = Box::pin(async move {
-            let context_mut = unsafe { context_ptr.as_mut() };
-            let x = A::run(transposer, context_mut, raw_time, arg_passed).await;
-            drop(input_state);
-            x
-        });
+        let future = A::get_future(transposer, context_mut, raw_time, arg_passed);
 
         // SAFETY: forcing the lifetime. This is dropped before the borrowed content so its fine.
         let future: Pin<Box<dyn Future<Output = ()>>> = future;
@@ -108,6 +107,6 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
 
 pub enum UpdatePoll<T: Transposer, S: StorageFamily> {
     Pending,
-    Event(T::OutputEvent),
+    Event(T::Output),
     Ready(S::Transposer<WrappedTransposer<T, S>>),
 }

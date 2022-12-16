@@ -26,8 +26,12 @@ use util::extended_entry::vecdeque::get_ext_entry as vecdeque_get_ext_entry;
 use util::replace_mut::replace;
 use util::stack_waker::StackWaker;
 
-use super::{CallerChannelBlockedReason, StepBlockedReason, CallerChannelStatus, RepeatStepBlockedReason};
-
+use super::{
+    CallerChannelBlockedReason,
+    CallerChannelStatus,
+    RepeatStepBlockedReason,
+    StepBlockedReason,
+};
 
 pub struct OriginalStepFuture<'a, T: Transposer> {
     // entries
@@ -36,7 +40,7 @@ pub struct OriginalStepFuture<'a, T: Transposer> {
 
     // extra
     pub blocked_source_channels: &'a mut BTreeMap<usize, ()>,
-    pub blocked_repeat_steps: &'a mut HashMap<usize, RepeatStepBlockedReason>,
+    pub blocked_repeat_steps:    &'a mut HashMap<usize, RepeatStepBlockedReason>,
 }
 
 impl<'a, T: Transposer> OriginalStepFuture<'a, T> {
@@ -44,7 +48,7 @@ impl<'a, T: Transposer> OriginalStepFuture<'a, T> {
         mut self,
         all_channel_waker: &Waker,
         next_inputs: &mut NextInputs<T>,
-    ) -> (CallerChannelStatus<'a, T>, Option<T::Output>) {
+    ) -> (CallerChannelStatus<'a, T>, Option<T::OutputEvent>) {
         // match self
         //     .step
         //     .get_value_mut()

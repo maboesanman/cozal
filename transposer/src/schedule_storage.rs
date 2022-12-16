@@ -1,6 +1,7 @@
 use core::borrow::Borrow;
 use core::hash::Hash;
 use core::ops::Deref;
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ pub trait StorageFamily: Copy + 'static {
     // someday we want to drop this clone bound and specialize the Arc impl when W is clone.
     type Transposer<W: Clone>: TransposerPointer<W>;
 
-    type LazyState<W>: LazyStatePointer<W>;
+    type LazyState<W: ?Sized>: LazyStatePointer<W>;
 }
 
 #[derive(Clone, Copy)]
@@ -21,7 +22,7 @@ impl StorageFamily for DefaultStorage {
     type OrdMap<K: Ord + Eq + Clone, V: Clone> = im::OrdMap<K, V>;
     type HashMap<K: Hash + Eq + Clone, V: Clone> = im::HashMap<K, V>;
     type Transposer<W: Clone> = Arc<W>;
-    type LazyState<W> = Arc<W>;
+    type LazyState<W: ?Sized> = Arc<W>;
 }
 
 pub trait OrdMapStorage<K: Ord + Eq + Clone, V: Clone>: Clone {
@@ -69,8 +70,8 @@ pub trait TransposerPointer<T>: Deref<Target = T> + Unpin {
     fn try_take(self) -> Option<T>;
 }
 
-pub trait LazyStatePointer<T>: Deref<Target = T> + Unpin + Clone {
-    fn new(inner: T) -> Self;
+pub trait LazyStatePointer<T: ?Sized>: Deref<Target = T> + Unpin + Clone {
+    fn into_non_null(&self) -> NonNull<T>;
 }
 
 impl<K: Ord + Eq + Clone, V: Clone> OrdMapStorage<K, V> for im::OrdMap<K, V> {
@@ -299,14 +300,14 @@ impl<T: Clone> TransposerPointer<T> for Rc<T> {
     }
 }
 
-impl<T> LazyStatePointer<T> for Arc<T> {
-    fn new(inner: T) -> Self {
-        Arc::new(inner)
+impl<T: ?Sized> LazyStatePointer<T> for Arc<T> {
+    fn into_non_null(&self) -> NonNull<T> {
+        todo!()
     }
 }
 
-impl<T> LazyStatePointer<T> for Rc<T> {
-    fn new(inner: T) -> Self {
-        Rc::new(inner)
+impl<T: ?Sized> LazyStatePointer<T> for Rc<T> {
+    fn into_non_null(&self) -> NonNull<T> {
+        todo!()
     }
 }

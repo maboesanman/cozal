@@ -21,9 +21,9 @@ use self::input_buffer::InputBuffer;
 use self::retention_policy::RetentionPolicy;
 use self::steps::Steps;
 use crate::adapters::transpose::channels::CallerChannelStatus;
-use crate::source_poll::{SourcePoll, TrySourcePoll, Interrupt};
+use crate::source_poll::{Interrupt, SourcePoll, TrySourcePoll};
 use crate::traits::SourceContext;
-use crate::{Source};
+use crate::Source;
 
 #[pin_project(project=TransposeProject)]
 pub struct Transpose<Src: Source, T: Transposer> {
@@ -74,7 +74,7 @@ where
     fn ready_or_scheduled(
         &self,
         state: T::OutputState,
-    ) -> SourcePoll<T::Time, T::Output, T::OutputState> {
+    ) -> SourcePoll<T::Time, T::OutputEvent, T::OutputState> {
         // match (
         //     self.channel_statuses.get_scheduled_time(),
         //     self.last_scheduled,
@@ -92,7 +92,7 @@ where
         poll_time: T::Time,
         cx: SourceContext,
         forget: bool,
-    ) -> TrySourcePoll<T::Time, T::Output, T::OutputState, Src::Error> {
+    ) -> TrySourcePoll<T::Time, T::OutputEvent, T::OutputState, Src::Error> {
         let TransposeProject {
             mut source,
             last_scheduled,
@@ -114,8 +114,14 @@ where
         // poll events if our all channel waker was triggered.
         if let Some(waker) = ReplaceWaker::register(all_channel_waker, caller_all_channel_waker) {
             match source.as_mut().poll_events(*events_poll_time, waker)? {
-                SourcePoll::Ready { state: (), next_event_at } => *last_scheduled = next_event_at,
-                SourcePoll::Interrupt { time, interrupt } => {
+                SourcePoll::Ready {
+                    state: (),
+                    next_event_at,
+                } => *last_scheduled = next_event_at,
+                SourcePoll::Interrupt {
+                    time,
+                    interrupt,
+                } => {
                     debug_assert!(unhandled_interrupt.is_none());
                     unhandled_interrupt = Some((time, interrupt))
                 },
@@ -135,16 +141,17 @@ where
             if let Some((time, interrupt)) = unhandled_interrupt.take() {
                 match interrupt {
                     Interrupt::Event(e) => input_buffer.insert_back(time, e),
-                    Interrupt::Rollback => {
-                        input_buffer.rollback(time)
-                    },
+                    Interrupt::Rollback => input_buffer.rollback(time),
                     Interrupt::Finalize => {
                         // let should_release_old_steps = retention_policy.source_finalize(time);
                         // if should_release_old_steps {
                         //     todo!()
                         // }
                         todo!();
-                        return Ok(SourcePoll::Interrupt { time, interrupt: Interrupt::Finalize })
+                        return Ok(SourcePoll::Interrupt {
+                            time,
+                            interrupt: Interrupt::Finalize,
+                        })
                     },
                 }
             }
@@ -166,11 +173,17 @@ where
                     };
 
                     let state = match source.as_mut().poll(time, cx)? {
-                        SourcePoll::Ready { state, next_event_at } => {
+                        SourcePoll::Ready {
+                            state,
+                            next_event_at,
+                        } => {
                             *last_scheduled = next_event_at;
                             state
                         },
-                        SourcePoll::Interrupt { time, interrupt } => {
+                        SourcePoll::Interrupt {
+                            time,
+                            interrupt,
+                        } => {
                             unhandled_interrupt = Some((time, interrupt));
                             continue
                         },
@@ -180,34 +193,34 @@ where
                     // this provide state call will not poll the future.
                     let inner_status = inner_status.provide_state(state);
 
-                        // now loop again, polling the future on the next pass.
-                        status = CallerChannelStatus::OriginalStepFuture(inner_status);
-                    },
-                    CallerChannelStatus::OriginalStepFuture(inner_status) => {
-                        todo!()
-                        // let t = inner_status.time();
+                    // now loop again, polling the future on the next pass.
+                    status = CallerChannelStatus::OriginalStepFuture(inner_status);
+                },
+                CallerChannelStatus::OriginalStepFuture(inner_status) => {
+                    todo!()
+                    // let t = inner_status.time();
 
-                        // // get the first item, so it can be pulled if needed by poll
-                        // // (if original completes it needs to make a new original future)
-                        // let mut first = input_buffer.pop_first();
+                    // // get the first item, so it can be pulled if needed by poll
+                    // // (if original completes it needs to make a new original future)
+                    // let mut first = input_buffer.pop_first();
 
-                        // let (s, output) = inner_status.poll(&all_channel_waker, &mut first);
+                    // let (s, output) = inner_status.poll(&all_channel_waker, &mut first);
 
-                        // // if poll didn't need the input, put it back in the buffer
-                        // if let Some((t, inputs)) = first {
-                        //     input_buffer.extend_front(t, inputs)
-                        // }
+                    // // if poll didn't need the input, put it back in the buffer
+                    // if let Some((t, inputs)) = first {
+                    //     input_buffer.extend_front(t, inputs)
+                    // }
 
-                        // // handle all the generated outputs
-                        // if let Some(output) = output {
-                        //     return Poll::Ready(Ok(SourcePollOk::Event(output, t)))
-                        // }
+                    // // handle all the generated outputs
+                    // if let Some(output) = output {
+                    //     return Poll::Ready(Ok(SourcePollOk::Event(output, t)))
+                    // }
 
-                        // status = s;
-                    },
-                    CallerChannelStatus::RepeatStepSourceState(mut inner_status) => {
-                        let (time, stack_waker, source_channel) =
-                            inner_status.get_args_for_source_poll();
+                    // status = s;
+                },
+                CallerChannelStatus::RepeatStepSourceState(mut inner_status) => {
+                    let (time, stack_waker, source_channel) =
+                        inner_status.get_args_for_source_poll();
 
                     let stacked_waker = match StackWaker::register(
                         stack_waker,
@@ -225,11 +238,17 @@ where
                     };
 
                     let state = match source.as_mut().poll(time, cx)? {
-                        SourcePoll::Ready { state, next_event_at } => {
+                        SourcePoll::Ready {
+                            state,
+                            next_event_at,
+                        } => {
                             *last_scheduled = next_event_at;
                             state
                         },
-                        SourcePoll::Interrupt { time, interrupt } => {
+                        SourcePoll::Interrupt {
+                            time,
+                            interrupt,
+                        } => {
                             unhandled_interrupt = Some((time, interrupt));
                             continue
                         },
@@ -265,11 +284,17 @@ where
                     }?;
 
                     let state = match poll {
-                        SourcePoll::Ready { state, next_event_at } => {
+                        SourcePoll::Ready {
+                            state,
+                            next_event_at,
+                        } => {
                             *last_scheduled = next_event_at;
                             state
                         },
-                        SourcePoll::Interrupt { time, interrupt } => {
+                        SourcePoll::Interrupt {
+                            time,
+                            interrupt,
+                        } => {
                             unhandled_interrupt = Some((time, interrupt));
                             continue
                         },
@@ -307,7 +332,7 @@ where
 {
     type Time = T::Time;
 
-    type Event = T::Output;
+    type Event = T::OutputEvent;
 
     type State = T::OutputState;
 

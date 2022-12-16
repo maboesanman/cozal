@@ -106,7 +106,7 @@ impl<T: Transposer> InputBuffer<T> {
             },
         }
     }
-    
+
     pub fn first_entry(&mut self) -> Option<InputBufferEntry<'_, T>> {
         Some(InputBufferEntry(self.0.first_entry()?))
     }
@@ -124,7 +124,7 @@ impl<T: Transposer> Default for InputBuffer<T> {
 }
 
 pub struct InputBufferEntry<'a, T: Transposer>(
-    std::collections::btree_map::OccupiedEntry<'a, T::Time, InputContainer<T::Input>>
+    std::collections::btree_map::OccupiedEntry<'a, T::Time, InputContainer<T::Input>>,
 );
 
 impl<'a, T: Transposer> InputBufferEntry<'a, T> {

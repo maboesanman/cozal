@@ -7,19 +7,21 @@ use crate::Transposer;
 
 pub trait Arg<T: Transposer, S: StorageFamily> {
     type Stored: Unpin;
-    type Referenced;
     type Passed<'a>
-    where Self::Referenced: 'a;
+    where
+        T::Input: 'a;
 
     fn get_passed<'a>(
         frame: &mut WrappedTransposer<T, S>,
         borrowed: &'a mut Self::Stored,
-    ) -> Self::Passed<'a>;
+    ) -> Self::Passed<'a>
+    where
+        T::Input: 'a;
 
-    async fn run<'a, C: UpdateContext<T, S>>(
+    fn get_future<'a, C: UpdateContext<T, S>>(
         transposer: &'a mut T,
         context: &'a mut C,
         time: T::Time,
         arg: Self::Passed<'a>,
-    );
+    ) -> Pin<Box<dyn Future<Output = ()> + 'a>>;
 }

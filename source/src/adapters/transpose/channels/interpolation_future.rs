@@ -1,4 +1,3 @@
-
 use std::collections::{BTreeMap, HashMap};
 use std::pin::Pin;
 use std::sync::Weak;
@@ -28,7 +27,12 @@ use util::replace_mut::replace;
 use util::stack_waker::StackWaker;
 
 use super::interpolation_source_state::InterpolationSourceState;
-use super::{CallerChannelBlockedReason, StepBlockedReason, CallerChannelStatus, RepeatStepBlockedReason};
+use super::{
+    CallerChannelBlockedReason,
+    CallerChannelStatus,
+    RepeatStepBlockedReason,
+    StepBlockedReason,
+};
 
 pub struct InterpolationFuture<'a, T: Transposer> {
     // entries
@@ -36,8 +40,8 @@ pub struct InterpolationFuture<'a, T: Transposer> {
 
     // extra
     pub blocked_source_channels: &'a mut BTreeMap<usize, ()>,
-    pub blocked_repeat_steps: &'a mut HashMap<usize, RepeatStepBlockedReason>,
-    pub blocked_original_step: &'a mut Option<StepBlockedReason>,
+    pub blocked_repeat_steps:    &'a mut HashMap<usize, RepeatStepBlockedReason>,
+    pub blocked_original_step:   &'a mut Option<StepBlockedReason>,
 }
 
 impl<'a, T: Transposer> InterpolationFuture<'a, T> {

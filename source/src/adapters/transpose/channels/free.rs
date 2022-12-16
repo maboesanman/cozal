@@ -2,12 +2,14 @@ use std::collections::{BTreeMap, HashMap};
 use std::task::Waker;
 
 use transposer::Transposer;
+use util::extended_entry::hash_map::VacantExtEntry as HashMapVacantEntry;
 
-use util::extended_entry::hash_map::{
-    VacantExtEntry as HashMapVacantEntry,
+use super::{
+    CallerChannelBlockedReason,
+    CallerChannelStatus,
+    RepeatStepBlockedReason,
+    StepBlockedReason,
 };
-
-use super::{CallerChannelBlockedReason, StepBlockedReason, CallerChannelStatus, RepeatStepBlockedReason};
 
 pub struct Free<'a, T: Transposer> {
     // entries
@@ -15,8 +17,8 @@ pub struct Free<'a, T: Transposer> {
 
     // extra
     pub blocked_source_channels: &'a mut BTreeMap<usize, ()>,
-    pub blocked_repeat_steps: &'a mut HashMap<usize, RepeatStepBlockedReason>,
-    pub blocked_original_steps: &'a mut Option<StepBlockedReason>,
+    pub blocked_repeat_steps:    &'a mut HashMap<usize, RepeatStepBlockedReason>,
+    pub blocked_original_steps:  &'a mut Option<StepBlockedReason>,
 }
 
 impl<'a, T: Transposer> Free<'a, T> {

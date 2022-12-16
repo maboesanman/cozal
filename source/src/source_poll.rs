@@ -4,20 +4,20 @@ pub enum SourcePoll<T, E, S> {
     /// Indicates the poll is complete
     Ready {
         /// The requested state
-        state: S,
+        state:         S,
         /// The time of the next known event, if known.
         next_event_at: Option<T>,
     },
-    
+
     /// Indicates information must be handled before state is emitted
     Interrupt {
         /// The time the information pertains to
         time: T,
-        
+
         /// The type of interrupt
-        interrupt: Interrupt<E>
+        interrupt: Interrupt<E>,
     },
-    
+
     /// pending operation. caller will be woken up when progress can be made
     /// the channel this poll used must be retained.
     Pending,
@@ -39,8 +39,20 @@ where
 {
     pub(crate) fn supress_state(self) -> SourcePoll<T, E, ()> {
         match self {
-            Self::Ready { state, next_event_at } => SourcePoll::Ready { state: (), next_event_at },
-            Self::Interrupt { time, interrupt: interrupt_type } => SourcePoll::Interrupt { time, interrupt: interrupt_type },
+            Self::Ready {
+                state,
+                next_event_at,
+            } => SourcePoll::Ready {
+                state: (),
+                next_event_at,
+            },
+            Self::Interrupt {
+                time,
+                interrupt: interrupt_type,
+            } => SourcePoll::Interrupt {
+                time,
+                interrupt: interrupt_type,
+            },
             Self::Pending => SourcePoll::Pending,
         }
     }

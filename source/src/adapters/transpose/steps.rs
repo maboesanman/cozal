@@ -6,7 +6,7 @@ use std::task::Poll;
 
 use transposer::schedule_storage::StorageFamily;
 // use super::transpose_step_metadata::TransposeStepMetadata;
-use transposer::step::{Step, Interpolation};
+use transposer::step::{Interpolation, Step};
 use transposer::Transposer;
 use util::extended_entry::vecdeque::{get_ext_entry, ExtEntry};
 use util::vecdeque_helpers::get_with_next_mut;
@@ -33,7 +33,11 @@ impl<T: Transposer> Steps<T> {
         }
     }
 
-    pub fn poll<S: StorageFamily>(&mut self, time: T::Time, input_buffer: &mut InputBuffer<T>) -> StepsPoll<T, S> {
+    pub fn poll<S: StorageFamily>(
+        &mut self,
+        time: T::Time,
+        input_buffer: &mut InputBuffer<T>,
+    ) -> StepsPoll<T, S> {
         todo!()
     }
 
@@ -41,7 +45,11 @@ impl<T: Transposer> Steps<T> {
         todo!()
     }
 
-    pub fn rollback(&mut self, time: T::Time, input_buffer: &mut InputBuffer<T>) -> StepsRollback<T> {
+    pub fn rollback(
+        &mut self,
+        time: T::Time,
+        input_buffer: &mut InputBuffer<T>,
+    ) -> StepsRollback<T> {
         todo!()
     }
 
@@ -119,26 +127,24 @@ impl<T: Transposer> Steps<T> {
         Err(())
     }
 
-    pub fn delete_before(&mut self, time: T::Time) {
-
-    }
+    pub fn delete_before(&mut self, time: T::Time) {}
 }
 
 pub struct StepsPoll<T: Transposer, S: StorageFamily> {
     completed_steps: Option<RangeInclusive<usize>>,
-    result: StepsPollResult<T, S>
+    result:          StepsPollResult<T, S>,
 }
 
 pub enum StepsPollResult<T: Transposer, S: StorageFamily> {
     Ready(Interpolation<T, S>),
     Pending(/* step_id */ usize),
     NeedsState(/* step_id */ usize),
-    Event(/* step_id */ usize, T::Time, T::Output)
+    Event(/* step_id */ usize, T::Time, T::OutputEvent),
 }
 
 pub struct StepsRollback<T: Transposer> {
-    rollback_steps: Option<Range</* step_id */ usize>>, 
-    rollback_time: Option<T::Time>,
+    rollback_steps: Option<Range</* step_id */ usize>>,
+    rollback_time:  Option<T::Time>,
 }
 
 pub struct StepWrapper<T: Transposer> {

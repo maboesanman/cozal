@@ -26,14 +26,13 @@ use util::extended_entry::vecdeque::get_ext_entry as vecdeque_get_ext_entry;
 use util::replace_mut::replace;
 use util::stack_waker::StackWaker;
 
+use self::free::Free;
 use self::interpolation_future::InterpolationFuture;
 use self::interpolation_source_state::InterpolationSourceState;
-use self::free::Free;
 use self::original_step_future::OriginalStepFuture;
 use self::original_step_source_state::OriginalStepSourceState;
 use self::repeat_step_future::RepeatStepFuture;
 use self::repeat_step_source_state::RepeatStepSourceState;
-
 use super::steps::{StepWrapper, Steps};
 use super::storage::TransposeStorage;
 
@@ -71,8 +70,8 @@ impl<T: Transposer> ChannelStatuses<T> {
         Self {
             blocked_source_channels: BTreeMap::new(),
             blocked_caller_channels: HashMap::new(),
-            blocked_repeat_steps: HashMap::new(),
-            blocked_original_step: None,
+            blocked_repeat_steps:    HashMap::new(),
+            blocked_original_step:   None,
         }
     }
 
@@ -194,7 +193,6 @@ impl<T: Transposer> ChannelStatuses<T> {
     }
 }
 
-
 #[derive(Debug)]
 pub enum StepBlockedReason {
     SourceState { source_channel: usize },
@@ -204,7 +202,7 @@ pub enum StepBlockedReason {
 #[derive(Debug)]
 pub struct RepeatStepBlockedReason {
     reason: StepBlockedReason,
-    waker: Weak<StackWaker>,
+    waker:  Weak<StackWaker>,
 }
 
 pub enum CallerChannelBlockedReason<T: Transposer> {
