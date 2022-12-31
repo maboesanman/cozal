@@ -5,7 +5,7 @@ use rand::RngCore;
 
 use super::expire_handle::ExpireHandle;
 use super::Transposer;
-use crate::TransposerInput;
+use crate::{TransposerInput, StateRetriever};
 
 pub trait InitContext<'a, T: Transposer>:
     InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
@@ -33,7 +33,21 @@ pub trait HandleScheduleContext<'a, T: Transposer>:
 pub trait InterpolateContext<'a, T: Transposer>: InputStateContext<'a, T> {}
 
 pub trait InputStateContext<'a, T: Transposer> {
-    fn get_input_state_requester(&mut self) -> &'a mut T::InputStateProvider;
+    #[doc(hidden)]
+    fn get_input_state_manager(&mut self) -> &'a T::InputStateManager;
+}
+
+pub trait InputStateContextExt<'a, T: Transposer>: InputStateContext<'a, T> {
+    async fn get_input_state<I: TransposerInput<Base=T>>(&mut self) -> &'a I::InputState
+    where T::InputStateManager: 'a + StateRetriever<T, I>;
+}
+
+impl<'a, T: Transposer, C: InputStateContext<'a, T> + ?Sized> InputStateContextExt<'a, T> for C {
+    async fn get_input_state<I: TransposerInput<Base=T>>(&mut self) -> &'a I::InputState
+    where T::InputStateManager: 'a + StateRetriever<T, I>
+    {
+        self.get_input_state_manager().get_input_state().await.unwrap()
+    }
 }
 
 pub trait ScheduleEventContext<T: Transposer> {
@@ -79,6 +93,6 @@ pub trait RngContext {
 
 trait TransposerInputStateProvider<I: TransposerInput + ?Sized>
 {
-    async fn get_input_state<'a>(&'a mut self) -> &'a I::InputState
+    async fn get_input_state<'a>(&'a self) -> &'a I::InputState
     where I::InputState: 'a;
 }

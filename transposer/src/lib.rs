@@ -3,14 +3,14 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![allow(clippy::module_inception)]
 
-use context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext};
+use context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext, InputStateContext};
 
 pub mod context;
 // pub mod evaluate_to;
 mod expire_handle;
 pub mod schedule_storage;
 pub mod step;
-// mod test;
+mod test;
 
 pub use expire_handle::ExpireHandle;
 
@@ -48,8 +48,8 @@ pub trait Transposer: Clone {
     /// the events in the schedule are all of type `Event<Self::Time, Self::Scheduled>`
     type Scheduled: Clone;
 
-    /// The type used to request input state. For the most part this is a
-    type InputStateProvider: ?Sized;
+    /// The type used to request input state. This is only passed as a shared reference.
+    type InputStateManager: ?Sized;
 
     /// The function to initialize your transposer's events.
     ///
@@ -91,8 +91,8 @@ pub trait Transposer: Clone {
     ) -> Self::OutputState;
 }
 
-pub trait TransposerInput: 'static {
-    type Base: Transposer;
+pub trait TransposerInput: 'static + Sized {
+    type Base: TransposerInputEventHandler<Self>;
     type InputEvent;
     type InputState;
 }
@@ -120,4 +120,8 @@ pub trait TransposerInputEventHandler<I: TransposerInput<Base = Self>>: Transpos
     fn can_handle(_time: Self::Time, _event: &I::InputEvent) -> bool {
         true
     }
+}
+
+pub trait StateRetriever<T: Transposer, I: TransposerInput<Base=T>> {
+    fn get_input_state(&self) -> futures_channel::oneshot::Receiver<&'_ I::InputState>;
 }

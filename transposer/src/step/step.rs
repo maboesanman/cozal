@@ -10,9 +10,9 @@ use super::sub_step::WrappedTransposer;
 // use super::lazy_state::LazyState;
 // use super::step_metadata::{EmptyStepMetadata, StepMetadata};
 // use super::sub_step::{PollErr as StepPollErr, SubStep, SubStepTime, WrappedTransposer};
-use crate::schedule_storage::{DefaultStorage, StorageFamily, TransposerPointer};
+use crate::schedule_storage::{DefaultStorage, StorageFamily};
 // use crate::step::sub_step::SaturateErr;
-use crate::{Transposer, TransposerInput, TransposerInputEventHandler};
+use crate::{Transposer, TransposerInput};
 
 pub struct Step<T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStorage>
 {
@@ -33,7 +33,7 @@ pub struct Step<T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStor
 pub trait InputState<T: Transposer>
 {
     fn new() -> Self;
-    fn get_provider(&self) -> &mut T::InputStateProvider;
+    fn get_provider(&self) -> &T::InputStateManager;
 }
 
 impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S>
@@ -71,10 +71,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S>
         &self,
         time: T::Time,
         inputs: Box<[I::InputEvent]>,
-    ) -> Result<NextUnsaturated<T, Is, S>, NextUnsaturatedErr>
-    where
-        T: TransposerInputEventHandler<I>,
-    {
+    ) -> Result<NextUnsaturated<T, Is, S>, NextUnsaturatedErr> {
         todo!()
     }
 
@@ -114,6 +111,10 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S>
     // pub fn interpolate(&self, time: T::Time) -> Result<Interpolation<T, S>, InterpolateErr> {
     //     todo!()
     // }
+
+    pub fn get_input_state(&self) -> &Is {
+        todo!()
+    }
 }
 
 pub struct UnsaturatedStepBuilder<T: Transposer, S: StorageFamily> {
@@ -122,10 +123,7 @@ pub struct UnsaturatedStepBuilder<T: Transposer, S: StorageFamily> {
 }
 
 impl<T: Transposer, S: StorageFamily> UnsaturatedStepBuilder<T, S> {
-    pub fn add_inputs<I: TransposerInput<Base = T>>(&mut self, inputs: Box<[I::InputEvent]>)
-    where
-        T: TransposerInputEventHandler<I>,
-    {
+    pub fn add_inputs<I: TransposerInput<Base = T>>(&mut self, inputs: Box<[I::InputEvent]>) {
         todo!()
     }
 

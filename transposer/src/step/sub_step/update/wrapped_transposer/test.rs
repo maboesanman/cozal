@@ -17,7 +17,7 @@ impl Transposer for TestTransposer {
 
     type OutputEvent = ();
 
-    type InputStateProvider = ();
+    type InputStateManager = ();
 
     async fn interpolate(
         &self,

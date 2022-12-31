@@ -6,8 +6,9 @@ use core::task::{Context, Poll};
 use super::{Arg, SubStepTime, UpdateContext, WrappedTransposer};
 use crate::schedule_storage::{StorageFamily, RefCounted};
 use crate::Transposer;
+use crate::step::InputState;
 
-pub struct Update<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> {
+pub struct Update<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S, C> + Unpin> {
     inner: Option<UpdateInner<T, S, C>>,
 
     arg: A,
@@ -25,25 +26,25 @@ struct UpdateInner<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>> {
     wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
 }
 
-impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Update<T, S, C, A> {
-    pub fn new(
+impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S, C> + Unpin> Update<T, S, C, A> {
+    pub fn new<Is: InputState<T>>(
         mut wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
         arg: A,
         time: SubStepTime<T::Time>,
-        input_state: S::LazyState<T::InputStateProvider>,
+        input_state: S::LazyState<Is>,
     ) -> Self {
         // update 'current time'
         let raw_time = time.raw_time();
         let wrapped_transposer_mut = wrapped_transposer.mutate();
         wrapped_transposer_mut.metadata.last_updated = raw_time;
 
-        let passed_arg = arg.prep(wrapped_transposer_mut);
+        let prepped_arg = arg.prep(raw_time, wrapped_transposer_mut);
 
         // split borrow. one goes to fut, one to context.
         let transposer = &mut wrapped_transposer_mut.transposer;
         let metadata = &mut wrapped_transposer_mut.metadata;
 
-        let input_state_ref: NonNull<_> = NonNull::from(&*input_state);
+        let input_state_ref: NonNull<_> = NonNull::from(input_state.get_provider());
 
         // SAFETY: metadata is stable, and contained in wrapped_transposer
         let context = unsafe { C::new(time, metadata.into(), input_state_ref) };
@@ -53,7 +54,7 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
         // get future, filling box if we can.
         let future = Box::pin(async {
             let context_mut = unsafe { context_ptr.as_mut() };
-            A::run(passed_arg, transposer, context_mut, raw_time).await;
+            prepped_arg(transposer, context_mut).await;
             drop(input_state);
         });
 
@@ -82,28 +83,27 @@ impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>, A: Arg<T, S>> Upda
     }
 
     pub fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> UpdatePoll<T, S> {
-        todo!()
-        // let inner = match &mut self.inner {
-        //     Some(inner) => inner,
-        //     None => return UpdatePoll::Pending,
-        // };
-        // match inner.future.as_mut().poll(cx) {
-        //     Poll::Pending => match inner.context.recover_output() {
-        //         Some(o) => UpdatePoll::Event(o),
-        //         None => UpdatePoll::Pending,
-        //     },
-        //     Poll::Ready(()) => {
-        //         let UpdateInner {
-        //             future,
-        //             context,
-        //             wrapped_transposer,
-        //         } = core::mem::take(&mut self.inner).unwrap();
+        let inner = match &mut self.inner {
+            Some(inner) => inner,
+            None => return UpdatePoll::Pending,
+        };
+        match inner.future.as_mut().poll(cx) {
+            Poll::Pending => match inner.context.recover_output() {
+                Some(o) => UpdatePoll::Event(o),
+                None => UpdatePoll::Pending,
+            },
+            Poll::Ready(()) => {
+                let UpdateInner {
+                    future,
+                    context,
+                    wrapped_transposer,
+                } = core::mem::take(&mut self.inner).unwrap();
 
-        //         drop(future);
-        //         drop(context);
-        //         UpdatePoll::Ready(wrapped_transposer)
-        //     },
-        // }
+                drop(future);
+                drop(context);
+                UpdatePoll::Ready(wrapped_transposer)
+            },
+        }
     }
 }
 

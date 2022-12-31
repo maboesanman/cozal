@@ -80,7 +80,7 @@ pub struct SubStepUpdateContext<T: Transposer, S: StorageFamily, C: OutputCollec
     // values to output
     output_collector: C,
 
-    input_state: NonNull<T::InputStateProvider>,
+    input_state: NonNull<T::InputStateManager>,
 }
 
 impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> InitContext<'a, T>
@@ -98,13 +98,11 @@ impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>>
 impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> UpdateContext<T, S>
     for SubStepUpdateContext<T, S, C>
 {
-    type Output = C;
-
     // SAFETY: need to gurantee the metadata pointer outlives this object.
     unsafe fn new(
         time: SubStepTime<T::Time>,
         metadata: NonNull<TransposerMetaData<T, S>>,
-        input_state: NonNull<T::InputStateProvider>,
+        input_state: NonNull<T::InputStateManager>,
     ) -> Self {
         Self {
             metadata,
@@ -130,8 +128,8 @@ impl<T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> SubSte
 impl<'a, T: Transposer, S: StorageFamily, C: OutputCollector<T::OutputEvent>> InputStateContext<'a, T>
     for SubStepUpdateContext<T, S, C>
 {
-    fn get_input_state_requester(&mut self) -> &'a mut T::InputStateProvider {
-        unsafe { self.input_state.as_mut() }
+    fn get_input_state_manager(&mut self) -> &'a T::InputStateManager {
+        unsafe { self.input_state.as_ref() }
     }
 }
 
