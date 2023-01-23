@@ -84,4 +84,8 @@ impl<T: Transposer> StepInputs<T> {
 
         step_inputs_entry.add_input(self.time, event);
     }
+
+    pub fn time(&self) -> T::Time {
+        self.time
+    }
 }

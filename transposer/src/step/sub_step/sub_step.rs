@@ -84,85 +84,79 @@ impl<'almost_static, T: Transposer, S: StorageFamily, Is: InputState<T>> SubStep
         }
     }
 
-//     pub fn next_unsaturated(
-//         &self,
-//         next_inputs: &mut NextInputs<T>,
-//         input_state: &LazyState<T::InputState>,
-//     ) -> Result<Option<Self>, NextUnsaturatedErr> {
-//         #[cfg(debug_assertions)]
-//         if let Some((t, _)) = next_inputs {
-//             let self_time = self.time().raw_time();
-//             if *t < self_time {
-//                 return Err(NextUnsaturatedErr::InputPastOrPresent)
-//             }
-//             if *t == self_time && self.time().index() != 0 {
-//                 return Err(NextUnsaturatedErr::InputPastOrPresent)
-//             }
-//         }
+    pub fn next_unsaturated(
+        &self,
+        next_inputs: &mut Option<StepInputs<T>>,
+        input_state: S::LazyState<Is>,
+    ) -> Result<Option<Self>, NextUnsaturatedErr> {
+        #[cfg(debug_assertions)]
+        if let Some(inputs) = next_inputs {
+            let self_time = self.time().raw_time();
+            if inputs.time() < self_time {
+                return Err(NextUnsaturatedErr::InputPastOrPresent)
+            }
+            if inputs.time() == self_time && self.time().index() != 0 {
+                return Err(NextUnsaturatedErr::InputPastOrPresent)
+            }
+        }
 
-//         let wrapped_transposer = match &self.inner {
-//             SubStepInner::SaturatedInit {
-//                 wrapped_transposer,
-//                 ..
-//             } => wrapped_transposer,
-//             SubStepInner::SaturatedInput {
-//                 wrapped_transposer,
-//                 ..
-//             } => wrapped_transposer,
-//             SubStepInner::SaturatedScheduled {
-//                 wrapped_transposer,
-//                 ..
-//             } => wrapped_transposer,
-//             _ => return Err(NextUnsaturatedErr::NotSaturated),
-//         };
-//         let next_scheduled_time = wrapped_transposer.get_next_scheduled_time();
+        let wrapped_transposer = match &self.inner {
+            SubStepInner::SaturatedInit {
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer,
+            SubStepInner::SaturatedInput {
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer,
+            SubStepInner::SaturatedScheduled {
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer,
+            _ => return Err(NextUnsaturatedErr::NotSaturated),
+        };
+        let next_scheduled_time = wrapped_transposer.get_next_scheduled_time();
 
-//         let next_time_index = self.time.index() + 1;
+        let next_time_index = self.time.index() + 1;
 
-//         let (time, inputs) = match (&next_inputs, next_scheduled_time) {
-//             (None, None) => return Ok(None),
-//             (None, Some(t)) => (SubStepTime::new_scheduled(next_time_index, t.clone()), None),
-//             (Some((t, _)), None) => {
-//                 let time = *t;
-//                 let inputs = core::mem::take(next_inputs).map(|(_, i)| i);
-//                 (SubStepTime::new_input(next_time_index, time), inputs)
-//             },
-//             (Some((t_i, _)), Some(t_s)) => match t_i.cmp(&t_s.time) {
-//                 Ordering::Greater => (
-//                     SubStepTime::new_scheduled(next_time_index, t_s.clone()),
-//                     None,
-//                 ),
-//                 _ => {
-//                     let time = *t_i;
-//                     let inputs = core::mem::take(next_inputs).map(|(_, i)| i);
-//                     (SubStepTime::new_input(next_time_index, time), inputs)
-//                 },
-//             },
-//         };
+        let (time, inner) = match (next_inputs.as_ref().map(|x| x.time()), next_scheduled_time) {
+            (None, None) => return Ok(None),
+            (None, Some(next_scheduled_time)) => (
+                SubStepTime::new_scheduled(next_time_index, next_scheduled_time.clone()),
+                SubStepInner::OriginalUnsaturatedScheduled
+            ),
+            (Some(t_i), None) => (
+                SubStepTime::new_input(next_time_index, t_i),
+                SubStepInner::OriginalUnsaturatedInput {
+                    inputs: core::mem::take(next_inputs).unwrap(),
+                }
+            ),
+            (Some(t_i), Some(t_s)) => match t_i.cmp(&t_s.time) {
+                Ordering::Greater => (
+                    SubStepTime::new_scheduled(next_time_index, t_s.clone()),
+                    SubStepInner::OriginalUnsaturatedScheduled,
+                ),
+                _ => {
+                    (SubStepTime::new_input(next_time_index, t_i), SubStepInner::OriginalUnsaturatedInput {
+                    inputs: core::mem::take(next_inputs).unwrap(),
+                })
+                },
+            },
+        };
 
-//         let inner = if let Some(inputs) = inputs {
-//             SubStepInner::OriginalUnsaturatedInput {
-//                 inputs,
-//             }
-//         } else {
-//             SubStepInner::OriginalUnsaturatedScheduled
-//         };
+        let item = SubStep {
+            time,
+            inner,
+            input_state,
 
-//         let input_state = S::LazyState::new(input_state.get_proxy());
+            #[cfg(debug_assertions)]
+            uuid_self: uuid::Uuid::new_v4(),
+            #[cfg(debug_assertions)]
+            uuid_prev: Some(self.uuid_self),
+        };
 
-//         let item = SubStep {
-//             time,
-//             inner,
-//             input_state,
-
-//             #[cfg(debug_assertions)]
-//             uuid_self: uuid::Uuid::new_v4(),
-//             #[cfg(debug_assertions)]
-//             uuid_prev: Some(self.uuid_self),
-//         };
-
-//         Ok(Some(item))
-//     }
+        Ok(Some(item))
+    }
 
 //     pub fn next_unsaturated_same_time(&self) -> Result<Option<Self>, NextUnsaturatedErr> {
 //         // init is always its own time.
@@ -404,9 +398,9 @@ impl<'almost_static, T: Transposer, S: StorageFamily, Is: InputState<T>> SubStep
 //         })
 //     }
 
-//     pub fn time(&self) -> &SubStepTime<T::Time> {
-//         &self.time
-//     }
+    pub fn time(&self) -> &SubStepTime<T::Time> {
+        &self.time
+    }
 
 //     // this has the additional gurantee that the pointer returned lives until this is desaturated or dropped.
 //     // if you move self the returned pointer is still valid.
