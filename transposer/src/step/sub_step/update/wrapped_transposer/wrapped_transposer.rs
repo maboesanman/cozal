@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use super::transposer_metadata::TransposerMetaData;
 use super::ScheduledTime;
 use crate::schedule_storage::StorageFamily;
@@ -6,7 +8,7 @@ use crate::Transposer;
 #[derive(Clone)]
 pub struct WrappedTransposer<T: Transposer, S: StorageFamily> {
     pub transposer: T,
-    pub metadata:   TransposerMetaData<T, S>,
+    pub metadata:   TransposerMetaData<T, S>
 }
 
 impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {

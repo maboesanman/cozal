@@ -5,7 +5,7 @@ mod wrapped_transposer;
 
 pub use arg::{Arg};
 pub use update::{Update, UpdatePoll};
-pub use update_context::UpdateContext;
+pub use update_context::*;
 pub use wrapped_transposer::{TransposerMetaData, WrappedTransposer};
 
 pub use super::time::{ScheduledTime, SubStepTime};

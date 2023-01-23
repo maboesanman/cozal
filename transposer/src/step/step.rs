@@ -1,18 +1,22 @@
 use core::pin::Pin;
 use core::task::{Context, Waker};
+use std::collections::{BTreeSet, BTreeMap};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use futures_core::Future;
 use util::replace_mut;
 
-use super::sub_step::WrappedTransposer;
+use super::step_inputs::StepInputs;
+use super::sub_step::{WrappedTransposer};
+use crate::context::HandleInputContext;
 // use super::interpolation::Interpolation;
 // use super::lazy_state::LazyState;
 // use super::step_metadata::{EmptyStepMetadata, StepMetadata};
 // use super::sub_step::{PollErr as StepPollErr, SubStep, SubStepTime, WrappedTransposer};
 use crate::schedule_storage::{DefaultStorage, StorageFamily};
 // use crate::step::sub_step::SaturateErr;
-use crate::{Transposer, TransposerInput};
+use crate::{Transposer, TransposerInput, TransposerInputEventHandler};
 
 pub struct Step<T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStorage>
 {
@@ -38,44 +42,32 @@ pub trait InputState<T: Transposer>
 
 impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S>
 {
-    pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> UnsaturatedStepBuilder<T, S> {
+    pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         // let mut steps = Vec::with_capacity(1);
-        // let input_state = LazyState::new();
+        // let input_state = S::LazyState::new(Is::new());
 
         // steps.push(SubStep::new_init(transposer, rng_seed, &input_state));
 
-        todo!()
-
         // Self {
-        //     phantom:     PhantomData,
-        //     input_state: S::LazyState::new(Is::new()),
+        //     inner: StepInner::OriginalSaturating {
+        //         current_saturating_index: 0,
+        //         steps,
+        //     },
+        //     input_state,
 
-        //     // inner: StepInner::OriginalSaturating {
-        //     //     current_saturating_index: 0,
-        //     //     steps,
-        //     //     metadata: M::new_init(),
-        //     // },
-        //     // input_state,
         //     #[cfg(debug_assertions)]
-        //     uuid_self:                          uuid::Uuid::new_v4(),
+        //     uuid_self: uuid::Uuid::new_v4(),
         //     #[cfg(debug_assertions)]
-        //     uuid_prev:                          None,
+        //     uuid_prev: None,
         // }
-    }
-
-    pub fn next_scheduled_unsaturated(&self) -> Result<Option<Self>, NextUnsaturatedErr> {
         todo!()
     }
 
     pub fn next_unsaturated<I: TransposerInput<Base = T>>(
         &self,
         time: T::Time,
-        inputs: Box<[I::InputEvent]>,
-    ) -> Result<NextUnsaturated<T, Is, S>, NextUnsaturatedErr> {
-        todo!()
-    }
-
-    pub fn into_builder(self) -> UnsaturatedStepBuilder<T, S> {
+        inputs: &mut Option<StepInputs<T>>,
+    ) -> Result<Self, NextUnsaturatedErr> {
         todo!()
     }
 
@@ -117,26 +109,26 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S>
     }
 }
 
-pub struct UnsaturatedStepBuilder<T: Transposer, S: StorageFamily> {
-    // inner: StepInner<T, S>,
-    phantom: PhantomData<WrappedTransposer<T, S>>,
-}
-
-impl<T: Transposer, S: StorageFamily> UnsaturatedStepBuilder<T, S> {
-    pub fn add_inputs<I: TransposerInput<Base = T>>(&mut self, inputs: Box<[I::InputEvent]>) {
-        todo!()
-    }
-
-    pub fn complete<Is: InputState<T>>(self) -> Step<T, Is, S> {
-        todo!()
-    }
-}
-
-pub enum NextUnsaturated<T: Transposer, Is: InputState<T>, S: StorageFamily>
-{
-    Scheduled(Step<T, Is, S>),
-    Input(UnsaturatedStepBuilder<T, S>),
-}
+// enum StepInner<T: Transposer, S: StorageFamily> {
+//     OriginalUnsaturated {
+//         steps:    Vec<SubStep<T, S>>,
+//     },
+//     OriginalSaturating {
+//         current_saturating_index: usize,
+//         steps:                    Vec<SubStep<T, S>>,
+//     },
+//     RepeatUnsaturated {
+//         steps:    Box<[SubStep<T, S>]>,
+//     },
+//     RepeatSaturating {
+//         current_saturating_index: usize,
+//         steps:                    Box<[SubStep<T, S>]>,
+//     },
+//     Saturated {
+//         steps:    Box<[SubStep<T, S>]>,
+//     },
+//     Unreachable,
+// }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum StepPoll<T: Transposer> {

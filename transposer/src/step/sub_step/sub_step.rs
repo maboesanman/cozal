@@ -6,16 +6,20 @@ use util::replace_mut;
 
 use super::WrappedTransposer;
 use super::args::{InitArg, InputArg, ScheduledArg};
-use super::sub_step_update_context::{AsyncCollector, DiscardCollector, SubStepUpdateContext};
+use super::sub_step_update_context::{SubStepUpdateContext, SubStepUpdateContextFamily};
 use super::time::SubStepTime;
 use super::update::{Arg, Update, UpdateContext};
 use crate::Transposer;
-use crate::schedule_storage::StorageFamily;
+use crate::schedule_storage::{StorageFamily, RefCounted};
+use crate::step::step::InputState;
+use crate::step::step_inputs::StepInputs;
 
-pub struct SubStep<T: Transposer, S: StorageFamily> {
+pub struct SubStep<'almost_static, T: Transposer, S: StorageFamily, Is: InputState<T>>
+where (T, Is): 'almost_static
+{
     time:        SubStepTime<T::Time>,
-    inner:       SubStepInner<T, S>,
-    // input_state: S::LazyState<>,
+    inner:       SubStepInner<'almost_static, T, S, Is>,
+    input_state: S::LazyState<Is>,
 
     // these are used purely for enforcing that saturate calls use the previous step.
     #[cfg(debug_assertions)]
@@ -49,34 +53,36 @@ pub enum PollErr {
     Saturated,
 }
 
-impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
-    // pub fn new_init(
-    //     transposer: T,
-    //     rng_seed: [u8; 32],
-    //     input_state: &LazyState<T::InputState>,
-    // ) -> Self {
-    //     let time = SubStepTime::new_init();
-    //     let wrapped_transposer = WrappedTransposer::new(transposer, rng_seed);
-    //     let wrapped_transposer =
-    //         <S::Transposer<WrappedTransposer<T, S>> as TransposerPointer<_>>::new(
-    //             wrapped_transposer,
-    //         );
-    //     let input_state = S::LazyState::new(input_state.get_proxy());
-    //     let update = Update::new(wrapped_transposer, (), time.clone(), input_state.clone());
-    //     let inner = SubStepInner::SaturatingInit {
-    //         update,
-    //     };
-    //     SubStep {
-    //         time,
-    //         inner,
-    //         input_state,
+impl<'almost_static, T: Transposer, S: StorageFamily, Is: InputState<T>> SubStep<'almost_static, T, S, Is> {
+    pub fn new_init(
+        transposer: T,
+        rng_seed: [u8; 32],
+        input_state: S::LazyState<Is>,
+    ) -> Self {
+        let time = SubStepTime::new_init();
+        let wrapped_transposer = WrappedTransposer::new(transposer, rng_seed);
+        let wrapped_transposer = Box::new(wrapped_transposer);
+        let wrapped_transposer = S::Transposer::<WrappedTransposer<T, S>>::new(wrapped_transposer);
+        let update = Update::new::<SubStepUpdateContextFamily<T, S>>(
+            wrapped_transposer,
+            InitArg::new(),
+            time.clone(),
+            input_state.clone()
+        );
+        let inner = SubStepInner::SaturatingInit {
+            update,
+        };
+        SubStep {
+            time,
+            inner,
+            input_state,
 
-    //         #[cfg(debug_assertions)]
-    //         uuid_self: uuid::Uuid::new_v4(),
-    //         #[cfg(debug_assertions)]
-    //         uuid_prev: None,
-    //     }
-    // }
+            #[cfg(debug_assertions)]
+            uuid_self: uuid::Uuid::new_v4(),
+            #[cfg(debug_assertions)]
+            uuid_prev: None,
+        }
+    }
 
 //     pub fn next_unsaturated(
 //         &self,
@@ -557,64 +563,55 @@ impl<T: Transposer, S: StorageFamily> SubStep<T, S> {
 //     }
 }
 
-// context types
-type OriginalContext<T, S> = SubStepUpdateContext<T, S, AsyncCollector<<T as Transposer>::OutputEvent>>;
-type RepeatContext<T, S> = SubStepUpdateContext<T, S, DiscardCollector>;
-
 // arg types
-type InitUpdate<T, S> = Update<T, S, OriginalContext<T, S>, InitArg>;
-type InputUpdate<T, S, C> = Update<T, S, C, Box<dyn Arg<T, S, C>>>;
-type ScheduledUpdate<T, S, C> = Update<T, S, C, ScheduledArg>;
+type InitUpdate<'almost_static, T, S> = Update<'almost_static, T, S, SubStepUpdateContext<'almost_static, T, S>, InitArg<T>>;
+type InputUpdate<'almost_static, T, S> = Update<'almost_static, T, S, SubStepUpdateContext<'almost_static, T, S>, InputArg<T>>;
+type ScheduledUpdate<'almost_static, T, S> = Update<'almost_static, T, S, SubStepUpdateContext<'almost_static, T, S>, ScheduledArg<T>>;
 
-// arg + context types
-type OriginalInputUpdate<T, S> = InputUpdate<T, S, OriginalContext<T, S>>;
-type OriginalScheduledUpdate<T, S> = ScheduledUpdate<T, S, OriginalContext<T, S>>;
-type RepeatInputUpdate<T, S> = InputUpdate<T, S, RepeatContext<T, S>>;
-type RepeatScheduledUpdate<T, S> = ScheduledUpdate<T, S, RepeatContext<T, S>>;
-
-enum SubStepInner<T: Transposer, S: StorageFamily> {
+enum SubStepInner<'almost_static, T: Transposer, S: StorageFamily, Is: InputState<T>>
+where (T, Is): 'almost_static
+{
     // notably this can never be rehydrated because you need the preceding wrapped_transposer
     // and there isn't one, because this is init.
     UnsaturatedInit,
     OriginalUnsaturatedInput {
-        inputs: Box<dyn Arg<T, S, OriginalContext<T, S>>>,
+        inputs: StepInputs<T>,
     },
     OriginalUnsaturatedScheduled,
     RepeatUnsaturatedInput {
-        inputs: Box<dyn Arg<T, S, RepeatContext<T, S>>>,
+        inputs: StepInputs<T>,
     },
     RepeatUnsaturatedScheduled,
     SaturatingInit {
-        update: InitUpdate<T, S>,
+        update: Update<'almost_static, T, S, InitArg<T>, Is>,
     },
     OriginalSaturatingInput {
-        update: OriginalInputUpdate<T, S>,
+        update: Update<'almost_static, T, S, InputArg<T>, Is>,
     },
     OriginalSaturatingScheduled {
-        update: OriginalScheduledUpdate<T, S>,
+        update: Update<'almost_static, T, S, ScheduledArg<T>, Is>,
     },
     RepeatSaturatingInput {
-        update: RepeatInputUpdate<T, S>,
+        update: Update<'almost_static, T, S, InputArg<T>, Is>,
     },
     RepeatSaturatingScheduled {
-        update: RepeatScheduledUpdate<T, S>,
+        update: Update<'almost_static, T, S, ScheduledArg<T>, Is>,
     },
     SaturatedInit {
         wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     },
     SaturatedInput {
-        inputs: Box<dyn Arg<T, S, RepeatContext<T, S>>>,
+        inputs: StepInputs<T>,
         wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     },
     SaturatedScheduled {
         wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
-    },
-    Unreachable,
+    }
 }
 
-impl<T: Transposer, S: StorageFamily> SubStepInner<T, S> {
+impl<'almost_static, T: Transposer, S: StorageFamily, Is: InputState<T>> SubStepInner<'almost_static, T, S, Is> {
     fn recover() -> Self {
-        Self::Unreachable
+        Self::UnsaturatedInit
     }
 
     pub fn is_unsaturated(&self) -> bool {

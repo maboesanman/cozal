@@ -95,6 +95,11 @@ pub trait TransposerInput: 'static + Sized {
     type Base: TransposerInputEventHandler<Self>;
     type InputEvent;
     type InputState;
+
+    /// This MUST be unique for each input that shares a base.
+    ///
+    /// in particular, two inputs with the same Base and SORT, and different InputEvents can result in UB.
+    const SORT: u64;
 }
 
 pub trait TransposerInputEventHandler<I: TransposerInput<Base = Self>>: Transposer {
@@ -110,7 +115,7 @@ pub trait TransposerInputEventHandler<I: TransposerInput<Base = Self>>: Transpos
     async fn handle_input(
         &mut self,
         _time: Self::Time,
-        _events: &[I::InputEvent],
+        _events: &I::InputEvent,
         _cx: &mut dyn HandleInputContext<'_, Self>,
     ) {
     }
@@ -119,6 +124,12 @@ pub trait TransposerInputEventHandler<I: TransposerInput<Base = Self>>: Transpos
     /// This reduces the amount of events you have to remember for rollback to work
     fn can_handle(_time: Self::Time, _event: &I::InputEvent) -> bool {
         true
+    }
+    
+    /// Sort the inputs so their order can be deterministic.
+    /// this is only used if they are both the same time.
+    fn sort_input_events(_time: Self::Time, _this: &I::InputEvent, _other: &I::InputEvent) -> std::cmp::Ordering {
+        std::cmp::Ordering::Equal
     }
 }
 

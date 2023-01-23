@@ -2,11 +2,10 @@ use core::future::Future;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::task::{Context, Poll};
-use std::sync::Arc;
 
 use super::interpolate_context::StepInterpolateContext;
 use super::sub_step::WrappedTransposer;
-use crate::schedule_storage::{StorageFamily, TransposerPointer};
+use crate::schedule_storage::{StorageFamily, RefCounted};
 use crate::Transposer;
 
 pub struct Interpolation<T: Transposer, S: StorageFamily> {
@@ -16,7 +15,7 @@ pub struct Interpolation<T: Transposer, S: StorageFamily> {
     // this is referenced by future and context. it's not technically used,
     // except to keep alive the references until dropped.
     #[allow(unused)]
-    wrapped_transposer: <S::Transposer<WrappedTransposer<T, S>> as TransposerPointer<
+    wrapped_transposer: <S::Transposer<WrappedTransposer<T, S>> as RefCounted<
         WrappedTransposer<T, S>,
     >>::Borrowed,
 }
@@ -50,9 +49,9 @@ impl<T: Transposer, S: StorageFamily> Interpolation<T, S> {
         self.context.state.requested()
     }
 
-    pub fn set_state(&mut self, state: T::InputState) -> Result<(), Arc<T::InputState>> {
-        self.context.state.set(state)
-    }
+    // pub fn set_state(&mut self, state: T::InputState) -> Result<(), Arc<T::InputState>> {
+    //     self.context.state.set(state)
+    // }
 }
 
 impl<T: Transposer, S: StorageFamily> Future for Interpolation<T, S> {

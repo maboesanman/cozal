@@ -6,7 +6,7 @@ use crate::{Transposer, TransposerInput, StateRetriever, TransposerInputEventHan
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum HandleRecord {
-    Input(usize, Vec<usize>),
+    Input(usize, usize),
     Scheduled(usize, usize),
 }
 
@@ -38,6 +38,8 @@ impl TransposerInput for TestTransposerInput1 {
     type InputEvent = usize;
 
     type InputState = usize;
+
+    const SORT: u64 = 1;
 }
 
 impl TransposerInput for TestTransposerInput2 {
@@ -47,6 +49,8 @@ impl TransposerInput for TestTransposerInput2 {
     type InputEvent = usize;
 
     type InputState = usize;
+
+    const SORT: u64 = 2;
 }
 
 // set up with macro
@@ -114,14 +118,10 @@ impl TransposerInputEventHandler<TestTransposerInput2> for TestTransposer {
     async fn handle_input(
         &mut self,
         time: Self::Time,
-        inputs: &[usize],
+        input: &usize,
         cx: &mut dyn HandleInputContext<'_, Self>,
     ) {
-        let mut vec = Vec::new();
-        for payload in inputs {
-            vec.push(*payload);
-        }
-        let record = HandleRecord::Input(time, vec.try_into().unwrap());
+        let record = HandleRecord::Input(time, *input);
         self.handle_record.push_back((record, cx.get_rng().gen()));
 
         let state = cx.get_input_state::<TestTransposerInput1>().await;

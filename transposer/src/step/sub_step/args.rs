@@ -1,47 +1,97 @@
 use core::future::Future;
 use core::pin::Pin;
+use std::marker::PhantomData;
 
 use super::update::{Arg, UpdateContext, WrappedTransposer};
 use crate::schedule_storage::StorageFamily;
+use crate::step::step_inputs::StepInputs;
 use crate::{Transposer, TransposerInput, TransposerInputEventHandler};
 
-pub struct InitArg;
+pub struct InitArg<T: Transposer>(
+    PhantomData<StepInputs<T>>,
+);
 
-impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>> Arg<T, S, C> for InitArg {
-    // this must be extracted before the context is contstructed to avoid mutable alias
-    fn prep<'a, 't>(
+impl<T: Transposer> InitArg<T> {
+    pub fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<T: Transposer, S: StorageFamily> Arg<T, S> for InitArg<T> {
+    type Passed<'a> = ()
+    where T: 'a;
+
+    fn get_passed<'a>(
         &'a self,
+        _frame: &mut WrappedTransposer<T, S>,
+    ) -> Self::Passed<'a>
+    where T: 'a { }
+
+    async fn run<'a, C: UpdateContext<'a, T, S>>(
+        _transposer: &'a mut T,
+        _context: C,
         _time: T::Time,
-        _wrapped_transposer: &'t mut WrappedTransposer<T, S>
-    ) -> Box<dyn FnOnce(&'a mut T, &'a mut C) -> Pin<Box<dyn Future<Output = ()> + 'a>> + 'a> {
-        Box::new(|transposer, context| Box::pin(transposer.init(context)))
+        _passed: Self::Passed<'a>,
+    )
+    where T: 'a { }
+}
+
+pub struct InputArg<T: Transposer>(
+    StepInputs<T>,
+);
+
+impl<T: Transposer, S: StorageFamily> Arg<T, S> for InputArg<T> {
+    type Passed<'a> = &'a StepInputs<T>
+    where T: 'a;
+
+    fn get_passed<'a>(
+        &'a self,
+        _frame: &mut WrappedTransposer<T, S>,
+    ) -> Self::Passed<'a>
+    where T: 'a
+    {
+        &self.0
+    }
+
+    async fn run<'a, C: UpdateContext<'a, T, S>>(
+        transposer: &'a mut T,
+        mut context: C,
+        _time: <T as Transposer>::Time,
+        passed: Self::Passed<'a>,
+    )
+    where T: 'a
+    {
+        passed.handle(transposer, &mut context).await
     }
 }
 
-pub struct InputArg<I: TransposerInput> {
-    inputs: [I::InputEvent]
-}
+pub struct ScheduledArg<T: Transposer>(
+    PhantomData<StepInputs<T>>,
+);
 
-impl<I: TransposerInput, S: StorageFamily, C: UpdateContext<I::Base, S>> Arg<I::Base, S, C> for InputArg<I> {
-    fn prep<'a, 't>(
+impl<T: Transposer, S: StorageFamily> Arg<T, S> for ScheduledArg<T> {
+    type Passed<'a> = T::Scheduled
+    where T: 'a, StepInputs<T>: 'a;
+
+    fn get_passed<'a>(
         &'a self,
-        time: <I::Base as Transposer>::Time,
-        _wrapped_transposer: &'t mut WrappedTransposer<I::Base, S>
-    ) -> Box<dyn FnOnce(&'a mut I::Base, &'a mut C) -> Pin<Box<dyn Future<Output = ()> + 'a>> + 'a> {
-        Box::new(move |transposer, context| Box::pin(transposer.handle_input(time, &self.inputs, context)))
+        frame: &mut WrappedTransposer<T, S>,
+    ) -> Self::Passed<'a>
+    where T: 'a
+    {
+        let (_, payload) = frame.pop_schedule_event().unwrap();
+
+        payload
     }
-}
 
-pub struct ScheduledArg;
-
-impl<T: Transposer, S: StorageFamily, C: UpdateContext<T, S>> Arg<T, S, C> for ScheduledArg {
-    fn prep<'a, 't>(
-        &'a self,
-        time: T::Time,
-        wrapped_transposer: &'t mut WrappedTransposer<T, S>
-    ) -> Box<dyn FnOnce(&'a mut T, &'a mut C) -> Pin<Box<dyn Future<Output = ()> + 'a>> + 'a> {
-        let (_, payload) = wrapped_transposer.pop_schedule_event().unwrap();
-        
-        Box::new(move |transposer, context| Box::pin(transposer.handle_scheduled(time, payload, context)))
+    async fn run<'a, C: UpdateContext<'a, T, S>>(
+        transposer: &'a mut T,
+        mut context: C,
+        time: <T as Transposer>::Time,
+        passed: Self::Passed<'a>,
+    ) 
+    where T: 'a
+    {
+        transposer.handle_scheduled(time, passed, &mut context).await;
     }
 }

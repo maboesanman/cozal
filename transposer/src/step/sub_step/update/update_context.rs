@@ -1,19 +1,25 @@
-use core::ptr::NonNull;
-
 use super::{SubStepTime, TransposerMetaData};
 use crate::context::*;
 use crate::schedule_storage::StorageFamily;
 use crate::Transposer;
 
-pub trait UpdateContext<T: Transposer, S: StorageFamily>:
-    InitContext<'static, T> + HandleInputContext<'static, T> + HandleScheduleContext<'static, T>
+pub trait UpdateContextFamily<T: Transposer, S: StorageFamily>
+{
+    type UpdateContext<'update>: UpdateContext<'update, T, S> + 'update
+    where (T, S): 'update;
+}
+
+pub trait UpdateContext<'update, T: Transposer, S: StorageFamily>:
+    InitContext<'update, T> + HandleInputContext<'update, T> + HandleScheduleContext<'update, T>
 {
     // SAFETY: ensure this UpdateContext is dropped before metadata and input_state.
-    unsafe fn new(
+    fn new(
         time: SubStepTime<T::Time>,
-        metadata: NonNull<TransposerMetaData<T, S>>,
-        input_state: NonNull<T::InputStateManager>,
+        metadata: &'update mut TransposerMetaData<T, S>,
+        input_state: &'update T::InputStateManager,
+        output_sender: futures_channel::mpsc::Sender<(
+            T::OutputEvent,
+            futures_channel::oneshot::Sender<()>
+        )>
     ) -> Self;
-
-    fn recover_output(&mut self) -> Option<T::OutputEvent>;
 }
