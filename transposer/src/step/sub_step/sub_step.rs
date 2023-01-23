@@ -158,403 +158,403 @@ impl<'almost_static, T: Transposer, S: StorageFamily, Is: InputState<T>> SubStep
         Ok(Some(item))
     }
 
-//     pub fn next_unsaturated_same_time(&self) -> Result<Option<Self>, NextUnsaturatedErr> {
-//         // init is always its own time.
-//         if self.time().index() == 0 {
-//             return Ok(None)
-//         }
+    pub fn next_unsaturated_same_time(&self) -> Result<Option<Self>, NextUnsaturatedErr> {
+        // init is always its own time.
+        if self.time().index() == 0 {
+            return Ok(None)
+        }
 
-//         let wrapped_transposer = match &self.inner {
-//             SubStepInner::SaturatedInit {
-//                 wrapped_transposer,
-//                 ..
-//             } => wrapped_transposer,
-//             SubStepInner::SaturatedInput {
-//                 wrapped_transposer,
-//                 ..
-//             } => wrapped_transposer,
-//             SubStepInner::SaturatedScheduled {
-//                 wrapped_transposer,
-//                 ..
-//             } => wrapped_transposer,
-//             _ => return Err(NextUnsaturatedErr::NotSaturated),
-//         };
+        let wrapped_transposer = match &self.inner {
+            SubStepInner::SaturatedInit {
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer,
+            SubStepInner::SaturatedInput {
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer,
+            SubStepInner::SaturatedScheduled {
+                wrapped_transposer,
+                ..
+            } => wrapped_transposer,
+            _ => return Err(NextUnsaturatedErr::NotSaturated),
+        };
 
-//         let next_scheduled_time = wrapped_transposer.get_next_scheduled_time();
-//         let next_scheduled_time = match next_scheduled_time {
-//             Some(t) => t,
-//             None => return Ok(None),
-//         };
+        let next_scheduled_time = wrapped_transposer.get_next_scheduled_time();
+        let next_scheduled_time = match next_scheduled_time {
+            Some(t) => t,
+            None => return Ok(None),
+        };
 
-//         if self.time().raw_time() != next_scheduled_time.time {
-//             return Ok(None)
-//         }
+        if self.time().raw_time() != next_scheduled_time.time {
+            return Ok(None)
+        }
 
-//         let next_time_index = self.time.index() + 1;
-//         let time = SubStepTime::new_scheduled(next_time_index, next_scheduled_time.clone());
-//         let inner = SubStepInner::OriginalUnsaturatedScheduled;
+        let next_time_index = self.time.index() + 1;
+        let time = SubStepTime::new_scheduled(next_time_index, next_scheduled_time.clone());
+        let inner = SubStepInner::OriginalUnsaturatedScheduled;
 
-//         let item = SubStep {
-//             time,
-//             inner,
-//             input_state: self.input_state.clone(),
+        let item = SubStep {
+            time,
+            inner,
+            input_state: self.input_state.clone(),
 
-//             #[cfg(debug_assertions)]
-//             uuid_self: uuid::Uuid::new_v4(),
-//             #[cfg(debug_assertions)]
-//             uuid_prev: Some(self.uuid_self),
-//         };
+            #[cfg(debug_assertions)]
+            uuid_self: uuid::Uuid::new_v4(),
+            #[cfg(debug_assertions)]
+            uuid_prev: Some(self.uuid_self),
+        };
 
-//         Ok(Some(item))
-//     }
+        Ok(Some(item))
+    }
 
-//     // previous is expected to be the value produced this via next_unsaturated.
-//     pub fn saturate_take(&mut self, previous: &mut Self) -> Result<(), SaturateErr> {
-//         #[cfg(debug_assertions)]
-//         if self.uuid_prev != Some(previous.uuid_self) {
-//             return Err(SaturateErr::IncorrectPrevious)
-//         }
+    // previous is expected to be the value produced this via next_unsaturated.
+    pub fn saturate_take(&mut self, previous: &mut Self) -> Result<(), SaturateErr> {
+        #[cfg(debug_assertions)]
+        if self.uuid_prev != Some(previous.uuid_self) {
+            return Err(SaturateErr::IncorrectPrevious)
+        }
 
-//         if !previous.inner.is_saturated() {
-//             return Err(SaturateErr::PreviousNotSaturated)
-//         }
+        if !previous.inner.is_saturated() {
+            return Err(SaturateErr::PreviousNotSaturated)
+        }
 
-//         if !self.inner.is_unsaturated() {
-//             return Err(SaturateErr::SelfNotUnsaturated)
-//         }
+        if !self.inner.is_unsaturated() {
+            return Err(SaturateErr::SelfNotUnsaturated)
+        }
 
-//         let wrapped_transposer = replace_mut::replace_and_return(
-//             &mut previous.inner,
-//             || SubStepInner::Unreachable,
-//             |prev| match prev {
-//                 SubStepInner::SaturatedInit {
-//                     wrapped_transposer,
-//                 } => (SubStepInner::UnsaturatedInit, wrapped_transposer),
-//                 SubStepInner::SaturatedInput {
-//                     inputs,
-//                     wrapped_transposer,
-//                 } => (
-//                     SubStepInner::RepeatUnsaturatedInput {
-//                         inputs,
-//                     },
-//                     wrapped_transposer,
-//                 ),
-//                 SubStepInner::SaturatedScheduled {
-//                     wrapped_transposer,
-//                 } => (SubStepInner::RepeatUnsaturatedScheduled, wrapped_transposer),
-//                 _ => unreachable!(),
-//             },
-//         );
+        let wrapped_transposer = replace_mut::replace_and_return(
+            &mut previous.inner,
+            SubStepInner::recover,
+            |prev| match prev {
+                SubStepInner::SaturatedInit {
+                    wrapped_transposer,
+                } => (SubStepInner::UnsaturatedInit, wrapped_transposer),
+                SubStepInner::SaturatedInput {
+                    inputs,
+                    wrapped_transposer,
+                } => (
+                    SubStepInner::RepeatUnsaturatedInput {
+                        inputs,
+                    },
+                    wrapped_transposer,
+                ),
+                SubStepInner::SaturatedScheduled {
+                    wrapped_transposer,
+                } => (SubStepInner::RepeatUnsaturatedScheduled, wrapped_transposer),
+                _ => unreachable!(),
+            },
+        );
 
-//         self.saturate_from_wrapped_transposer(wrapped_transposer);
+        self.saturate_from_wrapped_transposer(wrapped_transposer);
 
-//         Ok(())
-//     }
+        Ok(())
+    }
 
-//     // previous is expected to be the value produced this via next_unsaturated.
-//     pub fn saturate_clone(&mut self, previous: &Self) -> Result<(), SaturateErr>
-//     where
-//         S::Transposer<WrappedTransposer<T, S>>: Clone,
-//     {
-//         #[cfg(debug_assertions)]
-//         if self.uuid_prev != Some(previous.uuid_self) {
-//             return Err(SaturateErr::IncorrectPrevious)
-//         }
+    // previous is expected to be the value produced this via next_unsaturated.
+    pub fn saturate_clone(&mut self, previous: &Self) -> Result<(), SaturateErr>
+    where
+        S::Transposer<WrappedTransposer<T, S>>: Clone,
+    {
+        #[cfg(debug_assertions)]
+        if self.uuid_prev != Some(previous.uuid_self) {
+            return Err(SaturateErr::IncorrectPrevious)
+        }
 
-//         if !self.inner.is_unsaturated() {
-//             return Err(SaturateErr::SelfNotUnsaturated)
-//         }
+        if !self.inner.is_unsaturated() {
+            return Err(SaturateErr::SelfNotUnsaturated)
+        }
 
-//         let wrapped_transposer: S::Transposer<WrappedTransposer<T, S>> = match &previous.inner {
-//             SubStepInner::SaturatedInit {
-//                 wrapped_transposer,
-//                 ..
-//             } => Ok(wrapped_transposer.clone()),
-//             SubStepInner::SaturatedInput {
-//                 wrapped_transposer,
-//                 ..
-//             } => Ok(wrapped_transposer.clone()),
-//             SubStepInner::SaturatedScheduled {
-//                 wrapped_transposer,
-//             } => Ok(wrapped_transposer.clone()),
-//             _ => Err(SaturateErr::PreviousNotSaturated),
-//         }?;
+        let wrapped_transposer: S::Transposer<WrappedTransposer<T, S>> = match &previous.inner {
+            SubStepInner::SaturatedInit {
+                wrapped_transposer,
+                ..
+            } => Ok(wrapped_transposer.clone()),
+            SubStepInner::SaturatedInput {
+                wrapped_transposer,
+                ..
+            } => Ok(wrapped_transposer.clone()),
+            SubStepInner::SaturatedScheduled {
+                wrapped_transposer,
+            } => Ok(wrapped_transposer.clone()),
+            _ => Err(SaturateErr::PreviousNotSaturated),
+        }?;
 
-//         self.saturate_from_wrapped_transposer(wrapped_transposer);
+        self.saturate_from_wrapped_transposer(wrapped_transposer);
 
-//         Ok(())
-//     }
+        Ok(())
+    }
 
-//     // panics if self is unsaturated.
-//     fn saturate_from_wrapped_transposer(
-//         &mut self,
-//         wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
-//     ) {
-//         replace_mut::replace(
-//             &mut self.inner,
-//             || SubStepInner::Unreachable,
-//             |next| match next {
-//                 SubStepInner::OriginalUnsaturatedInput {
-//                     inputs,
-//                 } => {
-//                     let update = Update::new(
-//                         wrapped_transposer,
-//                         inputs,
-//                         self.time.clone(),
-//                         self.input_state.clone(),
-//                     );
-//                     SubStepInner::OriginalSaturatingInput {
-//                         update,
-//                     }
-//                 },
-//                 SubStepInner::RepeatUnsaturatedInput {
-//                     inputs,
-//                 } => {
-//                     let update = Update::new(
-//                         wrapped_transposer,
-//                         inputs,
-//                         self.time.clone(),
-//                         self.input_state.clone(),
-//                     );
-//                     SubStepInner::RepeatSaturatingInput {
-//                         update,
-//                     }
-//                 },
-//                 SubStepInner::OriginalUnsaturatedScheduled => {
-//                     let update = Update::new(
-//                         wrapped_transposer,
-//                         (),
-//                         self.time.clone(),
-//                         self.input_state.clone(),
-//                     );
-//                     SubStepInner::OriginalSaturatingScheduled {
-//                         update,
-//                     }
-//                 },
-//                 SubStepInner::RepeatUnsaturatedScheduled => {
-//                     let update = Update::new(
-//                         wrapped_transposer,
-//                         (),
-//                         self.time.clone(),
-//                         self.input_state.clone(),
-//                     );
-//                     SubStepInner::RepeatSaturatingScheduled {
-//                         update,
-//                     }
-//                 },
-//                 _ => unreachable!(),
-//             },
-//         );
-//     }
+    // panics if self is unsaturated.
+    fn saturate_from_wrapped_transposer(
+        &mut self,
+        wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
+    ) {
+        replace_mut::replace(
+            &mut self.inner,
+            SubStepInner::recover,
+            |next| match next {
+                SubStepInner::OriginalUnsaturatedInput {
+                    inputs,
+                } => {
+                    let update = Update::new::<SubStepUpdateContextFamily<T, S>>(
+                        wrapped_transposer,
+                        InputArg::new(inputs),
+                        self.time.clone(),
+                        self.input_state.clone(),
+                    );
+                    SubStepInner::OriginalSaturatingInput {
+                        update,
+                    }
+                },
+                SubStepInner::RepeatUnsaturatedInput {
+                    inputs,
+                } => {
+                    let update = Update::new::<SubStepUpdateContextFamily<T, S>>(
+                        wrapped_transposer,
+                        InputArg::new(inputs),
+                        self.time.clone(),
+                        self.input_state.clone(),
+                    );
+                    SubStepInner::RepeatSaturatingInput {
+                        update,
+                    }
+                },
+                SubStepInner::OriginalUnsaturatedScheduled => {
+                    let update = Update::new::<SubStepUpdateContextFamily<T, S>>(
+                        wrapped_transposer,
+                        ScheduledArg::new(),
+                        self.time.clone(),
+                        self.input_state.clone(),
+                    );
+                    SubStepInner::OriginalSaturatingScheduled {
+                        update,
+                    }
+                },
+                SubStepInner::RepeatUnsaturatedScheduled => {
+                    let update = Update::new::<SubStepUpdateContextFamily<T, S>>(
+                        wrapped_transposer,
+                        ScheduledArg::new(),
+                        self.time.clone(),
+                        self.input_state.clone(),
+                    );
+                    SubStepInner::RepeatSaturatingScheduled {
+                        update,
+                    }
+                },
+                _ => unreachable!(),
+            },
+        );
+    }
 
-//     pub fn desaturate(&mut self) -> Result<Option<T>, DesaturateErr> {
-//         replace_mut::replace_and_return(&mut self.inner, SubStepInner::recover, |original| {
-//             match original {
-//                 SubStepInner::OriginalSaturatingInput {
-//                     update,
-//                 } => {
-//                     let inner = SubStepInner::OriginalUnsaturatedInput {
-//                         inputs: update.reclaim_pending(),
-//                     };
-//                     (inner, Ok(None))
-//                 },
-//                 SubStepInner::RepeatSaturatingInput {
-//                     update,
-//                 } => {
-//                     let inner = SubStepInner::RepeatUnsaturatedInput {
-//                         inputs: update.reclaim_pending(),
-//                     };
-//                     (inner, Ok(None))
-//                 },
-//                 SubStepInner::OriginalSaturatingScheduled {
-//                     update: _,
-//                 } => (SubStepInner::OriginalUnsaturatedScheduled, Ok(None)),
-//                 SubStepInner::RepeatSaturatingScheduled {
-//                     update: _,
-//                 } => (SubStepInner::RepeatUnsaturatedScheduled, Ok(None)),
-//                 SubStepInner::SaturatedInit {
-//                     wrapped_transposer,
-//                 } => (
-//                     SubStepInner::UnsaturatedInit,
-//                     Ok(wrapped_transposer.try_take().map(|w_t| w_t.transposer)),
-//                 ),
-//                 SubStepInner::SaturatedInput {
-//                     inputs,
-//                     wrapped_transposer,
-//                 } => (
-//                     SubStepInner::RepeatUnsaturatedInput {
-//                         inputs,
-//                     },
-//                     Ok(wrapped_transposer.try_take().map(|w_t| w_t.transposer)),
-//                 ),
-//                 SubStepInner::SaturatedScheduled {
-//                     wrapped_transposer,
-//                 } => (
-//                     SubStepInner::RepeatUnsaturatedScheduled,
-//                     Ok(wrapped_transposer.try_take().map(|w_t| w_t.transposer)),
-//                 ),
-//                 other => (other, Err(DesaturateErr::AlreadyUnsaturated)),
-//             }
-//         })
-//     }
+    pub fn desaturate(&mut self) -> Result<Option<T>, DesaturateErr> {
+        replace_mut::replace_and_return(&mut self.inner, SubStepInner::recover, |original| {
+            match original {
+                SubStepInner::OriginalSaturatingInput {
+                    update,
+                } => {
+                    let inner = SubStepInner::OriginalUnsaturatedInput {
+                        inputs: update.reclaim_args().into_inputs(),
+                    };
+                    (inner, Ok(None))
+                },
+                SubStepInner::RepeatSaturatingInput {
+                    update,
+                } => {
+                    let inner = SubStepInner::RepeatUnsaturatedInput {
+                        inputs: update.reclaim_args().into_inputs(),
+                    };
+                    (inner, Ok(None))
+                },
+                SubStepInner::OriginalSaturatingScheduled {
+                    update: _,
+                } => (SubStepInner::OriginalUnsaturatedScheduled, Ok(None)),
+                SubStepInner::RepeatSaturatingScheduled {
+                    update: _,
+                } => (SubStepInner::RepeatUnsaturatedScheduled, Ok(None)),
+                SubStepInner::SaturatedInit {
+                    wrapped_transposer,
+                } => (
+                    SubStepInner::UnsaturatedInit,
+                    Ok(wrapped_transposer.try_take().map(|w_t| w_t.transposer)),
+                ),
+                SubStepInner::SaturatedInput {
+                    inputs,
+                    wrapped_transposer,
+                } => (
+                    SubStepInner::RepeatUnsaturatedInput {
+                        inputs,
+                    },
+                    Ok(wrapped_transposer.try_take().map(|w_t| w_t.transposer)),
+                ),
+                SubStepInner::SaturatedScheduled {
+                    wrapped_transposer,
+                } => (
+                    SubStepInner::RepeatUnsaturatedScheduled,
+                    Ok(wrapped_transposer.try_take().map(|w_t| w_t.transposer)),
+                ),
+                other => (other, Err(DesaturateErr::AlreadyUnsaturated)),
+            }
+        })
+    }
 
     pub fn time(&self) -> &SubStepTime<T::Time> {
         &self.time
     }
 
-//     // this has the additional gurantee that the pointer returned lives until this is desaturated or dropped.
-//     // if you move self the returned pointer is still valid.
-//     pub fn finished_wrapped_transposer(&self) -> Option<&S::Transposer<WrappedTransposer<T, S>>> {
-//         match &self.inner {
-//             SubStepInner::SaturatedInit {
-//                 wrapped_transposer,
-//             } => Some(wrapped_transposer),
-//             SubStepInner::SaturatedInput {
-//                 wrapped_transposer,
-//                 ..
-//             } => Some(wrapped_transposer),
-//             SubStepInner::SaturatedScheduled {
-//                 wrapped_transposer,
-//             } => Some(wrapped_transposer),
-//             _ => None,
-//         }
-//     }
+    // this has the additional gurantee that the pointer returned lives until this is desaturated or dropped.
+    // if you move self the returned pointer is still valid.
+    pub fn finished_wrapped_transposer(&self) -> Option<&S::Transposer<WrappedTransposer<T, S>>> {
+        match &self.inner {
+            SubStepInner::SaturatedInit {
+                wrapped_transposer,
+            } => Some(wrapped_transposer),
+            SubStepInner::SaturatedInput {
+                wrapped_transposer,
+                ..
+            } => Some(wrapped_transposer),
+            SubStepInner::SaturatedScheduled {
+                wrapped_transposer,
+            } => Some(wrapped_transposer),
+            _ => None,
+        }
+    }
 
-//     pub fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Result<StepPoll<T>, PollErr> {
-//         replace_mut::replace_and_return(
-//             &mut self.inner,
-//             || SubStepInner::Unreachable,
-//             |inner| match inner {
-//                 SubStepInner::SaturatingInit {
-//                     mut update,
-//                 } => match Pin::new(&mut update).poll(cx) {
-//                     UpdatePoll::Pending => (
-//                         SubStepInner::SaturatingInit {
-//                             update,
-//                         },
-//                         Ok(StepPoll::Pending),
-//                     ),
-//                     UpdatePoll::Event(output) => (
-//                         SubStepInner::SaturatingInit {
-//                             update,
-//                         },
-//                         Ok(StepPoll::Emitted(output)),
-//                     ),
-//                     UpdatePoll::Ready(wrapped_transposer) => (
-//                         SubStepInner::SaturatedInit {
-//                             wrapped_transposer,
-//                         },
-//                         Ok(StepPoll::Ready),
-//                     ),
-//                 },
-//                 SubStepInner::OriginalSaturatingInput {
-//                     mut update,
-//                 } => match Pin::new(&mut update).poll(cx) {
-//                     UpdatePoll::Pending => (
-//                         SubStepInner::OriginalSaturatingInput {
-//                             update,
-//                         },
-//                         Ok(StepPoll::Pending),
-//                     ),
-//                     UpdatePoll::Event(output) => (
-//                         SubStepInner::OriginalSaturatingInput {
-//                             update,
-//                         },
-//                         Ok(StepPoll::Emitted(output)),
-//                     ),
-//                     UpdatePoll::Ready(wrapped_transposer) => {
-//                         let inputs = update.reclaim_pending();
-//                         (
-//                             SubStepInner::SaturatedInput {
-//                                 wrapped_transposer,
-//                                 inputs,
-//                             },
-//                             Ok(StepPoll::Ready),
-//                         )
-//                     },
-//                 },
-//                 SubStepInner::RepeatSaturatingInput {
-//                     mut update,
-//                 } => match Pin::new(&mut update).poll(cx) {
-//                     UpdatePoll::Pending => (
-//                         SubStepInner::RepeatSaturatingInput {
-//                             update,
-//                         },
-//                         Ok(StepPoll::Pending),
-//                     ),
-//                     UpdatePoll::Event(_) => unreachable!(),
-//                     UpdatePoll::Ready(wrapped_transposer) => {
-//                         let inputs = update.reclaim_pending();
-//                         (
-//                             SubStepInner::SaturatedInput {
-//                                 wrapped_transposer,
-//                                 inputs,
-//                             },
-//                             Ok(StepPoll::Ready),
-//                         )
-//                     },
-//                 },
-//                 SubStepInner::OriginalSaturatingScheduled {
-//                     mut update,
-//                 } => match Pin::new(&mut update).poll(cx) {
-//                     UpdatePoll::Pending => (
-//                         SubStepInner::OriginalSaturatingScheduled {
-//                             update,
-//                         },
-//                         Ok(StepPoll::Pending),
-//                     ),
-//                     UpdatePoll::Event(output) => (
-//                         SubStepInner::OriginalSaturatingScheduled {
-//                             update,
-//                         },
-//                         Ok(StepPoll::Emitted(output)),
-//                     ),
-//                     UpdatePoll::Ready(wrapped_transposer) => (
-//                         SubStepInner::SaturatedScheduled {
-//                             wrapped_transposer,
-//                         },
-//                         Ok(StepPoll::Ready),
-//                     ),
-//                 },
-//                 SubStepInner::RepeatSaturatingScheduled {
-//                     mut update,
-//                 } => match Pin::new(&mut update).poll(cx) {
-//                     UpdatePoll::Pending => (
-//                         SubStepInner::RepeatSaturatingScheduled {
-//                             update,
-//                         },
-//                         Ok(StepPoll::Pending),
-//                     ),
-//                     UpdatePoll::Event(_) => unreachable!(),
-//                     UpdatePoll::Ready(wrapped_transposer) => (
-//                         SubStepInner::SaturatedScheduled {
-//                             wrapped_transposer,
-//                         },
-//                         Ok(StepPoll::Ready),
-//                     ),
-//                 },
-//                 SubStepInner::UnsaturatedInit
-//                 | SubStepInner::OriginalUnsaturatedInput {
-//                     ..
-//                 }
-//                 | SubStepInner::OriginalUnsaturatedScheduled
-//                 | SubStepInner::RepeatUnsaturatedInput {
-//                     ..
-//                 }
-//                 | SubStepInner::RepeatUnsaturatedScheduled => (inner, Err(PollErr::Unsaturated)),
-//                 SubStepInner::SaturatedInit {
-//                     ..
-//                 }
-//                 | SubStepInner::SaturatedInput {
-//                     ..
-//                 }
-//                 | SubStepInner::SaturatedScheduled {
-//                     ..
-//                 } => (inner, Err(PollErr::Saturated)),
-//                 SubStepInner::Unreachable => unreachable!(),
-//             },
-//         )
-//     }
+    // pub fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Result<StepPoll<T>, PollErr> {
+    //     replace_mut::replace_and_return(
+    //         &mut self.inner,
+    //         || SubStepInner::Unreachable,
+    //         |inner| match inner {
+    //             SubStepInner::SaturatingInit {
+    //                 mut update,
+    //             } => match Pin::new(&mut update).poll(cx) {
+    //                 UpdatePoll::Pending => (
+    //                     SubStepInner::SaturatingInit {
+    //                         update,
+    //                     },
+    //                     Ok(StepPoll::Pending),
+    //                 ),
+    //                 UpdatePoll::Event(output) => (
+    //                     SubStepInner::SaturatingInit {
+    //                         update,
+    //                     },
+    //                     Ok(StepPoll::Emitted(output)),
+    //                 ),
+    //                 UpdatePoll::Ready(wrapped_transposer) => (
+    //                     SubStepInner::SaturatedInit {
+    //                         wrapped_transposer,
+    //                     },
+    //                     Ok(StepPoll::Ready),
+    //                 ),
+    //             },
+    //             SubStepInner::OriginalSaturatingInput {
+    //                 mut update,
+    //             } => match Pin::new(&mut update).poll(cx) {
+    //                 UpdatePoll::Pending => (
+    //                     SubStepInner::OriginalSaturatingInput {
+    //                         update,
+    //                     },
+    //                     Ok(StepPoll::Pending),
+    //                 ),
+    //                 UpdatePoll::Event(output) => (
+    //                     SubStepInner::OriginalSaturatingInput {
+    //                         update,
+    //                     },
+    //                     Ok(StepPoll::Emitted(output)),
+    //                 ),
+    //                 UpdatePoll::Ready(wrapped_transposer) => {
+    //                     let inputs = update.reclaim_pending();
+    //                     (
+    //                         SubStepInner::SaturatedInput {
+    //                             wrapped_transposer,
+    //                             inputs,
+    //                         },
+    //                         Ok(StepPoll::Ready),
+    //                     )
+    //                 },
+    //             },
+    //             SubStepInner::RepeatSaturatingInput {
+    //                 mut update,
+    //             } => match Pin::new(&mut update).poll(cx) {
+    //                 UpdatePoll::Pending => (
+    //                     SubStepInner::RepeatSaturatingInput {
+    //                         update,
+    //                     },
+    //                     Ok(StepPoll::Pending),
+    //                 ),
+    //                 UpdatePoll::Event(_) => unreachable!(),
+    //                 UpdatePoll::Ready(wrapped_transposer) => {
+    //                     let inputs = update.reclaim_pending();
+    //                     (
+    //                         SubStepInner::SaturatedInput {
+    //                             wrapped_transposer,
+    //                             inputs,
+    //                         },
+    //                         Ok(StepPoll::Ready),
+    //                     )
+    //                 },
+    //             },
+    //             SubStepInner::OriginalSaturatingScheduled {
+    //                 mut update,
+    //             } => match Pin::new(&mut update).poll(cx) {
+    //                 UpdatePoll::Pending => (
+    //                     SubStepInner::OriginalSaturatingScheduled {
+    //                         update,
+    //                     },
+    //                     Ok(StepPoll::Pending),
+    //                 ),
+    //                 UpdatePoll::Event(output) => (
+    //                     SubStepInner::OriginalSaturatingScheduled {
+    //                         update,
+    //                     },
+    //                     Ok(StepPoll::Emitted(output)),
+    //                 ),
+    //                 UpdatePoll::Ready(wrapped_transposer) => (
+    //                     SubStepInner::SaturatedScheduled {
+    //                         wrapped_transposer,
+    //                     },
+    //                     Ok(StepPoll::Ready),
+    //                 ),
+    //             },
+    //             SubStepInner::RepeatSaturatingScheduled {
+    //                 mut update,
+    //             } => match Pin::new(&mut update).poll(cx) {
+    //                 UpdatePoll::Pending => (
+    //                     SubStepInner::RepeatSaturatingScheduled {
+    //                         update,
+    //                     },
+    //                     Ok(StepPoll::Pending),
+    //                 ),
+    //                 UpdatePoll::Event(_) => unreachable!(),
+    //                 UpdatePoll::Ready(wrapped_transposer) => (
+    //                     SubStepInner::SaturatedScheduled {
+    //                         wrapped_transposer,
+    //                     },
+    //                     Ok(StepPoll::Ready),
+    //                 ),
+    //             },
+    //             SubStepInner::UnsaturatedInit
+    //             | SubStepInner::OriginalUnsaturatedInput {
+    //                 ..
+    //             }
+    //             | SubStepInner::OriginalUnsaturatedScheduled
+    //             | SubStepInner::RepeatUnsaturatedInput {
+    //                 ..
+    //             }
+    //             | SubStepInner::RepeatUnsaturatedScheduled => (inner, Err(PollErr::Unsaturated)),
+    //             SubStepInner::SaturatedInit {
+    //                 ..
+    //             }
+    //             | SubStepInner::SaturatedInput {
+    //                 ..
+    //             }
+    //             | SubStepInner::SaturatedScheduled {
+    //                 ..
+    //             } => (inner, Err(PollErr::Saturated)),
+    //             SubStepInner::Unreachable => unreachable!(),
+    //         },
+    //     )
+    // }
 }
 
 // arg types

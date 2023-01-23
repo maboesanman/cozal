@@ -40,6 +40,16 @@ pub struct InputArg<T: Transposer>(
     StepInputs<T>,
 );
 
+impl<T: Transposer> InputArg<T> {
+    pub fn new(inputs: StepInputs<T>) -> Self {
+        Self(inputs)
+    }
+
+    pub fn into_inputs(self) -> StepInputs<T> {
+        self.0
+    }
+}
+
 impl<T: Transposer, S: StorageFamily> Arg<T, S> for InputArg<T> {
     type Passed<'a> = &'a StepInputs<T>
     where T: 'a;
@@ -68,6 +78,12 @@ impl<T: Transposer, S: StorageFamily> Arg<T, S> for InputArg<T> {
 pub struct ScheduledArg<T: Transposer>(
     PhantomData<StepInputs<T>>,
 );
+
+impl<T: Transposer> ScheduledArg<T> {
+    pub fn new() -> Self {
+        Self(PhantomData)
+    }
+}
 
 impl<T: Transposer, S: StorageFamily> Arg<T, S> for ScheduledArg<T> {
     type Passed<'a> = T::Scheduled
