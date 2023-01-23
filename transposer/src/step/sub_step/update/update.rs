@@ -9,40 +9,42 @@ use futures_channel::mpsc::Receiver;
 
 use super::update_context::UpdateContextFamily;
 use super::{Arg, SubStepTime, UpdateContext, WrappedTransposer};
-use crate::schedule_storage::{StorageFamily, RefCounted};
-use crate::Transposer;
+use crate::schedule_storage::{RefCounted, StorageFamily};
 use crate::step::step::InputState;
+use crate::Transposer;
 
 pub struct Update<'almost_static, T: Transposer, S: StorageFamily, A: Arg<T, S>, Is: InputState<T>>
-where (T, A, Is): 'almost_static
+where
+    (T, A, Is): 'almost_static,
 {
-    inner: Option<UpdateInner<'almost_static, T, S>>,
-    future_contents: PhantomData<(
-        S::Transposer<WrappedTransposer<T, S>>,
-        S::LazyState<Is>,
-    )>,
-    arg: Arc<A>,
+    inner:           Option<UpdateInner<'almost_static, T, S>>,
+    future_contents: PhantomData<(S::Transposer<WrappedTransposer<T, S>>, S::LazyState<Is>)>,
+    arg:             Arc<A>,
 }
 
 struct UpdateInner<'almost_static, T: Transposer, S: StorageFamily> {
     // references context, wrapped_transposer.transposer, and args
     future: Pin<Box<dyn 'almost_static + Future<Output = S::Transposer<WrappedTransposer<T, S>>>>>,
 
-    output_receiver: futures_channel::mpsc::Receiver<(
-        T::OutputEvent,
-        futures_channel::oneshot::Sender<()>
-    )>,
+    output_receiver:
+        futures_channel::mpsc::Receiver<(T::OutputEvent, futures_channel::oneshot::Sender<()>)>,
 }
 
-async fn create_fut<T: Transposer, S: StorageFamily, A: Arg<T, S>, Is: InputState<T>, C: UpdateContextFamily<T, S>>(
+async fn create_fut<
+    T: Transposer,
+    S: StorageFamily,
+    A: Arg<T, S>,
+    Is: InputState<T>,
+    C: UpdateContextFamily<T, S>,
+>(
     mut wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     arg: Arc<A>,
     time: SubStepTime<T::Time>,
     input_state: S::LazyState<Is>,
     output_sender: futures_channel::mpsc::Sender<(
         T::OutputEvent,
-        futures_channel::oneshot::Sender<()>
-    )>
+        futures_channel::oneshot::Sender<()>,
+    )>,
 ) -> S::Transposer<WrappedTransposer<T, S>> {
     // update 'current time'
     let raw_time = time.raw_time();
@@ -62,20 +64,27 @@ async fn create_fut<T: Transposer, S: StorageFamily, A: Arg<T, S>, Is: InputStat
     wrapped_transposer
 }
 
-impl<'almost_static, T: Transposer, S: StorageFamily, A: Arg<T, S>, Is: InputState<T>> Update<'almost_static, T, S, A, Is> {
+impl<'almost_static, T: Transposer, S: StorageFamily, A: Arg<T, S>, Is: InputState<T>>
+    Update<'almost_static, T, S, A, Is>
+{
     pub fn new<C: UpdateContextFamily<T, S> + 'almost_static>(
         wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
         arg: A,
         time: SubStepTime<T::Time>,
         input_state: S::LazyState<Is>,
     ) -> Self {
-
         let (output_sender, output_receiver) = futures_channel::mpsc::channel(1);
         let arg = Arc::new(arg);
         let moved_arg = Arc::clone(&arg);
 
         // get future, filling box if we can.
-        let future = Box::pin(create_fut::<_, _, _, _, C>(wrapped_transposer, moved_arg, time, input_state, output_sender));
+        let future = Box::pin(create_fut::<_, _, _, _, C>(
+            wrapped_transposer,
+            moved_arg,
+            time,
+            input_state,
+            output_sender,
+        ));
 
         Self {
             inner: Some(UpdateInner {
@@ -115,9 +124,7 @@ impl<'almost_static, T: Transposer, S: StorageFamily, A: Arg<T, S>, Is: InputSta
                 },
                 _ => UpdatePoll::Pending,
             },
-            Poll::Ready(wrapped_transposer) => {
-                UpdatePoll::Ready(wrapped_transposer)
-            },
+            Poll::Ready(wrapped_transposer) => UpdatePoll::Ready(wrapped_transposer),
         }
     }
 }

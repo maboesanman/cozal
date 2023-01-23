@@ -2,9 +2,9 @@
 // mod interpolation;
 // mod lazy_state;
 mod step;
+mod step_inputs;
 mod step_metadata;
 mod sub_step;
-mod step_inputs;
 
 // #[cfg(test)]
 // mod test;

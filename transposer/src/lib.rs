@@ -3,7 +3,13 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![allow(clippy::module_inception)]
 
-use context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext, InputStateContext};
+use context::{
+    HandleInputContext,
+    HandleScheduleContext,
+    InitContext,
+    InputStateContext,
+    InterpolateContext,
+};
 
 pub mod context;
 // pub mod evaluate_to;
@@ -125,14 +131,18 @@ pub trait TransposerInputEventHandler<I: TransposerInput<Base = Self>>: Transpos
     fn can_handle(_time: Self::Time, _event: &I::InputEvent) -> bool {
         true
     }
-    
+
     /// Sort the inputs so their order can be deterministic.
     /// this is only used if they are both the same time.
-    fn sort_input_events(_time: Self::Time, _this: &I::InputEvent, _other: &I::InputEvent) -> std::cmp::Ordering {
+    fn sort_input_events(
+        _time: Self::Time,
+        _this: &I::InputEvent,
+        _other: &I::InputEvent,
+    ) -> std::cmp::Ordering {
         std::cmp::Ordering::Equal
     }
 }
 
-pub trait StateRetriever<T: Transposer, I: TransposerInput<Base=T>> {
+pub trait StateRetriever<T: Transposer, I: TransposerInput<Base = T>> {
     fn get_input_state(&self) -> futures_channel::oneshot::Receiver<&'_ I::InputState>;
 }

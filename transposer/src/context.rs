@@ -5,7 +5,7 @@ use rand::RngCore;
 
 use super::expire_handle::ExpireHandle;
 use super::Transposer;
-use crate::{TransposerInput, StateRetriever};
+use crate::{StateRetriever, TransposerInput};
 
 pub trait InitContext<'a, T: Transposer>:
     InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
@@ -38,15 +38,20 @@ pub trait InputStateContext<'a, T: Transposer> {
 }
 
 pub trait InputStateContextExt<'a, T: Transposer>: InputStateContext<'a, T> {
-    async fn get_input_state<I: TransposerInput<Base=T>>(&mut self) -> &'a I::InputState
-    where T::InputStateManager: 'a + StateRetriever<T, I>;
+    async fn get_input_state<I: TransposerInput<Base = T>>(&mut self) -> &'a I::InputState
+    where
+        T::InputStateManager: 'a + StateRetriever<T, I>;
 }
 
 impl<'a, T: Transposer, C: InputStateContext<'a, T> + ?Sized> InputStateContextExt<'a, T> for C {
-    async fn get_input_state<I: TransposerInput<Base=T>>(&mut self) -> &'a I::InputState
-    where T::InputStateManager: 'a + StateRetriever<T, I>
+    async fn get_input_state<I: TransposerInput<Base = T>>(&mut self) -> &'a I::InputState
+    where
+        T::InputStateManager: 'a + StateRetriever<T, I>,
     {
-        self.get_input_state_manager().get_input_state().await.unwrap()
+        self.get_input_state_manager()
+            .get_input_state()
+            .await
+            .unwrap()
     }
 }
 
@@ -91,8 +96,8 @@ pub trait RngContext {
     fn get_rng(&mut self) -> &mut dyn RngCore;
 }
 
-trait TransposerInputStateProvider<I: TransposerInput + ?Sized>
-{
+trait TransposerInputStateProvider<I: TransposerInput + ?Sized> {
     async fn get_input_state<'a>(&'a self) -> &'a I::InputState
-    where I::InputState: 'a;
+    where
+        I::InputState: 'a;
 }

@@ -3,10 +3,10 @@ use crate::context::*;
 use crate::schedule_storage::StorageFamily;
 use crate::Transposer;
 
-pub trait UpdateContextFamily<T: Transposer, S: StorageFamily>
-{
+pub trait UpdateContextFamily<T: Transposer, S: StorageFamily> {
     type UpdateContext<'update>: UpdateContext<'update, T, S> + 'update
-    where (T, S): 'update;
+    where
+        (T, S): 'update;
 }
 
 pub trait UpdateContext<'update, T: Transposer, S: StorageFamily>:
@@ -19,7 +19,7 @@ pub trait UpdateContext<'update, T: Transposer, S: StorageFamily>:
         input_state: &'update T::InputStateManager,
         output_sender: futures_channel::mpsc::Sender<(
             T::OutputEvent,
-            futures_channel::oneshot::Sender<()>
-        )>
+            futures_channel::oneshot::Sender<()>,
+        )>,
     ) -> Self;
 }

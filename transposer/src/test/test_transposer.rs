@@ -1,8 +1,13 @@
-
 use rand::Rng;
 
-use crate::context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext, InputStateContextExt};
-use crate::{Transposer, TransposerInput, StateRetriever, TransposerInputEventHandler};
+use crate::context::{
+    HandleInputContext,
+    HandleScheduleContext,
+    InitContext,
+    InputStateContextExt,
+    InterpolateContext,
+};
+use crate::{StateRetriever, Transposer, TransposerInput, TransposerInputEventHandler};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum HandleRecord {
@@ -55,20 +60,24 @@ impl TransposerInput for TestTransposerInput2 {
 
 // set up with macro
 pub(crate) trait TestTransposerStateRetriever:
-    StateRetriever<TestTransposer, TestTransposerInput1> +
-    StateRetriever<TestTransposer, TestTransposerInput2>
-{}
+    StateRetriever<TestTransposer, TestTransposerInput1>
+    + StateRetriever<TestTransposer, TestTransposerInput2>
+{
+}
 
 // set up with macro
-impl<T> TestTransposerStateRetriever for T
-where T:
-    StateRetriever<TestTransposer, TestTransposerInput1> +
-    StateRetriever<TestTransposer, TestTransposerInput2>
-{}
+impl<T> TestTransposerStateRetriever for T where
+    T: StateRetriever<TestTransposer, TestTransposerInput1>
+        + StateRetriever<TestTransposer, TestTransposerInput2>
+{
+}
 
 // the default handler impl for inputs
 impl TransposerInputEventHandler<TestTransposerInput1> for TestTransposer {
-    fn can_handle(_time: Self::Time, _event: &<TestTransposerInput1 as TransposerInput>::InputEvent) -> bool {
+    fn can_handle(
+        _time: Self::Time,
+        _event: &<TestTransposerInput1 as TransposerInput>::InputEvent,
+    ) -> bool {
         false
     }
 }
@@ -129,4 +138,3 @@ impl TransposerInputEventHandler<TestTransposerInput2> for TestTransposer {
         cx.emit_event(*state);
     }
 }
-

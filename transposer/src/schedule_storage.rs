@@ -65,10 +65,12 @@ pub trait RefCounted<T: ?Sized>: Deref<Target = T> + Unpin {
 
     fn borrow(&self) -> Self::Borrowed;
     fn mutate(&mut self) -> &mut T
-    where T: Clone;
+    where
+        T: Clone;
 
     fn try_take(self) -> Option<T>
-    where T: Sized;
+    where
+        T: Sized;
 }
 
 impl<K: Ord + Eq + Clone, V: Clone> OrdMapStorage<K, V> for im::OrdMap<K, V> {
@@ -269,13 +271,15 @@ impl<T: ?Sized> RefCounted<T> for Arc<T> {
     }
 
     fn mutate(&mut self) -> &mut T
-    where T: Clone
+    where
+        T: Clone,
     {
         Arc::make_mut(self)
     }
 
     fn try_take(self) -> Option<T>
-    where T: Sized
+    where
+        T: Sized,
     {
         Arc::try_unwrap(self).ok()
     }
@@ -293,13 +297,15 @@ impl<T: ?Sized> RefCounted<T> for Rc<T> {
     }
 
     fn mutate(&mut self) -> &mut T
-    where T: Clone
+    where
+        T: Clone,
     {
         Rc::make_mut(self)
     }
 
-    fn try_take(self) -> Option<T> 
-    where T: Sized
+    fn try_take(self) -> Option<T>
+    where
+        T: Sized,
     {
         Rc::try_unwrap(self).ok()
     }

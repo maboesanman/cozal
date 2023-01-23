@@ -1,6 +1,6 @@
 use core::pin::Pin;
 use core::task::{Context, Waker};
-use std::collections::{BTreeSet, BTreeMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -8,7 +8,7 @@ use futures_core::Future;
 use util::replace_mut;
 
 use super::step_inputs::StepInputs;
-use super::sub_step::{WrappedTransposer};
+use super::sub_step::{SubStep, WrappedTransposer};
 use crate::context::HandleInputContext;
 // use super::interpolation::Interpolation;
 // use super::lazy_state::LazyState;
@@ -18,9 +18,11 @@ use crate::schedule_storage::{DefaultStorage, StorageFamily};
 // use crate::step::sub_step::SaturateErr;
 use crate::{Transposer, TransposerInput, TransposerInputEventHandler};
 
-pub struct Step<T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStorage>
+pub struct Step<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStorage>
+where
+    (T, Is): 'almost_static,
 {
-    // inner: StepInner<T, S>,
+    inner:   StepInner<'almost_static, T, Is, S>,
     phantom: PhantomData<WrappedTransposer<T, S>>,
 
     input_state: S::LazyState<Is>,
@@ -34,13 +36,13 @@ pub struct Step<T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStor
 
 /// this type holds the lazy state values for all inputs.
 /// all the lazy population logic is left to the instantiator of step.
-pub trait InputState<T: Transposer>
-{
+pub trait InputState<T: Transposer> {
     fn new() -> Self;
     fn get_provider(&self) -> &T::InputStateManager;
 }
 
-impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S>
+impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
+    Step<'almost_static, T, Is, S>
 {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         // let mut steps = Vec::with_capacity(1);
@@ -109,26 +111,25 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S>
     }
 }
 
-// enum StepInner<T: Transposer, S: StorageFamily> {
-//     OriginalUnsaturated {
-//         steps:    Vec<SubStep<T, S>>,
-//     },
-//     OriginalSaturating {
-//         current_saturating_index: usize,
-//         steps:                    Vec<SubStep<T, S>>,
-//     },
-//     RepeatUnsaturated {
-//         steps:    Box<[SubStep<T, S>]>,
-//     },
-//     RepeatSaturating {
-//         current_saturating_index: usize,
-//         steps:                    Box<[SubStep<T, S>]>,
-//     },
-//     Saturated {
-//         steps:    Box<[SubStep<T, S>]>,
-//     },
-//     Unreachable,
-// }
+enum StepInner<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily> {
+    OriginalUnsaturated {
+        steps: Vec<SubStep<'almost_static, T, Is, S>>,
+    },
+    OriginalSaturating {
+        current_saturating_index: usize,
+        steps:                    Vec<SubStep<'almost_static, T, Is, S>>,
+    },
+    RepeatUnsaturated {
+        steps: Box<[SubStep<'almost_static, T, Is, S>]>,
+    },
+    RepeatSaturating {
+        current_saturating_index: usize,
+        steps:                    Box<[SubStep<'almost_static, T, Is, S>]>,
+    },
+    Saturated {
+        steps: Box<[SubStep<'almost_static, T, Is, S>]>,
+    },
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum StepPoll<T: Transposer> {

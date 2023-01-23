@@ -79,17 +79,17 @@ pub struct SubStepUpdateContext<'update, T: Transposer, S: StorageFamily> {
     current_emission_index: usize,
 
     // values to output
-    output_sender: futures_channel::mpsc::Sender<(
-            T::OutputEvent,
-            futures_channel::oneshot::Sender<()>
-        )>,
+    output_sender:
+        futures_channel::mpsc::Sender<(T::OutputEvent, futures_channel::oneshot::Sender<()>)>,
 
     input_state: &'update T::InputStateManager,
 }
 
 pub struct SubStepUpdateContextFamily<T: Transposer, S: StorageFamily>(PhantomData<(T, S)>);
 
-impl<T: Transposer, S: StorageFamily> UpdateContextFamily<T, S> for SubStepUpdateContextFamily<T, S> {
+impl<T: Transposer, S: StorageFamily> UpdateContextFamily<T, S>
+    for SubStepUpdateContextFamily<T, S>
+{
     type UpdateContext<'update> = SubStepUpdateContext<'update, T, S>
     where (T, S): 'update;
 }
@@ -116,7 +116,7 @@ impl<'update, T: Transposer, S: StorageFamily> UpdateContext<'update, T, S>
         input_state: &'update T::InputStateManager,
         output_sender: futures_channel::mpsc::Sender<(
             T::OutputEvent,
-            futures_channel::oneshot::Sender<()>
+            futures_channel::oneshot::Sender<()>,
         )>,
     ) -> Self {
         Self {
@@ -189,7 +189,10 @@ impl<'update, T: Transposer, S: StorageFamily> ExpireEventContext<T>
 impl<'update, T: Transposer, S: StorageFamily> EmitEventContext<T>
     for SubStepUpdateContext<'update, T, S>
 {
-    fn emit_event(&mut self, payload: <T as Transposer>::OutputEvent) -> Pin<Box<dyn '_ + Future<Output = ()>>> {
+    fn emit_event(
+        &mut self,
+        payload: <T as Transposer>::OutputEvent,
+    ) -> Pin<Box<dyn '_ + Future<Output = ()>>> {
         let (send, recv) = futures_channel::oneshot::channel();
         self.output_sender.try_send((payload, send)).unwrap();
 
@@ -199,9 +202,7 @@ impl<'update, T: Transposer, S: StorageFamily> EmitEventContext<T>
     }
 }
 
-impl<'update, T: Transposer, S: StorageFamily> RngContext
-    for SubStepUpdateContext<'update, T, S>
-{
+impl<'update, T: Transposer, S: StorageFamily> RngContext for SubStepUpdateContext<'update, T, S> {
     fn get_rng(&mut self) -> &mut dyn rand::RngCore {
         &mut self.metadata.rng
     }
