@@ -1,6 +1,5 @@
 {
     "coverage-gutters.lcovname": "target/debug/coverage/coverage.lcov",
-    "editor.defaultFormatter": "matklad.rust-analyzer",
     "editor.formatOnPaste": true,
     "editor.formatOnSave": true,
     "rust-analyzer.cargo.unsetTest": [],
