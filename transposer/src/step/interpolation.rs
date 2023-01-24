@@ -2,59 +2,73 @@ use core::future::Future;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::task::{Context, Poll};
+use std::marker::PhantomData;
 
 use super::interpolate_context::StepInterpolateContext;
 use super::sub_step::WrappedTransposer;
-use crate::schedule_storage::{StorageFamily, RefCounted};
+use super::InputState;
+use crate::context::InterpolateContext;
+use crate::schedule_storage::{RefCounted, StorageFamily};
 use crate::Transposer;
 
-pub struct Interpolation<T: Transposer, S: StorageFamily> {
-    future:  Pin<Box<dyn Future<Output = T::OutputState>>>,
-    context: Box<StepInterpolateContext<T>>,
-
-    // this is referenced by future and context. it's not technically used,
-    // except to keep alive the references until dropped.
-    #[allow(unused)]
-    wrapped_transposer: <S::Transposer<WrappedTransposer<T, S>> as RefCounted<
-        WrappedTransposer<T, S>,
-    >>::Borrowed,
+pub struct Interpolation<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
+where
+    (T, Is): 'almost_static,
+{
+    future:      Pin<Box<dyn 'almost_static + Future<Output = T::OutputState>>>,
+    input_state: S::LazyState<Is>,
 }
 
-impl<T: Transposer, S: StorageFamily> Interpolation<T, S> {
-    pub fn new(time: T::Time, wrapped_transposer: &S::Transposer<WrappedTransposer<T, S>>) -> Self {
-        let borrowed = wrapped_transposer.borrow();
-        let mut context = Box::new(StepInterpolateContext::new());
-        let mut context_ptr: NonNull<_> = context.as_mut().into();
+async fn create_fut<T: Transposer, S: StorageFamily, Is: InputState<T>>(
+    wrapped_transposer: &S::Transposer<WrappedTransposer<T, S>>,
+    base_time: T::Time,
+    interpolated_time: T::Time,
+    input_state: S::LazyState<Is>,
+) -> T::OutputState {
+    let borrowed = wrapped_transposer.borrow();
+    let transposer = &borrowed.transposer;
+    let metadata = &borrowed.metadata;
 
-        // SAFETY: this is owned by future, so it will not dangle as future is dropped before context.
-        let context_ref = unsafe { context_ptr.as_mut() };
+    let input_state_manager = input_state.get_provider();
 
-        let base_time = borrowed.metadata.last_updated;
-        let transposer = &borrowed.transposer;
-        let future = T::interpolate(transposer, base_time, time, context_ref);
+    let mut context = StepInterpolateContext::new(metadata, input_state_manager);
 
-        // SAFETY: forcing the lifetime. This is dropped before the borrowed content (context) so its fine.
-        let future: Pin<Box<dyn Future<Output = T::OutputState>>> = future;
-        let future: Pin<Box<dyn Future<Output = T::OutputState>>> =
-            unsafe { core::mem::transmute(future) };
+    transposer
+        .interpolate(base_time, interpolated_time, &mut context)
+        .await
+}
+
+impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
+    Interpolation<'almost_static, T, Is, S>
+{
+    pub fn new(
+        base_time: T::Time,
+        interpolated_time: T::Time,
+        wrapped_transposer: &'almost_static S::Transposer<WrappedTransposer<T, S>>,
+    ) -> Self {
+        let input_state = S::LazyState::new(Box::new(Is::new()));
+
+        let future = Box::pin(create_fut::<T, S, Is>(
+            wrapped_transposer,
+            base_time,
+            interpolated_time,
+            input_state.clone(),
+        ));
 
         Self {
             future,
-            context,
-            wrapped_transposer: borrowed,
+            input_state,
         }
     }
 
-    pub fn needs_state(&self) -> bool {
-        self.context.state.requested()
+    pub fn get_input_state(&self) -> &Is {
+        &self.input_state
     }
-
-    // pub fn set_state(&mut self, state: T::InputState) -> Result<(), Arc<T::InputState>> {
-    //     self.context.state.set(state)
-    // }
 }
 
-impl<T: Transposer, S: StorageFamily> Future for Interpolation<T, S> {
+impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily> Future
+    for Interpolation<'almost_static, T, Is, S>
+{
     type Output = T::OutputState;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

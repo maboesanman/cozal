@@ -66,7 +66,6 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
 
     pub fn next_unsaturated<I: TransposerInput<Base = T>>(
         &self,
-        time: T::Time,
         next_inputs: &mut Option<StepInputs<T>>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         if let StepInner::Saturated {
@@ -402,7 +401,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
     // }
 
     pub fn get_input_state(&self) -> &Is {
-        todo!()
+        &self.input_state
     }
 }
 

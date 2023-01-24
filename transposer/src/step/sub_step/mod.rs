@@ -9,4 +9,4 @@ mod update;
 
 pub use sub_step::*;
 pub use time::{ScheduledTime, SubStepTime};
-pub use update::WrappedTransposer;
+pub use update::*;

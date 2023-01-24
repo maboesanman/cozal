@@ -18,7 +18,7 @@ where
     (T, A, Is): 'almost_static,
 {
     inner:           Option<UpdateInner<'almost_static, T, S>>,
-    future_contents: PhantomData<(S::Transposer<WrappedTransposer<T, S>>, S::LazyState<Is>)>,
+    future_contents: PhantomData<S::LazyState<Is>>,
     arg:             Arc<A>,
 }
 

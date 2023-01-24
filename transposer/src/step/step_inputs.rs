@@ -1,3 +1,4 @@
+use std::any::TypeId;
 use std::collections::BTreeMap;
 use std::pin::Pin;
 
@@ -16,7 +17,8 @@ pub struct StepInputs<T: Transposer> {
 
 struct StepInputsEntry<T: Transposer> {
     // keep this sorted
-    values:  TypeErasedVec,
+    values:        TypeErasedVec,
+    input_type_id: TypeId,
     handler: for<'a> fn(
         time: T::Time,
         &'a mut T,
@@ -26,13 +28,14 @@ struct StepInputsEntry<T: Transposer> {
 }
 
 impl<T: Transposer> StepInputsEntry<T> {
-    fn new<I: TransposerInput<Base = T>>(time: T::Time) -> Self
+    fn new<I: TransposerInput<Base = T>>() -> Self
     where
         T: TransposerInputEventHandler<I>,
     {
         Self {
-            values:  TypeErasedVec::new::<I::InputEvent>(),
-            handler: |time, t, cx, set| {
+            values:        TypeErasedVec::new::<I::InputEvent>(),
+            input_type_id: TypeId::of::<I>(),
+            handler:       |time, t, cx, set| {
                 let set = unsafe { set.get::<I::InputEvent>() };
                 Box::pin(async move {
                     for i in set.iter() {
@@ -47,6 +50,10 @@ impl<T: Transposer> StepInputsEntry<T> {
     where
         T: TransposerInputEventHandler<I>,
     {
+        if TypeId::of::<I>() != self.input_type_id {
+            panic!()
+        }
+
         let mut set = unsafe { self.values.get_mut() };
 
         let i =
@@ -68,9 +75,7 @@ impl<T: Transposer> StepInputs<T> {
         T: TransposerInputEventHandler<I>,
     {
         let step_inputs_entry = match self.inputs.entry(I::SORT) {
-            std::collections::btree_map::Entry::Vacant(v) => {
-                v.insert(StepInputsEntry::new(self.time))
-            },
+            std::collections::btree_map::Entry::Vacant(v) => v.insert(StepInputsEntry::new()),
             std::collections::btree_map::Entry::Occupied(o) => o.into_mut(),
         };
 

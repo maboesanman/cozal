@@ -1,14 +1,11 @@
-// mod interpolate_context;
-// mod interpolation;
-// mod lazy_state;
+mod interpolate_context;
+mod interpolation;
 mod step;
 mod step_inputs;
-mod step_metadata;
 mod sub_step;
 
 // #[cfg(test)]
 // mod test;
 
 // pub use interpolation::Interpolation;
-// pub use step::*;
-// pub use step_metadata::StepMetadata;
+pub use step::*;

@@ -2,30 +2,40 @@ use core::future::Future;
 use core::pin::Pin;
 use core::ptr::NonNull;
 
+use super::sub_step::{TransposerMetaData, WrappedTransposer};
+use super::InputState;
 // use super::lazy_state::LazyState;
 use crate::context::{InputStateContext, InterpolateContext};
+use crate::schedule_storage::StorageFamily;
 use crate::Transposer;
 
-pub struct StepInterpolateContext<T: Transposer> {
-    pub state: LazyState<T::InputState>,
+pub struct StepInterpolateContext<'update, T: Transposer, S: StorageFamily> {
+    // eventually may want this for accessing stuff like what the event schedule looks like
+    metadata:    &'update TransposerMetaData<T, S>,
+    input_state: &'update T::InputStateManager,
 }
 
-impl<T: Transposer> StepInterpolateContext<T> {
-    pub fn new() -> Self {
+impl<'update, T: Transposer, S: StorageFamily> StepInterpolateContext<'update, T, S> {
+    pub fn new(
+        metadata: &'update TransposerMetaData<T, S>,
+        input_state: &'update T::InputStateManager,
+    ) -> Self {
         Self {
-            state: LazyState::new(),
+            metadata,
+            input_state,
         }
     }
 }
 
-impl<'a, T: Transposer> InterpolateContext<'a, T> for StepInterpolateContext<T> {}
+impl<'update, T: Transposer, S: StorageFamily> InterpolateContext<'update, T>
+    for StepInterpolateContext<'update, T, S>
+{
+}
 
-impl<'a, T: Transposer> InputStateContext<'a, T> for StepInterpolateContext<T> {
-    // fn get_input_state(&mut self) -> Pin<Box<dyn 'a + Future<Output = &'a T::InputState>>> {
-    //     let mut state_ptr = NonNull::from(&mut self.state);
-
-    //     // SAFETY: 'a is scoped to the transposer's handler future, which must outlive this scope
-    //     // because that's where this function gets called from.
-    //     Box::pin(unsafe { state_ptr.as_mut() })
-    // }
+impl<'update, T: Transposer, S: StorageFamily> InputStateContext<'update, T>
+    for StepInterpolateContext<'update, T, S>
+{
+    fn get_input_state_manager(&mut self) -> &'update T::InputStateManager {
+        self.input_state
+    }
 }
