@@ -1,7 +1,5 @@
-use transposer::Transposer;
-
 use super::Source;
-use crate::adapters::{MutexSource, Transpose};
+use crate::adapters::MutexSource;
 
 impl<S> SourceExt for S where S: Source {}
 
@@ -28,14 +26,14 @@ pub trait SourceExt: Source + Sized {
     // }
 
     /// Adapter for converting a source into another via a transposer.
-    fn transpose<T>(self, initial: T, rng_seed: [u8; 32]) -> Transpose<Self, T>
-    where
-        T::Time: Copy + Ord + Default + Unpin, // TODO remove once https://github.com/rust-lang/rust/issues/91985 is resolved.
-        T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State>,
-        T: Clone,
-    {
-        Transpose::new(self, initial, rng_seed)
-    }
+    // fn transpose<T>(self, initial: T, rng_seed: [u8; 32]) -> Transpose<Self, T>
+    // where
+    //     T::Time: Copy + Ord + Default + Unpin, // TODO remove once https://github.com/rust-lang/rust/issues/91985 is resolved.
+    //     T: Transposer<Time = Self::Time, Input = Self::Event, InputState = Self::State>,
+    //     T: Clone,
+    // {
+    //     Transpose::new(self, initial, rng_seed)
+    // }
 
     /// Adapter for offloading work to a future
     // fn offload(self) -> (OffloadSource<Self>, OffloadFuture<Self>) {
