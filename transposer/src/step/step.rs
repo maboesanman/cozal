@@ -1,22 +1,12 @@
 use core::pin::Pin;
 use core::task::{Context, Waker};
-use std::collections::{BTreeMap, BTreeSet};
-use std::marker::PhantomData;
-use std::sync::Arc;
 
 use futures_core::Future;
 use util::replace_mut;
 
 use super::interpolation::Interpolation;
 use super::step_inputs::StepInputs;
-use super::sub_step::{
-    PollErr as StepPollErr,
-    SubStep,
-    SubStepPoll,
-    SubStepTime,
-    WrappedTransposer,
-};
-use crate::context::{HandleInputContext, InputStateContext};
+use super::sub_step::{PollErr as StepPollErr, SubStep, SubStepPoll, WrappedTransposer};
 // use super::interpolation::Interpolation;
 // use super::lazy_state::LazyState;
 // use super::step_metadata::{EmptyStepMetadata, StepMetadata};
@@ -24,7 +14,7 @@ use crate::context::{HandleInputContext, InputStateContext};
 use crate::schedule_storage::{DefaultStorage, RefCounted, StorageFamily};
 use crate::step::sub_step::SaturateErr;
 // use crate::step::sub_step::SaturateErr;
-use crate::{StateRetriever, Transposer, TransposerInput, TransposerInputEventHandler};
+use crate::{Transposer, TransposerInput};
 
 pub struct Step<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStorage>
 where
@@ -499,19 +489,19 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
         match &self.inner {
             StepInner::OriginalUnsaturated {
                 steps, ..
-            } => &steps,
+            } => steps,
             StepInner::OriginalSaturating {
                 steps, ..
-            } => &steps,
+            } => steps,
             StepInner::RepeatUnsaturated {
                 steps, ..
-            } => &steps,
+            } => steps,
             StepInner::RepeatSaturating {
                 steps, ..
-            } => &steps,
+            } => steps,
             StepInner::Saturated {
                 steps, ..
-            } => &steps,
+            } => steps,
         }
     }
 }

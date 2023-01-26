@@ -40,7 +40,7 @@ where
     pub(crate) fn supress_state(self) -> SourcePoll<T, E, ()> {
         match self {
             Self::Ready {
-                state,
+                state: _,
                 next_event_at,
             } => SourcePoll::Ready {
                 state: (),

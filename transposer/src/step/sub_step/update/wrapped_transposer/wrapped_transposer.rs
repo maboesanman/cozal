@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use super::transposer_metadata::TransposerMetaData;
 use super::ScheduledTime;
 use crate::schedule_storage::StorageFamily;

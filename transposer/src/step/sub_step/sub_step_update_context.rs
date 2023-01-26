@@ -1,7 +1,5 @@
 use core::future::Future;
-use core::ops::Deref;
 use core::pin::Pin;
-use core::ptr::NonNull;
 use std::marker::PhantomData;
 
 use super::time::SubStepTime;

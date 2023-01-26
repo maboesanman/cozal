@@ -1,6 +1,5 @@
 use super::{UpdateContext, WrappedTransposer};
 use crate::schedule_storage::StorageFamily;
-use crate::step::step_inputs::StepInputs;
 use crate::Transposer;
 
 pub trait Arg<T: Transposer, S: StorageFamily>: Unpin {

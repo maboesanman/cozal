@@ -264,7 +264,7 @@ fn metadata_expire_illegal() {
     let time = metadata.expire_handles_forward.get(&handle).unwrap();
 
     // breaks invariants. very illegal
-    metadata.schedule.remove(&time);
+    metadata.schedule.remove(time);
 
     let _ = metadata.expire_event(handle);
 }

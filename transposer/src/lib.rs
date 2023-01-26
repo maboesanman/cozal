@@ -3,13 +3,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![allow(clippy::module_inception)]
 
-use context::{
-    HandleInputContext,
-    HandleScheduleContext,
-    InitContext,
-    InputStateContext,
-    InterpolateContext,
-};
+use context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext};
 
 pub mod context;
 // pub mod evaluate_to;

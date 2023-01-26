@@ -1,11 +1,8 @@
 use core::future::Future;
 use core::pin::Pin;
-use core::ptr::NonNull;
 use core::task::{Context, Poll};
 use std::marker::PhantomData;
 use std::sync::Arc;
-
-use futures_channel::mpsc::Receiver;
 
 use super::update_context::UpdateContextFamily;
 use super::{Arg, SubStepTime, UpdateContext, WrappedTransposer};

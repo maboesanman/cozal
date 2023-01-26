@@ -1,12 +1,11 @@
 use core::pin::Pin;
 
-use async_trait::async_trait;
 use matches::assert_matches;
 use rand::Rng;
 use util::dummy_waker::DummyWaker;
 
 use super::{NoInput, NoInputManager, StepPoll};
-use crate::context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext};
+use crate::context::{HandleScheduleContext, InitContext, InterpolateContext};
 use crate::step::Step;
 use crate::Transposer;
 

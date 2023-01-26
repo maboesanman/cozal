@@ -1,9 +1,4 @@
-use core::future::Future;
-use core::pin::Pin;
-use core::ptr::NonNull;
-
-use super::sub_step::{TransposerMetaData, WrappedTransposer};
-use super::InputState;
+use super::sub_step::TransposerMetaData;
 // use super::lazy_state::LazyState;
 use crate::context::{InputStateContext, InterpolateContext};
 use crate::schedule_storage::StorageFamily;
@@ -11,7 +6,7 @@ use crate::Transposer;
 
 pub struct StepInterpolateContext<'update, T: Transposer, S: StorageFamily> {
     // eventually may want this for accessing stuff like what the event schedule looks like
-    metadata:    &'update TransposerMetaData<T, S>,
+    _metadata:   &'update TransposerMetaData<T, S>,
     input_state: &'update T::InputStateManager,
 }
 
@@ -21,7 +16,7 @@ impl<'update, T: Transposer, S: StorageFamily> StepInterpolateContext<'update, T
         input_state: &'update T::InputStateManager,
     ) -> Self {
         Self {
-            metadata,
+            _metadata: metadata,
             input_state,
         }
     }

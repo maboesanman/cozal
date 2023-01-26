@@ -5,9 +5,9 @@ use core::task::Context;
 use util::replace_mut;
 
 use super::args::{InitArg, InputArg, ScheduledArg};
-use super::sub_step_update_context::{SubStepUpdateContext, SubStepUpdateContextFamily};
+use super::sub_step_update_context::SubStepUpdateContextFamily;
 use super::time::SubStepTime;
-use super::update::{Arg, Update, UpdateContext, UpdatePoll};
+use super::update::{Update, UpdateContext, UpdatePoll};
 use super::WrappedTransposer;
 use crate::schedule_storage::{RefCounted, StorageFamily};
 use crate::step::step::InputState;
@@ -73,7 +73,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
             update,
         };
 
-        let sub_step = SubStep {
+        SubStep {
             time,
             inner,
 
@@ -81,9 +81,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
             uuid_self: uuid::Uuid::new_v4(),
             #[cfg(debug_assertions)]
             uuid_prev: None,
-        };
-
-        sub_step
+        }
     }
 
     pub fn next_unsaturated(
@@ -126,28 +124,28 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
             (None, Some(next_scheduled_time)) => (
                 SubStepTime::new_scheduled(next_time_index, next_scheduled_time.clone()),
                 SubStepInner::OriginalUnsaturatedScheduled {
-                    input_state: input_state.clone(),
+                    input_state,
                 },
             ),
             (Some(t_i), None) => (
                 SubStepTime::new_input(next_time_index, t_i),
                 SubStepInner::OriginalUnsaturatedInput {
-                    inputs:      core::mem::take(next_inputs).unwrap(),
-                    input_state: input_state.clone(),
+                    inputs: core::mem::take(next_inputs).unwrap(),
+                    input_state,
                 },
             ),
             (Some(t_i), Some(t_s)) => match t_i.cmp(&t_s.time) {
                 Ordering::Greater => (
                     SubStepTime::new_scheduled(next_time_index, t_s.clone()),
                     SubStepInner::OriginalUnsaturatedScheduled {
-                        input_state: input_state.clone(),
+                        input_state,
                     },
                 ),
                 _ => (
                     SubStepTime::new_input(next_time_index, t_i),
                     SubStepInner::OriginalUnsaturatedInput {
-                        inputs:      core::mem::take(next_inputs).unwrap(),
-                        input_state: input_state.clone(),
+                        inputs: core::mem::take(next_inputs).unwrap(),
+                        input_state,
                     },
                 ),
             },
@@ -195,7 +193,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
         let next_time_index = self.time.index() + 1;
         let time = SubStepTime::new_scheduled(next_time_index, next_scheduled_time.clone());
         let inner = SubStepInner::OriginalUnsaturatedScheduled {
-            input_state: input_state.clone(),
+            input_state,
         };
 
         let item = SubStep {
@@ -449,11 +447,11 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
                     Ok(()),
                 ),
                 SubStepInner::SaturatedInit {
-                    wrapped_transposer,
+                    wrapped_transposer: _,
                 } => (SubStepInner::UnsaturatedInit, Ok(())),
                 SubStepInner::SaturatedInput {
                     inputs,
-                    wrapped_transposer,
+                    wrapped_transposer: _,
                 } => (
                     SubStepInner::RepeatUnsaturatedInput {
                         inputs,
@@ -462,7 +460,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
                     Ok(()),
                 ),
                 SubStepInner::SaturatedScheduled {
-                    wrapped_transposer,
+                    wrapped_transposer: _,
                 } => (
                     SubStepInner::RepeatUnsaturatedScheduled {
                         input_state,
