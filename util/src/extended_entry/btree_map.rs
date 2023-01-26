@@ -92,11 +92,9 @@ impl<'a, K: Ord, V> OccupiedExtEntry<'a, K, V> {
 
     pub fn into_collection_mut(self) -> &'a mut BTreeMap<K, V> {
         let Self {
-            entry,
+            entry: _,
             mut btree_map,
         } = self;
-
-        drop(entry);
 
         // SAFETY: this is kept alive by the lifetime 'a,
         // and does not alias entry because it's dropped.

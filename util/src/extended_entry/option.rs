@@ -36,9 +36,12 @@ impl<'a, T> OccupiedExtEntry<'a, T> {
         self.inner
     }
 
-    pub fn vacate(mut self) -> (VacantExtEntry<'a, T>, T) {
-        drop(self.inner);
-        let option = unsafe { self.option.as_mut() };
+    pub fn vacate(self) -> (VacantExtEntry<'a, T>, T) {
+        let Self {
+            inner: _,
+            mut option,
+        } = self;
+        let option = unsafe { option.as_mut() };
         let value = option.take().unwrap();
         (
             VacantExtEntry {
