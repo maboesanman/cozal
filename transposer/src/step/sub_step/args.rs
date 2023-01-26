@@ -26,13 +26,14 @@ impl<T: Transposer, S: StorageFamily> Arg<T, S> for InitArg<T> {
     }
 
     async fn run<'a, C: UpdateContext<'a, T, S>>(
-        _transposer: &'a mut T,
-        _context: C,
+        transposer: &'a mut T,
+        mut context: C,
         _time: T::Time,
         _passed: Self::Passed<'a>,
     ) where
         T: 'a,
     {
+        transposer.init(&mut context).await;
     }
 }
 

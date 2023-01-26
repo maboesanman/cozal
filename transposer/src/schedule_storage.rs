@@ -58,7 +58,7 @@ pub trait HashMapStorage<K: Hash + Eq + Clone, V: Clone>: Clone {
         K: Borrow<BK>;
 }
 
-pub trait RefCounted<T: ?Sized>: Deref<Target = T> + Unpin {
+pub trait RefCounted<T: ?Sized>: Clone + Deref<Target = T> + Unpin {
     type Borrowed: Deref<Target = T> + Unpin;
 
     fn new(inner: Box<T>) -> Self;

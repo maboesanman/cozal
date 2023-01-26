@@ -41,7 +41,7 @@ async fn create_fut<T: Transposer, S: StorageFamily, Is: InputState<T>>(
 impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
     Interpolation<'almost_static, T, Is, S>
 {
-    pub fn new(
+    pub(crate) fn new(
         base_time: T::Time,
         interpolated_time: T::Time,
         wrapped_transposer: &'almost_static S::Transposer<WrappedTransposer<T, S>>,

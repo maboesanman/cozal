@@ -7,9 +7,16 @@ use std::sync::Arc;
 use futures_core::Future;
 use util::replace_mut;
 
+use super::interpolation::Interpolation;
 use super::step_inputs::StepInputs;
-use super::sub_step::{PollErr as StepPollErr, SubStep, SubStepTime, WrappedTransposer};
-use crate::context::HandleInputContext;
+use super::sub_step::{
+    PollErr as StepPollErr,
+    SubStep,
+    SubStepPoll,
+    SubStepTime,
+    WrappedTransposer,
+};
+use crate::context::{HandleInputContext, InputStateContext};
 // use super::interpolation::Interpolation;
 // use super::lazy_state::LazyState;
 // use super::step_metadata::{EmptyStepMetadata, StepMetadata};
@@ -17,14 +24,13 @@ use crate::context::HandleInputContext;
 use crate::schedule_storage::{DefaultStorage, RefCounted, StorageFamily};
 use crate::step::sub_step::SaturateErr;
 // use crate::step::sub_step::SaturateErr;
-use crate::{Transposer, TransposerInput, TransposerInputEventHandler};
+use crate::{StateRetriever, Transposer, TransposerInput, TransposerInputEventHandler};
 
 pub struct Step<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStorage>
 where
     (T, Is): 'almost_static,
 {
-    inner: StepInner<'almost_static, T, Is, S>,
-
+    inner:       StepInner<'almost_static, T, Is, S>,
     input_state: S::LazyState<Is>,
 
     // these are used purely for enforcing that saturate calls use the previous step_group.
@@ -39,6 +45,19 @@ where
 pub trait InputState<T: Transposer> {
     fn new() -> Self;
     fn get_provider(&self) -> &T::InputStateManager;
+}
+
+pub struct NoInput;
+pub struct NoInputManager;
+
+impl<T: Transposer<InputStateManager = NoInputManager>> InputState<T> for NoInput {
+    fn new() -> Self {
+        NoInput
+    }
+
+    fn get_provider(&self) -> &<T as Transposer>::InputStateManager {
+        &NoInputManager
+    }
 }
 
 impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
@@ -68,12 +87,11 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
         &self,
         next_inputs: &mut Option<StepInputs<T>>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
+        let input_state = S::LazyState::new(Box::new(Is::new()));
         if let StepInner::Saturated {
-            steps,
+            steps, ..
         } = &self.inner
         {
-            let input_state = S::LazyState::new(Box::new(Is::new()));
-
             let next = steps
                 .last()
                 .unwrap()
@@ -103,6 +121,43 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
         } else {
             Err(NextUnsaturatedErr::NotSaturated)
         }
+    }
+
+    pub fn next_scheduled_unsaturated(&self) -> Result<Option<Self>, NextUnsaturatedErr> {
+        let input_state = S::LazyState::new(Box::new(Is::new()));
+        let steps = match &self.inner {
+            StepInner::Saturated {
+                steps, ..
+            } => steps,
+            _ => return Err(NextUnsaturatedErr::NotSaturated),
+        };
+
+        let next = steps
+            .last()
+            .unwrap()
+            .next_scheduled_unsaturated(input_state.clone())
+            .map_err(|e| match e {
+                super::sub_step::NextUnsaturatedErr::NotSaturated => unreachable!(),
+
+                #[cfg(debug_assertions)]
+                super::sub_step::NextUnsaturatedErr::InputPastOrPresent => {
+                    NextUnsaturatedErr::InputPastOrPresent
+                },
+            })?;
+
+        let next = next.map(|step| Step {
+            inner: StepInner::OriginalUnsaturated {
+                steps: vec![step]
+            },
+            input_state,
+
+            #[cfg(debug_assertions)]
+            uuid_self: uuid::Uuid::new_v4(),
+            #[cfg(debug_assertions)]
+            uuid_prev: Some(self.uuid_self),
+        });
+
+        Ok(next)
     }
 
     fn saturate<F, E>(&mut self, saturate_first_step: F) -> Result<(), Option<E>>
@@ -156,18 +211,21 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
 
         fn take_from_previous<'a, T: Transposer, Is: InputState<T>, S: StorageFamily>(
             prev: &mut StepInner<'a, T, Is, S>,
+            prev_input_state: &S::LazyState<Is>,
             next: &mut SubStep<'a, T, Is, S>,
         ) -> Result<(), SaturateErr> {
             replace_mut::replace_and_return(prev, StepInner::recover, |inner| {
                 if let StepInner::Saturated {
                     mut steps,
+                    finished_wrapped_transposer,
                 } = inner
                 {
                     let last_step = steps.last_mut().unwrap();
-                    match next.saturate_take(last_step) {
+                    match next.saturate_take(last_step, prev_input_state.clone()) {
                         Err(err) => {
                             let replacement = StepInner::Saturated {
                                 steps,
+                                finished_wrapped_transposer,
                             };
                             (replacement, Err(err))
                         },
@@ -185,7 +243,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
             })
         }
 
-        self.saturate(|next| take_from_previous(&mut prev.inner, next))
+        self.saturate(|next| take_from_previous(&mut prev.inner, &prev.input_state, next))
             .map_err(|err| match err {
                 Some(e) => match e {
                     SaturateErr::PreviousNotSaturated => SaturateTakeErr::PreviousNotSaturated,
@@ -237,6 +295,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
     }
 
     pub fn desaturate(&mut self) -> Result<(), DesaturateErr> {
+        let input_state = S::LazyState::new(Box::new(Is::new()));
         replace_mut::replace_and_return(&mut self.inner, StepInner::recover, |inner| match inner {
             StepInner::OriginalUnsaturated {
                 ..
@@ -251,7 +310,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
                 steps
                     .get_mut(current_saturating_index)
                     .unwrap()
-                    .desaturate()
+                    .desaturate(input_state)
                     .unwrap();
                 (
                     StepInner::OriginalUnsaturated {
@@ -267,7 +326,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
                 steps
                     .get_mut(current_saturating_index)
                     .unwrap()
-                    .desaturate()
+                    .desaturate(input_state)
                     .unwrap();
                 (
                     StepInner::RepeatUnsaturated {
@@ -277,7 +336,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
                 )
             },
             StepInner::Saturated {
-                steps,
+                steps, ..
             } => (
                 StepInner::RepeatUnsaturated {
                     steps,
@@ -303,13 +362,14 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
                 StepPollErr::Saturated => PollErr::Saturated,
             })?;
 
-            match poll_result {
-                StepPoll::Ready => {},
-                r => return Ok(r),
+            let input_state = match poll_result {
+                SubStepPoll::Ready(i) => i,
+                SubStepPoll::Emitted(e) => return Ok(StepPoll::Emitted(e)),
+                SubStepPoll::Pending => return Ok(StepPoll::Pending),
             };
 
             // now we are ready, we need to advance to the next sub-step.
-            if self.advance_saturation_index().is_saturated() {
+            if self.advance_saturation_index(input_state).is_saturated() {
                 break Ok(StepPoll::Ready)
             }
         }
@@ -343,7 +403,11 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
         }
     }
 
-    fn advance_saturation_index(&mut self) -> AdvanceSaturationIndex {
+    fn advance_saturation_index(
+        &mut self,
+        input_state: S::LazyState<Is>,
+    ) -> AdvanceSaturationIndex {
+        let mut x = None;
         let (i, steps) = match &mut self.inner {
             StepInner::OriginalSaturating {
                 current_saturating_index: i,
@@ -351,9 +415,14 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
                 ..
             } => {
                 if *i == steps.len() - 1 {
-                    let next = steps.last().unwrap().next_unsaturated_same_time().unwrap();
-                    if let Some(next) = next {
-                        steps.push(next);
+                    let next = steps
+                        .last()
+                        .unwrap()
+                        .next_unsaturated_same_time(input_state)
+                        .unwrap();
+                    match next {
+                        Ok(next) => steps.push(next),
+                        Err(wrapped_transposer) => x = Some(wrapped_transposer),
                     }
                 }
 
@@ -382,6 +451,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
 
                 StepInner::Saturated {
                     steps,
+                    finished_wrapped_transposer: x.unwrap(),
                 }
             });
             return AdvanceSaturationIndex::Saturated
@@ -391,17 +461,45 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
         let (part1, part2) = steps.split_at_mut(*i);
         let prev = part1.last_mut().unwrap();
         let next = part2.first_mut().unwrap();
-        next.saturate_take(prev).unwrap();
+        next.saturate_take(prev, self.input_state.clone()).unwrap();
 
         AdvanceSaturationIndex::Saturating
     }
 
-    // pub fn interpolate(&self, time: T::Time) -> Result<Interpolation<T, S>, InterpolateErr> {
-    //     todo!()
-    // }
+    // pub fn
+
+    pub fn interpolate(
+        &self,
+        time: T::Time,
+    ) -> Result<Interpolation<'almost_static, T, Is, S>, InterpolateErr> {
+        // let wrapped_transposer = match self.inner {
+        //     StepInner::Saturated { steps } => steps.last().unwrap().,
+        // }
+        todo!()
+    }
 
     pub fn get_input_state(&self) -> &Is {
         &self.input_state
+    }
+
+    fn get_steps(&self) -> &[SubStep<'almost_static, T, Is, S>] {
+        match &self.inner {
+            StepInner::OriginalUnsaturated {
+                steps, ..
+            } => &steps,
+            StepInner::OriginalSaturating {
+                steps, ..
+            } => &steps,
+            StepInner::RepeatUnsaturated {
+                steps, ..
+            } => &steps,
+            StepInner::RepeatSaturating {
+                steps, ..
+            } => &steps,
+            StepInner::Saturated {
+                steps, ..
+            } => &steps,
+        }
     }
 }
 
@@ -422,6 +520,7 @@ enum StepInner<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamil
     },
     Saturated {
         steps: Box<[SubStep<'almost_static, T, Is, S>]>,
+        finished_wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     },
 }
 

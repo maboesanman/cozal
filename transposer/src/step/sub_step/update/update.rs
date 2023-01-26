@@ -17,14 +17,19 @@ pub struct Update<'almost_static, T: Transposer, S: StorageFamily, A: Arg<T, S>,
 where
     (T, A, Is): 'almost_static,
 {
-    inner:           Option<UpdateInner<'almost_static, T, S>>,
+    inner:           Option<UpdateInner<'almost_static, T, Is, S>>,
     future_contents: PhantomData<S::LazyState<Is>>,
     arg:             Arc<A>,
 }
 
-struct UpdateInner<'almost_static, T: Transposer, S: StorageFamily> {
+struct UpdateInner<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily> {
     // references context, wrapped_transposer.transposer, and args
-    future: Pin<Box<dyn 'almost_static + Future<Output = S::Transposer<WrappedTransposer<T, S>>>>>,
+    future: Pin<
+        Box<
+            dyn 'almost_static
+                + Future<Output = (S::Transposer<WrappedTransposer<T, S>>, S::LazyState<Is>)>,
+        >,
+    >,
 
     output_receiver:
         futures_channel::mpsc::Receiver<(T::OutputEvent, futures_channel::oneshot::Sender<()>)>,
@@ -45,7 +50,7 @@ async fn create_fut<
         T::OutputEvent,
         futures_channel::oneshot::Sender<()>,
     )>,
-) -> S::Transposer<WrappedTransposer<T, S>> {
+) -> (S::Transposer<WrappedTransposer<T, S>>, S::LazyState<Is>) {
     // update 'current time'
     let raw_time = time.raw_time();
     let wrapped_transposer_mut = wrapped_transposer.mutate();
@@ -61,7 +66,7 @@ async fn create_fut<
     let context = C::UpdateContext::new(time, metadata, input_state_provider, output_sender);
 
     A::run(transposer, context, raw_time, passed_arg).await;
-    wrapped_transposer
+    (wrapped_transposer, input_state)
 }
 
 impl<'almost_static, T: Transposer, S: StorageFamily, A: Arg<T, S>, Is: InputState<T>>
@@ -110,7 +115,7 @@ impl<'almost_static, T: Transposer, S: StorageFamily, A: Arg<T, S>, Is: InputSta
         }
     }
 
-    pub fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> UpdatePoll<T, S> {
+    pub fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> UpdatePoll<T, Is, S> {
         let inner = match &mut self.inner {
             Some(inner) => inner,
             None => return UpdatePoll::Pending,
@@ -124,13 +129,15 @@ impl<'almost_static, T: Transposer, S: StorageFamily, A: Arg<T, S>, Is: InputSta
                 },
                 _ => UpdatePoll::Pending,
             },
-            Poll::Ready(wrapped_transposer) => UpdatePoll::Ready(wrapped_transposer),
+            Poll::Ready((wrapped_transposer, input_state)) => {
+                UpdatePoll::Ready(wrapped_transposer, input_state)
+            },
         }
     }
 }
 
-pub enum UpdatePoll<T: Transposer, S: StorageFamily> {
+pub enum UpdatePoll<T: Transposer, Is: InputState<T>, S: StorageFamily> {
     Pending,
     Event(T::OutputEvent),
-    Ready(S::Transposer<WrappedTransposer<T, S>>),
+    Ready(S::Transposer<WrappedTransposer<T, S>>, S::LazyState<Is>),
 }
