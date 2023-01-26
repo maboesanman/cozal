@@ -53,100 +53,6 @@ impl Transposer for TestTransposer {
     }
 }
 
-// #[test]
-// fn next_unsaturated_same_time() {
-//     let transposer = TestTransposer {
-//         counter: 17
-//     };
-//     let rng_seed = rand::thread_rng().gen();
-//     // let mut next_input = Some((1, vec![()].into_boxed_slice()));
-
-//     let mut step = Step::new_init(transposer, rng_seed);
-
-//     Pin::new(&mut step).poll(DummyWaker::dummy()).unwrap();
-
-//     {
-//         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
-//         next.saturate_take(&mut step).unwrap();
-
-//         let mut pin = Pin::new(&mut next);
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
-
-//         step = next;
-//     }
-//     {
-//         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
-//         next.saturate_take(&mut step).unwrap();
-
-//         let mut pin = Pin::new(&mut next);
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
-
-//         step = next;
-//     }
-//     {
-//         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
-//         next.saturate_take(&mut step).unwrap();
-
-//         let mut pin = Pin::new(&mut next);
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
-
-//         step = next;
-//     }
-
-//     let _step = step;
-// }
-
-// #[test]
-// fn do_some_clones() {
-//     let transposer = TestTransposer {
-//         counter: 17
-//     };
-//     let rng_seed = rand::thread_rng().gen();
-//     let mut next_input = None;
-
-//     let mut step = Step::<_, ()>::new_init(transposer, rng_seed);
-
-//     Pin::new(&mut step).poll(DummyWaker::dummy()).unwrap();
-
-//     {
-//         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
-//         next.saturate_clone(&step).unwrap();
-
-//         let mut pin = Pin::new(&mut next);
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
-
-//         step = next;
-//     }
-//     {
-//         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
-//         next.saturate_clone(&step).unwrap();
-
-//         let mut pin = Pin::new(&mut next);
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
-
-//         step = next;
-//     }
-//     {
-//         let mut next = step.next_unsaturated(&mut next_input).unwrap().unwrap();
-//         next.saturate_clone(&step).unwrap();
-
-//         let mut pin = Pin::new(&mut next);
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
-//         assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
-
-//         step = next;
-//     }
-
-//     let _step = step;
-// }
-
 #[test]
 fn next_scheduled_unsaturated() {
     let transposer = TestTransposer {
@@ -158,36 +64,16 @@ fn next_scheduled_unsaturated() {
 
     Pin::new(&mut step).poll(DummyWaker::dummy()).unwrap();
 
-    {
+    for i in 1..100 {
         let mut next = step.next_scheduled_unsaturated().unwrap().unwrap();
         next.saturate_take(&mut step).unwrap();
 
-        let mut pin = Pin::new(&mut next);
-        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
-        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
+        assert_matches!(next.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
+        assert_matches!(next.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
+
+        let interpolated = futures_executor::block_on(next.interpolate(i + 1).unwrap());
+        assert_eq!(interpolated, i);
 
         step = next;
     }
-    {
-        let mut next = step.next_scheduled_unsaturated().unwrap().unwrap();
-        next.saturate_take(&mut step).unwrap();
-
-        let mut pin = Pin::new(&mut next);
-        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
-        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
-
-        step = next;
-    }
-    {
-        let mut next = step.next_scheduled_unsaturated().unwrap().unwrap();
-        next.saturate_take(&mut step).unwrap();
-
-        let mut pin = Pin::new(&mut next);
-        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
-        assert_matches!(pin.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
-
-        step = next;
-    }
-
-    let _step = step;
 }

@@ -20,7 +20,7 @@ where
 }
 
 async fn create_fut<T: Transposer, S: StorageFamily, Is: InputState<T>>(
-    wrapped_transposer: &S::Transposer<WrappedTransposer<T, S>>,
+    wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     base_time: T::Time,
     interpolated_time: T::Time,
     input_state: S::LazyState<Is>,
@@ -44,7 +44,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
     pub(crate) fn new(
         base_time: T::Time,
         interpolated_time: T::Time,
-        wrapped_transposer: &'almost_static S::Transposer<WrappedTransposer<T, S>>,
+        wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     ) -> Self {
         let input_state = S::LazyState::new(Box::new(Is::new()));
 

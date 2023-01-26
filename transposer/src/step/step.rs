@@ -466,20 +466,33 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
         AdvanceSaturationIndex::Saturating
     }
 
-    // pub fn
-
     pub fn interpolate(
         &self,
         time: T::Time,
     ) -> Result<Interpolation<'almost_static, T, Is, S>, InterpolateErr> {
-        // let wrapped_transposer = match self.inner {
-        //     StepInner::Saturated { steps } => steps.last().unwrap().,
-        // }
-        todo!()
+        let wrapped_transposer = match &self.inner {
+            StepInner::Saturated {
+                finished_wrapped_transposer,
+                ..
+            } => finished_wrapped_transposer.clone(),
+            _ => return Err(InterpolateErr::NotSaturated),
+        };
+
+        let base_time = self.get_time();
+
+        if time < base_time {
+            return Err(InterpolateErr::TimePast)
+        }
+
+        Ok(Interpolation::new(base_time, time, wrapped_transposer))
     }
 
     pub fn get_input_state(&self) -> &Is {
         &self.input_state
+    }
+
+    pub fn get_time(&self) -> T::Time {
+        self.get_steps().first().unwrap().time().raw_time()
     }
 
     fn get_steps(&self) -> &[SubStep<'almost_static, T, Is, S>] {

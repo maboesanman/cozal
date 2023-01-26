@@ -7,5 +7,5 @@ mod sub_step;
 #[cfg(test)]
 mod test;
 
-// pub use interpolation::Interpolation;
+pub use interpolation::Interpolation;
 pub use step::*;
