@@ -7,7 +7,7 @@ use util::replace_mut;
 use super::args::{InitArg, InputArg, ScheduledArg};
 use super::sub_step_update_context::SubStepUpdateContextFamily;
 use super::time::SubStepTime;
-use super::update::{Update, UpdateContext, UpdatePoll};
+use super::update::{Update, UpdatePoll};
 use super::WrappedTransposer;
 use crate::schedule_storage::{RefCounted, StorageFamily};
 use crate::step::step::InputState;

@@ -107,11 +107,9 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> OccupiedExtEntry<'a, K, V, S> {
 
     pub fn into_collection_mut(self) -> &'a mut HashMap<K, V, S> {
         let Self {
-            entry,
+            entry: _,
             mut hash_map,
         } = self;
-
-        drop(entry);
 
         // SAFETY: this is kept alive by the lifetime 'a,
         // and does not alias entry because it's dropped.
@@ -164,11 +162,9 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> VacantExtEntry<'a, K, V, S> {
     pub fn into_collection_mut(self) -> (&'a mut HashMap<K, V, S>, K) {
         let Self {
             mut hash_map,
-            entry,
+            entry: _,
             key,
         } = self;
-
-        drop(entry);
 
         // SAFETY: this is kept alive by the lifetime 'a,
         // and does not alias entry because it's dropped.

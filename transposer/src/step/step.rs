@@ -1,7 +1,6 @@
 use core::pin::Pin;
 use core::task::{Context, Waker};
 
-use futures_core::Future;
 use util::replace_mut;
 
 use super::interpolation::Interpolation;
@@ -56,8 +55,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         let input_state = S::LazyState::new(Box::new(Is::new()));
 
-        let mut steps = Vec::with_capacity(1);
-        steps.push(SubStep::new_init(transposer, rng_seed, input_state.clone()));
+        let steps = vec![SubStep::new_init(transposer, rng_seed, input_state.clone())];
 
         Self {
             inner: StepInner::OriginalSaturating {
