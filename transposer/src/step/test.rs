@@ -27,7 +27,7 @@ impl Transposer for TestTransposer {
 
     async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>) {
         self.counter = 0;
-        cx.schedule_event(0, ()).unwrap();
+        cx.schedule_event(1, ()).unwrap();
     }
 
     async fn handle_scheduled(

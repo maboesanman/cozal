@@ -9,7 +9,7 @@ use crate::context::HandleInputContext;
 use crate::{Transposer, TransposerInput, TransposerInputEventHandler};
 
 pub struct StepInputs<T: Transposer> {
-    time: T::Time,
+    pub time: T::Time,
 
     // these btreesets are all of different values. they are transmuted before use.
     inputs: BTreeMap<u64, StepInputsEntry<T>>,

@@ -6,11 +6,12 @@ use super::expire_handle_factory::ExpireHandleFactory;
 use super::ScheduledTime;
 use crate::context::ExpireEventError;
 use crate::schedule_storage::{HashMapStorage, OrdMapStorage, StorageFamily};
+use crate::step::sub_step::SubStepTime;
 use crate::{ExpireHandle, Transposer};
 
 #[derive(Clone)]
 pub struct TransposerMetaData<T: Transposer, S: StorageFamily> {
-    pub last_updated: T::Time,
+    pub last_updated: SubStepTime<T::Time>,
 
     pub schedule: S::OrdMap<ScheduledTime<T::Time>, T::Scheduled>,
 
@@ -34,7 +35,7 @@ impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
             <S::OrdMap<ScheduledTime<T::Time>, ExpireHandle> as OrdMapStorage<_, _>>::new();
 
         Self {
-            last_updated: T::Time::default(),
+            last_updated: SubStepTime::new_init(),
             schedule,
             expire_handles_forward,
             expire_handles_backward,

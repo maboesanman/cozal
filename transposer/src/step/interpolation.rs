@@ -18,8 +18,7 @@ where
 
 async fn create_fut<T: Transposer, S: StorageFamily, Is: InputState<T>>(
     wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
-    base_time: T::Time,
-    interpolated_time: T::Time,
+    time: T::Time,
     input_state: S::LazyState<Is>,
 ) -> T::OutputState {
     let borrowed = wrapped_transposer.borrow();
@@ -28,27 +27,25 @@ async fn create_fut<T: Transposer, S: StorageFamily, Is: InputState<T>>(
 
     let input_state_manager = input_state.get_provider();
 
+    let base_time = metadata.last_updated.time;
+
     let mut context = StepInterpolateContext::new(metadata, input_state_manager);
 
-    transposer
-        .interpolate(base_time, interpolated_time, &mut context)
-        .await
+    transposer.interpolate(base_time, time, &mut context).await
 }
 
 impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
     Interpolation<'almost_static, T, Is, S>
 {
     pub(crate) fn new(
-        base_time: T::Time,
-        interpolated_time: T::Time,
+        time: T::Time,
         wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     ) -> Self {
         let input_state = S::LazyState::new(Box::new(Is::new()));
 
         let future = Box::pin(create_fut::<T, S, Is>(
             wrapped_transposer,
-            base_time,
-            interpolated_time,
+            time,
             input_state.clone(),
         ));
 

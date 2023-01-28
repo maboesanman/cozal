@@ -1,10 +1,13 @@
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SubStepTime<T: Ord + Copy + Default> {
-    index: usize,
-    time:  T,
+    // the canonical order that this time occured
+    pub index: usize,
+
+    // the actual time this occured
+    pub time: T,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ScheduledTime<T: Ord + Copy + Default> {
     pub time:           T,
     pub parent_index:   usize,
