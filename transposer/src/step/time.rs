@@ -26,20 +26,6 @@ impl<T: Ord + Copy + Default> SubStepTime<T> {
         }
     }
 
-    pub fn new_input(index: usize, time: T) -> Self {
-        SubStepTime {
-            index,
-            time,
-        }
-    }
-
-    pub fn new_scheduled(index: usize, time: ScheduledTime<T>) -> Self {
-        SubStepTime {
-            index,
-            time: time.time,
-        }
-    }
-
     pub fn spawn_scheduled(&self, time: T, emission_index: usize) -> ScheduledTime<T> {
         ScheduledTime {
             time,

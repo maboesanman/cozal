@@ -1,5 +1,4 @@
 use super::sub_step_update_context::SubStepUpdateContext;
-use super::time::SubStepTime;
 use super::transposer_metadata::TransposerMetaData;
 use crate::schedule_storage::{RefCounted, StorageFamily};
 use crate::step::step_inputs::StepInputs;
@@ -117,9 +116,5 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
                 .handle_scheduled(t.time, e, &mut context)
                 .await;
         }
-    }
-
-    pub fn last_updated_time(&self) -> SubStepTime<T::Time> {
-        self.metadata.last_updated
     }
 }

@@ -1,6 +1,5 @@
 use core::future::Future;
 use core::pin::Pin;
-use std::marker::PhantomData;
 
 use super::transposer_metadata::TransposerMetaData;
 use crate::context::*;
@@ -25,8 +24,6 @@ pub struct SubStepUpdateContext<'update, T: Transposer, S: StorageFamily> {
 
     input_state: &'update T::InputStateManager,
 }
-
-pub struct SubStepUpdateContextFamily<T: Transposer, S: StorageFamily>(PhantomData<(T, S)>);
 
 impl<'update, T: Transposer, S: StorageFamily> InitContext<'update, T>
     for SubStepUpdateContext<'update, T, S>
