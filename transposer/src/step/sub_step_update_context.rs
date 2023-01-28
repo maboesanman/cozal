@@ -2,68 +2,10 @@ use core::future::Future;
 use core::pin::Pin;
 use std::marker::PhantomData;
 
-use super::time::SubStepTime;
-use super::update::TransposerMetaData; // UpdateContext, UpdateContextFamily};
+use super::transposer_metadata::TransposerMetaData;
 use crate::context::*;
 use crate::schedule_storage::StorageFamily;
 use crate::{ExpireHandle, Transposer};
-
-// pub trait OutputCollector<O> {
-//     fn new() -> Self;
-//     async fn set(&mut self, output: O);
-//     fn take(&mut self) -> Option<O>;
-// }
-
-// pub enum AsyncCollector<O> {
-//     Some {
-//         output: O,
-//         notify: futures_channel::oneshot::Sender<()>,
-//     },
-//     None,
-// }
-
-// impl<O> OutputCollector<O> for AsyncCollector<O> {
-//     fn new() -> Self {
-//         Self::None
-//     }
-//     async fn set(&mut self, output: O) {
-//         let (notify, recv) = futures_channel::oneshot::channel();
-//         debug_assert!(matches!(self, AsyncCollector::None));
-
-//         *self = AsyncCollector::Some {
-//             output,
-//             notify,
-//         };
-
-//         recv.await.unwrap()
-//     }
-//     fn take(&mut self) -> Option<O> {
-//         match core::mem::replace(self, AsyncCollector::None) {
-//             AsyncCollector::None => None,
-//             AsyncCollector::Some {
-//                 output,
-//                 notify,
-//             } => {
-//                 let _ = notify.send(());
-//                 Some(output)
-//             },
-//         }
-//     }
-// }
-
-// pub struct DiscardCollector;
-
-// impl<O> OutputCollector<O> for DiscardCollector {
-//     fn new() -> Self {
-//         DiscardCollector
-//     }
-//     async fn set(&mut self, output: O) {
-//         drop(output)
-//     }
-//     fn take(&mut self) -> Option<O> {
-//         None
-//     }
-// }
 
 /// This is the interface through which you can do a variety of functions in your transposer.
 ///
@@ -85,13 +27,6 @@ pub struct SubStepUpdateContext<'update, T: Transposer, S: StorageFamily> {
 }
 
 pub struct SubStepUpdateContextFamily<T: Transposer, S: StorageFamily>(PhantomData<(T, S)>);
-
-// impl<T: Transposer, S: StorageFamily> UpdateContextFamily<T, S>
-//     for SubStepUpdateContextFamily<T, S>
-// {
-//     type UpdateContext<'update> = SubStepUpdateContext<'update, T, S>
-//     where (T, S): 'update;
-// }
 
 impl<'update, T: Transposer, S: StorageFamily> InitContext<'update, T>
     for SubStepUpdateContext<'update, T, S>

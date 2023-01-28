@@ -3,10 +3,9 @@ use rand_chacha::rand_core::block::BlockRng;
 use rand_chacha::ChaCha12Core;
 
 use super::expire_handle_factory::ExpireHandleFactory;
-use super::ScheduledTime;
+use super::time::{ScheduledTime, SubStepTime};
 use crate::context::ExpireEventError;
 use crate::schedule_storage::{HashMapStorage, OrdMapStorage, StorageFamily};
-use crate::step::sub_step::SubStepTime;
 use crate::{ExpireHandle, Transposer};
 
 #[derive(Clone)]

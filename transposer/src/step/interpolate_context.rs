@@ -1,5 +1,5 @@
-use super::sub_step::TransposerMetaData;
 // use super::lazy_state::LazyState;
+use super::transposer_metadata::TransposerMetaData;
 use crate::context::{InputStateContext, InterpolateContext};
 use crate::schedule_storage::StorageFamily;
 use crate::Transposer;

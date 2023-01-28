@@ -3,7 +3,7 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 
 use super::interpolate_context::StepInterpolateContext;
-use super::sub_step::WrappedTransposer;
+use super::wrapped_transposer::WrappedTransposer;
 use super::InputState;
 use crate::schedule_storage::{RefCounted, StorageFamily};
 use crate::Transposer;

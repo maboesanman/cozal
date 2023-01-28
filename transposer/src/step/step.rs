@@ -8,7 +8,8 @@ use futures_util::{FutureExt, StreamExt};
 
 use super::interpolation::Interpolation;
 use super::step_inputs::StepInputs;
-use super::sub_step::{ScheduledTime, WrappedTransposer};
+use super::time::ScheduledTime;
+use super::wrapped_transposer::WrappedTransposer;
 use crate::schedule_storage::{DefaultStorage, RefCounted, StorageFamily};
 use crate::{Transposer, TransposerInput};
 
