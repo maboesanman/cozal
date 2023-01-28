@@ -20,14 +20,14 @@ pub trait ConcurrentSource: Source {
         cx: SourceContext,
     ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error>;
 
-    /// caller must ensure this channel is not in use by any other caller.
-    unsafe fn poll_concurrent_unchecked(
-        &self,
-        time: Self::Time,
-        cx: SourceContext,
-    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
-        self.poll_concurrent(time, cx)
-    }
+    // /// caller must ensure this channel is not in use by any other caller.
+    // unsafe fn poll_concurrent_unchecked(
+    //     &self,
+    //     time: Self::Time,
+    //     cx: SourceContext,
+    // ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
+    //     self.poll_concurrent(time, cx)
+    // }
 
     /// poll_forget, but concurrent
     fn poll_forget_concurrent(
@@ -38,14 +38,14 @@ pub trait ConcurrentSource: Source {
         self.poll_concurrent(time, cx)
     }
 
-    /// caller must ensure this channel is not in use by any other caller.
-    unsafe fn poll_forget_concurrent_unchecked(
-        &self,
-        time: Self::Time,
-        cx: SourceContext,
-    ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
-        self.poll_forget_concurrent(time, cx)
-    }
+    // /// caller must ensure this channel is not in use by any other caller.
+    // unsafe fn poll_forget_concurrent_unchecked(
+    //     &self,
+    //     time: Self::Time,
+    //     cx: SourceContext,
+    // ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
+    //     self.poll_forget_concurrent(time, cx)
+    // }
 
     /// poll_events, but concurrent
     fn poll_events_concurrent(
@@ -54,22 +54,22 @@ pub trait ConcurrentSource: Source {
         all_channel_waker: Waker,
     ) -> TrySourcePoll<Self::Time, Self::Event, (), Self::Error>;
 
-    /// caller must ensure this channel is not in use by any other caller.
-    unsafe fn poll_events_concurrent_unchecked(
-        &self,
-        time: Self::Time,
-        all_channel_waker: Waker,
-    ) -> TrySourcePoll<Self::Time, Self::Event, (), Self::Error> {
-        self.poll_events_concurrent(time, all_channel_waker)
-    }
+    // /// caller must ensure this channel is not in use by any other caller.
+    // unsafe fn poll_events_concurrent_unchecked(
+    //     &self,
+    //     time: Self::Time,
+    //     all_channel_waker: Waker,
+    // ) -> TrySourcePoll<Self::Time, Self::Event, (), Self::Error> {
+    //     self.poll_events_concurrent(time, all_channel_waker)
+    // }
 
     /// release_channel, but concurrent
     fn release_channel_concurrent(&self, channel: usize);
 
-    /// caller must ensure this channel is not in use by any other caller.
-    unsafe fn release_channel_concurrent_unchecked(&self, channel: usize) {
-        self.release_channel_concurrent(channel)
-    }
+    // /// caller must ensure this channel is not in use by any other caller.
+    // unsafe fn release_channel_concurrent_unchecked(&self, channel: usize) {
+    //     self.release_channel_concurrent(channel)
+    // }
 
     /// advance, but concurrent
     fn advance_concurrent(&self, time: Self::Time);

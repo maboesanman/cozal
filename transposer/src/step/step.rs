@@ -3,7 +3,7 @@ use core::pin::Pin;
 use core::task::{Context, Waker};
 use std::sync::Arc;
 
-use futures_channel::mpsc;
+use futures_channel::{mpsc, oneshot};
 use futures_util::{FutureExt, StreamExt};
 
 use super::interpolation::Interpolation;
@@ -19,13 +19,18 @@ enum StepData<T: Transposer> {
     Scheduled(ScheduledTime<T::Time>),
 }
 
+type SaturationFuture<'almost_static, T, S> = Pin<
+    Box<
+        dyn 'almost_static
+            + Future<Output = <S as StorageFamily>::Transposer<WrappedTransposer<T, S>>>,
+    >,
+>;
+
 enum StepStatus<'almost_static, T: Transposer, S: StorageFamily> {
     Unsaturated,
     Saturating {
-        future:
-            Pin<Box<dyn 'almost_static + Future<Output = S::Transposer<WrappedTransposer<T, S>>>>>,
-        output_reciever:
-            futures_channel::mpsc::Receiver<(T::OutputEvent, futures_channel::oneshot::Sender<()>)>,
+        future:          SaturationFuture<'almost_static, T, S>,
+        output_reciever: mpsc::Receiver<(T::OutputEvent, oneshot::Sender<()>)>,
     },
     Saturated {
         wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
@@ -240,7 +245,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
                     let input_state = self.input_state.clone();
                     let event_count = self.event_count;
                     let step_data = self.data.clone();
-                    Box::pin((async move || {
+                    Box::pin(async move {
                         let i = match step_data.as_ref() {
                             StepData::Input(i) => i,
                             _ => unreachable!(),
@@ -250,19 +255,19 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
                             .handle_input(i, input_state, event_count, output_sender)
                             .await;
                         wrapped_transposer
-                    })())
+                    })
                 },
                 StepData::Scheduled(t) => {
                     let t = t.time;
                     let event_count = self.event_count;
                     let input_state = self.input_state.clone();
-                    Box::pin((async move || {
+                    Box::pin(async move {
                         wrapped_transposer
                             .mutate()
                             .handle_scheduled(t, input_state, event_count, output_sender)
                             .await;
                         wrapped_transposer
-                    })())
+                    })
                 },
             },
             output_reciever,

@@ -52,10 +52,10 @@ impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
         time: ScheduledTime<T::Time>,
         payload: T::Scheduled,
     ) -> ExpireHandle {
-        self.schedule_event(time.clone(), payload);
+        self.schedule_event(time, payload);
 
         let handle = self.expire_handle_factory.next();
-        self.expire_handles_forward.insert(handle, time.clone());
+        self.expire_handles_forward.insert(handle, time);
         self.expire_handles_backward.insert(time, handle);
 
         handle
