@@ -1,8 +1,5 @@
-#![feature(once_cell)]
 #![feature(async_fn_in_trait)]
-#![feature(async_closure)]
 #![deny(unsafe_op_in_unsafe_fn)]
-#![allow(clippy::module_inception)]
 
 use context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext};
 

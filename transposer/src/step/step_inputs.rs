@@ -36,6 +36,7 @@ impl<T: Transposer> StepInputsEntry<T> {
             values:        TypeErasedVec::new::<I::InputEvent>(),
             input_type_id: TypeId::of::<I>(),
             handler:       |time, t, cx, set| {
+                // SAFETY: this came from the assignment to values, which erased the I::InputEvent type
                 let set = unsafe { set.get::<I::InputEvent>() };
                 Box::pin(async move {
                     for i in set.iter() {
@@ -54,6 +55,7 @@ impl<T: Transposer> StepInputsEntry<T> {
             panic!()
         }
 
+        // SAFETY: this matches the type because I has a TypeId that matches the one that created it.
         let mut set = unsafe { self.values.get_mut() };
 
         let i =
