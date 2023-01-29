@@ -318,6 +318,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
         };
 
         if let std::task::Poll::Ready(Some((e, sender))) = output {
+            self.event_count += 1;
             let _ = sender.send(());
             return Ok(StepPoll::Emitted(e))
         }

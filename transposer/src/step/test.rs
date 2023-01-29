@@ -53,7 +53,7 @@ impl Transposer for TestTransposer {
 }
 
 #[test]
-fn next_scheduled_unsaturated() {
+fn next_scheduled_unsaturated_take() {
     let transposer = TestTransposer {
         counter: 17
     };
@@ -75,4 +75,62 @@ fn next_scheduled_unsaturated() {
 
         step = next;
     }
+}
+
+#[test]
+fn next_scheduled_unsaturated_clone() {
+    let transposer = TestTransposer {
+        counter: 17
+    };
+    let rng_seed = rand::thread_rng().gen();
+
+    let mut step = Step::<_, NoInput>::new_init(transposer, rng_seed);
+
+    Pin::new(&mut step).poll(DummyWaker::dummy()).unwrap();
+
+    for i in 1..100 {
+        let mut next = step.next_scheduled_unsaturated().unwrap().unwrap();
+        next.saturate_clone(&step).unwrap();
+
+        assert_matches!(next.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
+        assert_matches!(next.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
+
+        let interpolated = futures_executor::block_on(next.interpolate(i + 1).unwrap());
+        assert_eq!(interpolated, i);
+
+        step = next;
+    }
+}
+
+#[test]
+fn next_scheduled_unsaturated_desaturate() {
+    let transposer = TestTransposer {
+        counter: 17
+    };
+    let rng_seed = rand::thread_rng().gen();
+
+    let mut init = Step::<_, NoInput>::new_init(transposer, rng_seed);
+
+    Pin::new(&mut init).poll(DummyWaker::dummy()).unwrap();
+
+    let mut step1 = init.next_scheduled_unsaturated().unwrap().unwrap();
+    step1.saturate_clone(&init).unwrap();
+
+    // emits the event the first time
+    assert_matches!(step1.poll(DummyWaker::dummy()), Ok(StepPoll::Emitted(())));
+    assert_matches!(step1.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
+
+    step1.desaturate();
+    step1.saturate_clone(&init).unwrap();
+
+    // doesn't re-emit the event
+    assert_matches!(step1.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
+
+    step1.desaturate();
+    step1.saturate_clone(&init).unwrap();
+
+    // doesn't re-emit the event
+    assert_matches!(step1.poll(DummyWaker::dummy()), Ok(StepPoll::Ready));
+
+    step1.desaturate();
 }
