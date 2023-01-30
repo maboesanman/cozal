@@ -5,8 +5,9 @@ use rand_chacha::ChaCha12Core;
 use super::expire_handle_factory::ExpireHandleFactory;
 use super::time::{ScheduledTime, SubStepTime};
 use crate::context::ExpireEventError;
+use crate::expire_handle::ExpireHandle;
 use crate::schedule_storage::{HashMapStorage, OrdMapStorage, StorageFamily};
-use crate::{ExpireHandle, Transposer};
+use crate::Transposer;
 
 #[derive(Clone)]
 pub struct TransposerMetaData<T: Transposer, S: StorageFamily> {

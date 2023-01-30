@@ -1,4 +1,4 @@
-use crate::ExpireHandle;
+use crate::expire_handle::ExpireHandle;
 
 #[derive(Clone, Debug, Default)]
 pub struct ExpireHandleFactory(u64);

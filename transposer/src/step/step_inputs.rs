@@ -15,16 +15,18 @@ pub struct StepInputs<T: Transposer> {
     inputs: BTreeMap<u64, StepInputsEntry<T>>,
 }
 
+type HandlerFunction<T> = for<'a> fn(
+    time: <T as Transposer>::Time,
+    &'a mut T,
+    &'a mut dyn HandleInputContext<'_, T>,
+    &'a TypeErasedVec,
+) -> Pin<Box<dyn 'a + Future<Output = ()>>>;
+
 struct StepInputsEntry<T: Transposer> {
     // keep this sorted
     values:        TypeErasedVec,
     input_type_id: TypeId,
-    handler: for<'a> fn(
-        time: T::Time,
-        &'a mut T,
-        &'a mut dyn HandleInputContext<'_, T>,
-        &'a TypeErasedVec,
-    ) -> Pin<Box<dyn Future<Output = ()> + 'a>>,
+    handler:       HandlerFunction<T>,
 }
 
 impl<T: Transposer> StepInputsEntry<T> {

@@ -7,13 +7,11 @@ use context::{HandleInputContext, HandleScheduleContext, InitContext, Interpolat
 
 pub mod context;
 // pub mod evaluate_to;
-mod expire_handle;
+pub mod expire_handle;
 pub mod schedule_storage;
 pub mod single_input_state;
 pub mod step;
 mod test;
-
-pub use expire_handle::ExpireHandle;
 
 /// A `Transposer` is a type that can update itself in response to events.
 ///
@@ -138,8 +136,10 @@ pub trait TransposerInputEventHandler<I: TransposerInput<Base = Self>>: Transpos
     }
 }
 
-// SAFETY: NonNull needs to live for '_
-// (it would be &'_ but it's not really possible to implement that)
+/// # Safety
+///
+/// the `NonNull<I::InputState>` returned by the reciever should be considered a `&'_ I::InputState`
+/// (it would be &'_ but it's not really possible to implement that)
 pub unsafe trait StateRetriever<I: TransposerInput> {
     fn get_input_state(&self) -> futures_channel::oneshot::Receiver<NonNull<I::InputState>>;
 }

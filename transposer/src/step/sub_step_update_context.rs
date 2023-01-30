@@ -3,8 +3,9 @@ use core::pin::Pin;
 
 use super::transposer_metadata::TransposerMetaData;
 use crate::context::*;
+use crate::expire_handle::ExpireHandle;
 use crate::schedule_storage::StorageFamily;
-use crate::{ExpireHandle, Transposer};
+use crate::Transposer;
 
 /// This is the interface through which you can do a variety of functions in your transposer.
 ///
