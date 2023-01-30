@@ -1,12 +1,15 @@
 #![feature(async_fn_in_trait)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
+use std::ptr::NonNull;
+
 use context::{HandleInputContext, HandleScheduleContext, InitContext, InterpolateContext};
 
 pub mod context;
 // pub mod evaluate_to;
 mod expire_handle;
 pub mod schedule_storage;
+pub mod single_input_state;
 pub mod step;
 mod test;
 
@@ -135,6 +138,8 @@ pub trait TransposerInputEventHandler<I: TransposerInput<Base = Self>>: Transpos
     }
 }
 
-pub trait StateRetriever<T: Transposer, I: TransposerInput<Base = T>> {
-    fn get_input_state(&self) -> futures_channel::oneshot::Receiver<&'_ I::InputState>;
+// SAFETY: NonNull needs to live for '_
+// (it would be &'_ but it's not really possible to implement that)
+pub unsafe trait StateRetriever<I: TransposerInput> {
+    fn get_input_state(&self) -> futures_channel::oneshot::Receiver<NonNull<I::InputState>>;
 }

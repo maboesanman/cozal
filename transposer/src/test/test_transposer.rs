@@ -60,15 +60,13 @@ impl TransposerInput for TestTransposerInput2 {
 
 // set up with macro
 pub(crate) trait TestTransposerStateRetriever:
-    StateRetriever<TestTransposer, TestTransposerInput1>
-    + StateRetriever<TestTransposer, TestTransposerInput2>
+    StateRetriever<TestTransposerInput1> + StateRetriever<TestTransposerInput2>
 {
 }
 
 // set up with macro
 impl<T> TestTransposerStateRetriever for T where
-    T: StateRetriever<TestTransposer, TestTransposerInput1>
-        + StateRetriever<TestTransposer, TestTransposerInput2>
+    T: StateRetriever<TestTransposerInput1> + StateRetriever<TestTransposerInput2>
 {
 }
 

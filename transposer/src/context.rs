@@ -1,5 +1,6 @@
 use core::future::Future;
 use core::pin::Pin;
+use std::ptr::NonNull;
 
 use rand::RngCore;
 
@@ -40,18 +41,21 @@ pub trait InputStateContext<'a, T: Transposer> {
 pub trait InputStateContextExt<'a, T: Transposer>: InputStateContext<'a, T> {
     async fn get_input_state<I: TransposerInput<Base = T>>(&mut self) -> &'a I::InputState
     where
-        T::InputStateManager: 'a + StateRetriever<T, I>;
+        T::InputStateManager: 'a + StateRetriever<I>;
 }
 
 impl<'a, T: Transposer, C: InputStateContext<'a, T> + ?Sized> InputStateContextExt<'a, T> for C {
     async fn get_input_state<I: TransposerInput<Base = T>>(&mut self) -> &'a I::InputState
     where
-        T::InputStateManager: 'a + StateRetriever<T, I>,
+        T::InputStateManager: 'a + StateRetriever<I>,
     {
-        self.get_input_state_manager()
+        let ptr: NonNull<_> = self
+            .get_input_state_manager()
             .get_input_state()
             .await
-            .unwrap()
+            .unwrap();
+
+        unsafe { ptr.as_ref() }
     }
 }
 
