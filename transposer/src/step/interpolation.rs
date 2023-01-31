@@ -8,11 +8,8 @@ use super::InputState;
 use crate::schedule_storage::{RefCounted, StorageFamily};
 use crate::Transposer;
 
-pub struct Interpolation<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
-where
-    (T, Is): 'almost_static,
-{
-    future:      Pin<Box<dyn 'almost_static + Future<Output = T::OutputState>>>,
+pub struct Interpolation<T: Transposer, Is: InputState<T>, S: StorageFamily> {
+    future:      Pin<Box<dyn Future<Output = T::OutputState>>>,
     input_state: S::LazyState<Is>,
 }
 
@@ -34,20 +31,18 @@ async fn create_fut<T: Transposer, S: StorageFamily, Is: InputState<T>>(
     transposer.interpolate(base_time, time, &mut context).await
 }
 
-impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
-    Interpolation<'almost_static, T, Is, S>
-{
+impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Interpolation<T, Is, S> {
     pub(crate) fn new(
         time: T::Time,
         wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
     ) -> Self {
         let input_state = S::LazyState::new(Box::new(Is::new()));
 
-        let future = Box::pin(create_fut::<T, S, Is>(
-            wrapped_transposer,
-            time,
-            input_state.clone(),
-        ));
+        let future = create_fut::<T, S, Is>(wrapped_transposer, time, input_state.clone());
+
+        let future: Pin<Box<dyn '_ + Future<Output = T::OutputState>>> = Box::pin(future);
+        let future: Pin<Box<dyn 'static + Future<Output = T::OutputState>>> =
+            unsafe { core::mem::transmute(future) };
 
         Self {
             future,
@@ -60,9 +55,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
     }
 }
 
-impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily> Future
-    for Interpolation<'almost_static, T, Is, S>
-{
+impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Future for Interpolation<T, Is, S> {
     type Output = T::OutputState;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

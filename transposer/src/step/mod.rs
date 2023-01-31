@@ -31,17 +31,13 @@ enum StepData<T: Transposer> {
     Scheduled(ScheduledTime<T::Time>),
 }
 
-type SaturationFuture<'almost_static, T, S> = Pin<
-    Box<
-        dyn 'almost_static
-            + Future<Output = <S as StorageFamily>::Transposer<WrappedTransposer<T, S>>>,
-    >,
->;
+type SaturationFuture<'a, T, S> =
+    Pin<Box<dyn 'a + Future<Output = <S as StorageFamily>::Transposer<WrappedTransposer<T, S>>>>>;
 
-enum StepStatus<'almost_static, T: Transposer, S: StorageFamily> {
+enum StepStatus<T: Transposer, S: StorageFamily> {
     Unsaturated,
     Saturating {
-        future:          SaturationFuture<'almost_static, T, S>,
+        future:          SaturationFuture<'static, T, S>,
         output_reciever: mpsc::Receiver<(T::OutputEvent, oneshot::Sender<()>)>,
     },
     Saturated {
@@ -49,19 +45,16 @@ enum StepStatus<'almost_static, T: Transposer, S: StorageFamily> {
     },
 }
 
-impl<'almost_static, T: Transposer, S: StorageFamily> Default for StepStatus<'almost_static, T, S> {
+impl<T: Transposer, S: StorageFamily> Default for StepStatus<T, S> {
     fn default() -> Self {
         Self::Unsaturated
     }
 }
 
-pub struct Step<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStorage>
-where
-    (T, Is): 'almost_static,
-{
+pub struct Step<T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStorage> {
     data:        Arc<StepData<T>>,
     input_state: S::LazyState<Is>,
-    status:      StepStatus<'almost_static, T, S>,
+    status:      StepStatus<T, S>,
     event_count: usize,
 
     #[cfg(debug_assertions)]
@@ -90,9 +83,31 @@ impl<T: Transposer<InputStateManager = NoInputManager>> InputState<T> for NoInpu
     }
 }
 
-impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
-    Step<'almost_static, T, Is, S>
-{
+impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Drop for Step<T, Is, S> {
+    fn drop(&mut self) {
+        let status = core::mem::replace(&mut self.status, StepStatus::Unsaturated);
+
+        match status {
+            StepStatus::Unsaturated => {},
+            StepStatus::Saturating {
+                future,
+                output_reciever: _,
+            } => {
+                let future: SaturationFuture<'static, T, S> = future;
+                // SAFETY: the future here can only hold things that the step is already generic over and contains.
+                // this means that this lifetime forging to 'static is ok.
+                let future: SaturationFuture<'_, T, S> = unsafe { core::mem::transmute(future) };
+
+                drop(future);
+            },
+            StepStatus::Saturated {
+                wrapped_transposer: _,
+            } => {},
+        }
+    }
+}
+
+impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         let input_state = S::LazyState::new(Box::new(Is::new()));
         let (output_sender, output_reciever) = mpsc::channel(1);
@@ -103,7 +118,10 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
             0,
             output_sender,
         );
-        let future = Box::pin(future);
+        let future: SaturationFuture<'_, T, S> = Box::pin(future);
+        // SAFETY: the future here can only hold things that the step is already generic over and contains.
+        // this means that this lifetime forging to 'static is ok.
+        let future: SaturationFuture<'static, T, S> = unsafe { core::mem::transmute(future) };
 
         let status = StepStatus::Saturating {
             future,
@@ -244,10 +262,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
         }
     }
 
-    fn saturate<'a>(&'a mut self, mut wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>)
-    where
-        'almost_static: 'a,
-    {
+    fn saturate(&mut self, mut wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>) {
         let (output_sender, output_reciever) = mpsc::channel(1);
 
         self.status = StepStatus::Saturating {
@@ -257,7 +272,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
                     let input_state = self.input_state.clone();
                     let event_count = self.event_count;
                     let step_data = self.data.clone();
-                    Box::pin(async move {
+                    let future: SaturationFuture<'_, T, S> = Box::pin(async move {
                         let i = match step_data.as_ref() {
                             StepData::Input(i) => i,
                             _ => unreachable!(),
@@ -267,19 +282,29 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
                             .handle_input(i, input_state, event_count, output_sender)
                             .await;
                         wrapped_transposer
-                    })
+                    });
+                    // SAFETY: the future here can only hold things that the step is already generic over and contains.
+                    // this means that this lifetime forging to 'static is ok.
+                    let future: SaturationFuture<'static, T, S> =
+                        unsafe { core::mem::transmute(future) };
+                    future
                 },
                 StepData::Scheduled(t) => {
                     let t = t.time;
                     let event_count = self.event_count;
                     let input_state = self.input_state.clone();
-                    Box::pin(async move {
+                    let future: SaturationFuture<'_, T, S> = Box::pin(async move {
                         wrapped_transposer
                             .mutate()
                             .handle_scheduled(t, input_state, event_count, output_sender)
                             .await;
                         wrapped_transposer
-                    })
+                    });
+                    // SAFETY: the future here can only hold things that the step is already generic over and contains.
+                    // this means that this lifetime forging to 'static is ok.
+                    let future: SaturationFuture<'static, T, S> =
+                        unsafe { core::mem::transmute(future) };
+                    future
                 },
             },
             output_reciever,
@@ -326,10 +351,7 @@ impl<'almost_static, T: Transposer, Is: InputState<T>, S: StorageFamily>
         Ok(StepPoll::Pending)
     }
 
-    pub fn interpolate(
-        &self,
-        time: T::Time,
-    ) -> Result<Interpolation<'almost_static, T, Is, S>, InterpolateErr> {
+    pub fn interpolate(&self, time: T::Time) -> Result<Interpolation<T, Is, S>, InterpolateErr> {
         let wrapped_transposer = match &self.status {
             StepStatus::Saturated {
                 wrapped_transposer,
