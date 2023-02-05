@@ -1,46 +1,40 @@
+use archery::SharedPointerKind;
 use rand::SeedableRng;
 use rand_chacha::rand_core::block::BlockRng;
 use rand_chacha::ChaCha12Core;
+use rpds::{HashTrieMap, RedBlackTreeMap};
 
 use super::expire_handle_factory::ExpireHandleFactory;
 use super::time::{ScheduledTime, SubStepTime};
 use crate::context::ExpireEventError;
 use crate::expire_handle::ExpireHandle;
-use crate::schedule_storage::{HashMapStorage, OrdMapStorage, StorageFamily};
 use crate::Transposer;
 
 #[derive(Clone)]
-pub struct TransposerMetaData<T: Transposer, S: StorageFamily> {
+pub struct TransposerMetaData<T: Transposer, P: SharedPointerKind> {
     pub last_updated: SubStepTime<T::Time>,
 
-    pub schedule: S::OrdMap<ScheduledTime<T::Time>, T::Scheduled>,
+    pub schedule: RedBlackTreeMap<ScheduledTime<T::Time>, T::Scheduled, P>,
 
-    pub expire_handles_forward:  S::HashMap<ExpireHandle, ScheduledTime<T::Time>>,
-    pub expire_handles_backward: S::OrdMap<ScheduledTime<T::Time>, ExpireHandle>,
+    pub expire_handles_forward:  HashTrieMap<ExpireHandle, ScheduledTime<T::Time>, P>,
+    pub expire_handles_backward: RedBlackTreeMap<ScheduledTime<T::Time>, ExpireHandle, P>,
 
     pub expire_handle_factory: ExpireHandleFactory,
 
     pub rng: BlockRng<ChaCha12Core>,
 }
 
-impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
+impl<T: Transposer, P: SharedPointerKind> TransposerMetaData<T, P> {
     pub fn new(rng_seed: [u8; 32]) -> Self {
-        // this works around a GAT compiler issue
-        // maybe fix someday...
-        let schedule =
-            <S::OrdMap<ScheduledTime<T::Time>, T::Scheduled> as OrdMapStorage<_, _>>::new();
-        let expire_handles_forward =
-            <S::HashMap<ExpireHandle, ScheduledTime<T::Time>> as HashMapStorage<_, _>>::new();
-        let expire_handles_backward =
-            <S::OrdMap<ScheduledTime<T::Time>, ExpireHandle> as OrdMapStorage<_, _>>::new();
-
         Self {
-            last_updated: SubStepTime::new_init(),
-            schedule,
-            expire_handles_forward,
-            expire_handles_backward,
-            expire_handle_factory: ExpireHandleFactory::default(),
-            rng: BlockRng::new(ChaCha12Core::from_seed(rng_seed)),
+            last_updated:            SubStepTime::new_init(),
+            schedule:                RedBlackTreeMap::new_with_ptr_kind(),
+            expire_handles_forward:  HashTrieMap::new_with_hasher_and_ptr_kind(
+                std::collections::hash_map::RandomState::default(),
+            ),
+            expire_handles_backward: RedBlackTreeMap::new_with_ptr_kind(),
+            expire_handle_factory:   ExpireHandleFactory::default(),
+            rng:                     BlockRng::new(ChaCha12Core::from_seed(rng_seed)),
         }
     }
 
@@ -83,11 +77,15 @@ impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
     }
 
     pub fn get_next_scheduled_time(&self) -> Option<&ScheduledTime<T::Time>> {
-        self.schedule.get_first().map(|(k, _)| k)
+        self.schedule.first().map(|(k, _)| k)
     }
 
     pub fn pop_first_event(&mut self) -> Option<(ScheduledTime<T::Time>, T::Scheduled)> {
-        if let Some((k, v)) = self.schedule.pop_first() {
+        let first = match self.schedule.first() {
+            Some((ref k, _)) => todo!(),
+            None => None,
+        };
+        if let Some((k, v)) = first {
             if let Some(h) = self.expire_handles_backward.remove(&k) {
                 self.expire_handles_forward.remove(&h);
             }

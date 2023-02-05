@@ -1,19 +1,20 @@
 use core::future::Future;
 use core::pin::Pin;
 
+use archery::SharedPointerKind;
+
 use super::transposer_metadata::TransposerMetaData;
 use crate::context::*;
 use crate::expire_handle::ExpireHandle;
-use crate::schedule_storage::StorageFamily;
 use crate::Transposer;
 
 /// This is the interface through which you can do a variety of functions in your transposer.
 ///
 /// the primary features are scheduling and expiring events,
 /// though there are more methods to interact with the engine.
-pub struct SubStepUpdateContext<'update, T: Transposer, S: StorageFamily> {
+pub struct SubStepUpdateContext<'update, T: Transposer, P: SharedPointerKind> {
     // these are pointers because this is stored next to the targets.
-    pub metadata: &'update mut TransposerMetaData<T, S>,
+    pub metadata: &'update mut TransposerMetaData<T, P>,
 
     // pub time:               SubStepTime<T::Time>,
     pub outputs_to_swallow: usize,
@@ -26,22 +27,22 @@ pub struct SubStepUpdateContext<'update, T: Transposer, S: StorageFamily> {
     input_state: &'update T::InputStateManager,
 }
 
-impl<'update, T: Transposer, S: StorageFamily> InitContext<'update, T>
-    for SubStepUpdateContext<'update, T, S>
+impl<'update, T: Transposer, P: SharedPointerKind> InitContext<'update, T>
+    for SubStepUpdateContext<'update, T, P>
 {
 }
-impl<'update, T: Transposer, S: StorageFamily> HandleInputContext<'update, T>
-    for SubStepUpdateContext<'update, T, S>
+impl<'update, T: Transposer, P: SharedPointerKind> HandleInputContext<'update, T>
+    for SubStepUpdateContext<'update, T, P>
 {
 }
-impl<'update, T: Transposer, S: StorageFamily> HandleScheduleContext<'update, T>
-    for SubStepUpdateContext<'update, T, S>
+impl<'update, T: Transposer, P: SharedPointerKind> HandleScheduleContext<'update, T>
+    for SubStepUpdateContext<'update, T, P>
 {
 }
-impl<'update, T: Transposer, S: StorageFamily> SubStepUpdateContext<'update, T, S> {
+impl<'update, T: Transposer, P: SharedPointerKind> SubStepUpdateContext<'update, T, P> {
     // SAFETY: need to gurantee the metadata pointer outlives this object.
     pub fn new(
-        metadata: &'update mut TransposerMetaData<T, S>,
+        metadata: &'update mut TransposerMetaData<T, P>,
         input_state: &'update T::InputStateManager,
         outputs_to_swallow: usize,
         output_sender: futures_channel::mpsc::Sender<(
@@ -59,16 +60,16 @@ impl<'update, T: Transposer, S: StorageFamily> SubStepUpdateContext<'update, T, 
     }
 }
 
-impl<'update, T: Transposer, S: StorageFamily> InputStateContext<'update, T>
-    for SubStepUpdateContext<'update, T, S>
+impl<'update, T: Transposer, P: SharedPointerKind> InputStateContext<'update, T>
+    for SubStepUpdateContext<'update, T, P>
 {
     fn get_input_state_manager(&mut self) -> &'update T::InputStateManager {
         self.input_state
     }
 }
 
-impl<'update, T: Transposer, S: StorageFamily> ScheduleEventContext<T>
-    for SubStepUpdateContext<'update, T, S>
+impl<'update, T: Transposer, P: SharedPointerKind> ScheduleEventContext<T>
+    for SubStepUpdateContext<'update, T, P>
 {
     fn schedule_event(
         &mut self,
@@ -111,8 +112,8 @@ impl<'update, T: Transposer, S: StorageFamily> ScheduleEventContext<T>
     }
 }
 
-impl<'update, T: Transposer, S: StorageFamily> ExpireEventContext<T>
-    for SubStepUpdateContext<'update, T, S>
+impl<'update, T: Transposer, P: SharedPointerKind> ExpireEventContext<T>
+    for SubStepUpdateContext<'update, T, P>
 {
     fn expire_event(
         &mut self,
@@ -122,8 +123,8 @@ impl<'update, T: Transposer, S: StorageFamily> ExpireEventContext<T>
     }
 }
 
-impl<'update, T: Transposer, S: StorageFamily> EmitEventContext<T>
-    for SubStepUpdateContext<'update, T, S>
+impl<'update, T: Transposer, P: SharedPointerKind> EmitEventContext<T>
+    for SubStepUpdateContext<'update, T, P>
 {
     fn emit_event(
         &mut self,
@@ -144,7 +145,9 @@ impl<'update, T: Transposer, S: StorageFamily> EmitEventContext<T>
     }
 }
 
-impl<'update, T: Transposer, S: StorageFamily> RngContext for SubStepUpdateContext<'update, T, S> {
+impl<'update, T: Transposer, P: SharedPointerKind> RngContext
+    for SubStepUpdateContext<'update, T, P>
+{
     fn get_rng(&mut self) -> &mut dyn rand::RngCore {
         &mut self.metadata.rng
     }

@@ -1,28 +1,29 @@
+use archery::{SharedPointer, SharedPointerKind};
+
 use super::sub_step_update_context::SubStepUpdateContext;
 use super::transposer_metadata::TransposerMetaData;
-use crate::schedule_storage::{RefCounted, StorageFamily};
 use crate::step::step_inputs::StepInputs;
 use crate::step::InputState;
 use crate::Transposer;
 
 #[derive(Clone)]
-pub struct WrappedTransposer<T: Transposer, S: StorageFamily> {
+pub struct WrappedTransposer<T: Transposer, P: SharedPointerKind> {
     pub transposer: T,
-    pub metadata:   TransposerMetaData<T, S>,
+    pub metadata:   TransposerMetaData<T, P>,
 }
 
-impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
+impl<T: Transposer, P: SharedPointerKind> WrappedTransposer<T, P> {
     /// create a wrapped transposer, and perform all T::default scheduled events.
     pub async fn init<Is: InputState<T>>(
         mut transposer: T,
         rng_seed: [u8; 32],
-        input_state: S::LazyState<Is>,
+        input_state: SharedPointer<Is, P>,
         outputs_to_swallow: usize,
         output_sender: futures_channel::mpsc::Sender<(
             T::OutputEvent,
             futures_channel::oneshot::Sender<()>,
         )>,
-    ) -> S::Transposer<Self> {
+    ) -> SharedPointer<Self, P> {
         let mut metadata = TransposerMetaData::new(rng_seed);
         let input_state_provider = input_state.get_provider();
         let mut context = SubStepUpdateContext::new(
@@ -53,14 +54,14 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
         )
         .await;
 
-        S::Transposer::new(Box::new(new))
+        SharedPointer::new(new)
     }
 
     /// handle an input, and all scheduled events that occur at the same time.
     pub async fn handle_input<Is: InputState<T>>(
         &mut self,
         input: &StepInputs<T>,
-        input_state: S::LazyState<Is>,
+        input_state: SharedPointer<Is, P>,
         outputs_to_swallow: usize,
         output_sender: futures_channel::mpsc::Sender<(
             T::OutputEvent,
@@ -93,7 +94,7 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
     pub async fn handle_scheduled<Is: InputState<T>>(
         &mut self,
         time: T::Time,
-        input_state: S::LazyState<Is>,
+        input_state: SharedPointer<Is, P>,
         outputs_to_swallow: usize,
         output_sender: futures_channel::mpsc::Sender<(
             T::OutputEvent,

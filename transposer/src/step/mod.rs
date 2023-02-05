@@ -15,6 +15,7 @@ use core::pin::Pin;
 use core::task::{Context, Waker};
 use std::sync::Arc;
 
+use archery::{ArcK, SharedPointer, SharedPointerKind};
 use futures_channel::{mpsc, oneshot};
 use futures_util::{FutureExt, StreamExt};
 pub use interpolation::Interpolation;
@@ -22,7 +23,6 @@ use step_inputs::StepInputs;
 use time::ScheduledTime;
 use wrapped_transposer::WrappedTransposer;
 
-use crate::schedule_storage::{DefaultStorage, RefCounted, StorageFamily};
 use crate::{Transposer, TransposerInput};
 
 enum StepData<T: Transposer> {
@@ -31,30 +31,30 @@ enum StepData<T: Transposer> {
     Scheduled(ScheduledTime<T::Time>),
 }
 
-type SaturationFuture<'a, T, S> =
-    Pin<Box<dyn 'a + Future<Output = <S as StorageFamily>::Transposer<WrappedTransposer<T, S>>>>>;
+type SaturationFuture<'a, T, P> =
+    Pin<Box<dyn 'a + Future<Output = SharedPointer<WrappedTransposer<T, P>, P>>>>;
 
-enum StepStatus<T: Transposer, S: StorageFamily> {
+enum StepStatus<T: Transposer, P: SharedPointerKind> {
     Unsaturated,
     Saturating {
-        future:          SaturationFuture<'static, T, S>,
+        future:          SaturationFuture<'static, T, P>,
         output_reciever: mpsc::Receiver<(T::OutputEvent, oneshot::Sender<()>)>,
     },
     Saturated {
-        wrapped_transposer: S::Transposer<WrappedTransposer<T, S>>,
+        wrapped_transposer: SharedPointer<WrappedTransposer<T, P>, P>,
     },
 }
 
-impl<T: Transposer, S: StorageFamily> Default for StepStatus<T, S> {
+impl<T: Transposer, P: SharedPointerKind> Default for StepStatus<T, P> {
     fn default() -> Self {
         Self::Unsaturated
     }
 }
 
-pub struct Step<T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStorage> {
-    data:        Arc<StepData<T>>,
-    input_state: S::LazyState<Is>,
-    status:      StepStatus<T, S>,
+pub struct Step<T: Transposer, Is: InputState<T>, P: SharedPointerKind = ArcK> {
+    data:        SharedPointer<StepData<T>, P>,
+    input_state: SharedPointer<Is, P>,
+    status:      StepStatus<T, P>,
     event_count: usize,
 
     #[cfg(debug_assertions)]
@@ -83,7 +83,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> InputState<T> for NoInpu
     }
 }
 
-impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Drop for Step<T, Is, S> {
+impl<T: Transposer, Is: InputState<T>, P: SharedPointerKind> Drop for Step<T, Is, P> {
     fn drop(&mut self) {
         let status = core::mem::replace(&mut self.status, StepStatus::Unsaturated);
 
@@ -93,10 +93,10 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Drop for Step<T, Is, S>
                 future,
                 output_reciever: _,
             } => {
-                let future: SaturationFuture<'static, T, S> = future;
+                let future: SaturationFuture<'static, T, P> = future;
                 // SAFETY: the future here can only hold things that the step is already generic over and contains.
                 // this means that this lifetime forging to 'static is ok.
-                let future: SaturationFuture<'_, T, S> = unsafe { core::mem::transmute(future) };
+                let future: SaturationFuture<'_, T, P> = unsafe { core::mem::transmute(future) };
 
                 drop(future);
             },
@@ -107,7 +107,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Drop for Step<T, Is, S>
     }
 }
 
-impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
+impl<T: Transposer, Is: InputState<T>, P: SharedPointerKind> Step<T, Is, P> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         let input_state = S::LazyState::new(Box::new(Is::new()));
         let (output_sender, output_reciever) = mpsc::channel(1);

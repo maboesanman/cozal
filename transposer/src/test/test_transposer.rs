@@ -1,4 +1,6 @@
+use archery::ArcK;
 use rand::Rng;
+use rpds::Vector;
 
 use crate::context::{
     HandleInputContext,
@@ -19,7 +21,7 @@ pub(crate) enum HandleRecord {
 pub(crate) struct TestTransposer {
     init_events: Vec<(usize, usize)>,
 
-    pub handle_record: im::Vector<(HandleRecord, u64)>,
+    pub handle_record: Vector<(HandleRecord, u64), ArcK>,
 }
 
 #[allow(dead_code)]
@@ -28,7 +30,7 @@ impl TestTransposer {
         Self {
             init_events,
 
-            handle_record: im::Vector::new(),
+            handle_record: Vector::new_with_ptr_kind(),
         }
     }
 }
@@ -117,7 +119,7 @@ impl Transposer for TestTransposer {
         _interpolated_time: Self::Time,
         _cx: &mut dyn InterpolateContext<'_, Self>,
     ) -> Self::OutputState {
-        self.handle_record.clone().into_iter().collect()
+        self.handle_record.clone().into_iter().cloned().collect()
     }
 }
 
