@@ -13,6 +13,7 @@ mod test;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Waker};
+use std::ops::DerefMut;
 use std::sync::Arc;
 
 use futures_channel::{mpsc, oneshot};
@@ -316,7 +317,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
         self.input_state = S::LazyState::new(Box::new(Is::new()));
     }
 
-    pub fn poll(&mut self, waker: Waker) -> Result<StepPoll<T>, PollErr> {
+    pub fn poll(&mut self, waker: &Waker) -> Result<StepPoll<T>, PollErr> {
         let (future, output_reciever) = match &mut self.status {
             StepStatus::Unsaturated => return Err(PollErr::Unsaturated),
             StepStatus::Saturating {
@@ -328,7 +329,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
             } => return Err(PollErr::Saturated),
         };
 
-        let mut cx = Context::from_waker(&waker);
+        let mut cx = Context::from_waker(waker);
 
         let poll = future.poll_unpin(&mut cx);
 

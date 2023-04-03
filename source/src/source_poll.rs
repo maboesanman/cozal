@@ -27,6 +27,7 @@ pub enum SourcePoll<T, E, S> {
 pub enum Interrupt<E> {
     /// A new event is available.
     Event(E),
+    // FinalEvent(E)
     /// All events before at or after time T must be discarded.
     Rollback,
     /// No event will ever be emitted before time T again.

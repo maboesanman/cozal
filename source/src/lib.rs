@@ -4,7 +4,8 @@
 
 mod source_poll;
 
-pub mod adapters;
+// pub mod adapters;
+pub mod sources;
 pub mod traits;
 
 pub use self::source_poll::SourcePoll;

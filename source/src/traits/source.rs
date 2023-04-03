@@ -1,5 +1,4 @@
 use core::num::NonZeroUsize;
-use core::pin::Pin;
 use core::task::Waker;
 
 use crate::source_poll::TrySourcePoll;
@@ -55,7 +54,7 @@ pub trait Source {
     ///
     /// - [`Pending`](EventStatePoll::Pending) indicates one of the other responses is not available at this time. the current thread will be woken up when progress can be made by calling poll again with the same time. You should be polling at the same time as the call which returned pending if you are responding to a task wake, or else you might not actually be able to make progress.
     fn poll(
-        self: Pin<&mut Self>,
+        &mut self,
         time: Self::Time,
         cx: SourceContext,
     ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error>;
@@ -64,7 +63,7 @@ pub trait Source {
     ///
     /// If you do not need to be notified that this state has been invalidated (if for example you polled in order to render to the screen, so finding out your previous frame was wrong means nothing because you can't go back and change it) then this function should be preferred.
     fn poll_forget(
-        self: Pin<&mut Self>,
+        &mut self,
         time: Self::Time,
         cx: SourceContext,
     ) -> TrySourcePoll<Self::Time, Self::Event, Self::State, Self::Error> {
@@ -75,18 +74,18 @@ pub trait Source {
     ///
     /// If you do not need to use the state, this should be preferred over poll. For example, if you are simply verifying the source does not have new events before a time t, poll_ignore_state could be faster than poll (with a custom implementation).
     fn poll_events(
-        self: Pin<&mut Self>,
+        &mut self,
         time: Self::Time,
         all_channel_waker: Waker,
     ) -> TrySourcePoll<Self::Time, Self::Event, (), Self::Error>;
 
     /// Inform the source it is no longer obligated to retain progress made on `channel`
-    fn release_channel(self: Pin<&mut Self>, channel: usize);
+    fn release_channel(&mut self, channel: usize);
 
     /// Inform the source that you will never poll before `time` again on any channel.
     ///
     /// Calling poll before this time should result in `SourcePollError::PollAfterAdvance`
-    fn advance(self: Pin<&mut Self>, time: Self::Time);
+    fn advance(&mut self, time: Self::Time);
 
     /// The maximum value which can be used as the channel for a poll call.
     ///

@@ -21,6 +21,8 @@ enum SingleInputStateInner<I: TransposerInput> {
     Full(Box<I::InputState>),
 }
 
+// SAFETY: the NonNull returned from get_input_state will always last until the enum is dropped
+// because we never go from Full to Empty or Requested.
 unsafe impl<I: TransposerInput> StateRetriever<I> for SingleInputState<I> {
     fn get_input_state(&self) -> Receiver<NonNull<I::InputState>> {
         let (send, recv) = channel();
