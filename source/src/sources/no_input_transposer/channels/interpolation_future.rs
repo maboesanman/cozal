@@ -4,7 +4,7 @@ use std::sync::Weak;
 use std::task::{Context, Poll, Waker};
 
 use futures_core::Future;
-use transposer::step::{Interpolation, NoInputManager, StepPoll};
+use transposer::step::NoInputManager;
 use transposer::Transposer;
 use util::extended_entry::hash_map::OccupiedExtEntry as HashMapOccupiedEntry;
 use util::stack_waker::StackWaker;

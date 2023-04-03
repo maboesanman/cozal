@@ -1,21 +1,16 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Weak;
-use std::task::Waker;
 
 use transposer::schedule_storage::DefaultStorage;
-use transposer::step::{Interpolation, NoInput, NoInputManager, Step};
+use transposer::step::{Interpolation, NoInput, NoInputManager};
 use transposer::Transposer;
-use util::extended_entry::hash_map::{
-    get_occupied,
-    OccupiedExtEntry as HashMapOccupiedEntry,
-    VacantExtEntry as HashMapVacantEntry,
-};
-use util::stack_waker::{self, StackWaker};
+use util::extended_entry::hash_map::{get_occupied, VacantExtEntry as HashMapVacantEntry};
+use util::stack_waker::StackWaker;
 
 use super::interpolation_future::InterpolationFuture;
 use super::original_step_future::OriginalStepFuture;
 use super::repeat_step_future::RepeatStepFuture;
-use super::{CallerChannelBlockedReason, CallerChannelStatus};
+use super::CallerChannelBlockedReason;
 
 pub struct Free<'a, T: Transposer<InputStateManager = NoInputManager>> {
     // entries

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::sync::Weak;
 
 use transposer::schedule_storage::DefaultStorage;

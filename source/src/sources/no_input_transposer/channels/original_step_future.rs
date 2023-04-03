@@ -1,34 +1,15 @@
-use std::collections::{BTreeMap, HashMap};
-use std::pin::Pin;
+use std::collections::HashMap;
 use std::sync::Weak;
-use std::task::{Context, Poll, Waker};
+use std::task::Waker;
 
-use futures_core::Future;
 use transposer::schedule_storage::DefaultStorage;
-use transposer::step::{Interpolation, NoInput, NoInputManager, Step, StepPoll};
+use transposer::step::{NoInput, NoInputManager, Step, StepPoll};
 use transposer::Transposer;
-use util::extended_entry::btree_map::{
-    get_first_vacant,
-    get_occupied as btree_map_get_occupied,
-    OccupiedExtEntry as BTreeMapOccupiedEntry,
-    VacantExtEntry as BTreeMapVacantEntry,
-};
-use util::extended_entry::hash_map::{
-    get_occupied as hash_map_get_occupied,
-    OccupiedExtEntry as HashMapOccupiedEntry,
-    VacantExtEntry as HashMapVacantEntry,
-};
-use util::extended_entry::option::{
-    get_occupied as option_get_occupied,
-    OccupiedExtEntry as OptionOccupiedEntry,
-    VacantExtEntry as OptionVacantEntry,
-};
-use util::extended_entry::vecdeque::get_ext_entry as vecdeque_get_ext_entry;
-use util::replace_mut::replace;
+use util::extended_entry::hash_map::OccupiedExtEntry as HashMapOccupiedEntry;
 use util::stack_waker::StackWaker;
 
 use super::free::Free;
-use super::{CallerChannelBlockedReason, CallerChannelStatus};
+use super::CallerChannelBlockedReason;
 
 pub struct OriginalStepFuture<'a, T: Transposer<InputStateManager = NoInputManager>> {
     // entries
