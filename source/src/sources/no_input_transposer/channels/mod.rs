@@ -4,7 +4,13 @@ use std::sync::Weak;
 use transposer::schedule_storage::DefaultStorage;
 use transposer::step::{Interpolation, NoInput, NoInputManager};
 use transposer::Transposer;
+use util::extended_entry::hash_map::get_occupied;
 use util::stack_waker::StackWaker;
+
+use self::free::Free;
+use self::interpolation_future::InterpolationFuture;
+use self::original_step_future::OriginalStepFuture;
+use self::repeat_step_future::RepeatStepFuture;
 
 mod free;
 mod interpolation_future;
@@ -43,7 +49,34 @@ impl<T: Transposer<InputStateManager = NoInputManager>> ChannelStatuses<T> {
     ///
     /// this internally holds mutable refs to the ChannelStatuses
     pub fn get_channel_status(&mut self, caller_channel: usize) -> CallerChannelStatus<'_, T> {
-        todo!()
+        match get_occupied(&mut self.blocked_caller_channels, caller_channel) {
+            Ok(occupied) => match occupied.get_value() {
+                CallerChannelBlockedReason::OriginalStep => {
+                    CallerChannelStatus::OriginalStepFuture(OriginalStepFuture {
+                        caller_channel:             occupied,
+                        blocked_repeat_step_wakers: &mut self.blocked_repeat_step_wakers,
+                    })
+                },
+                CallerChannelBlockedReason::RepeatStep {
+                    step_id,
+                } => CallerChannelStatus::RepeatStepFuture(RepeatStepFuture {
+                    wakers:         get_occupied(&mut self.blocked_repeat_step_wakers, *step_id)
+                        .unwrap(),
+                    caller_channel: occupied,
+                }),
+                CallerChannelBlockedReason::InterpolationFuture {
+                    ..
+                } => CallerChannelStatus::InterpolationFuture(InterpolationFuture {
+                    caller_channel:             occupied,
+                    blocked_repeat_step_wakers: &mut self.blocked_repeat_step_wakers,
+                }),
+                CallerChannelBlockedReason::Poisioned => panic!(),
+            },
+            Err(vacant) => CallerChannelStatus::Free(Free {
+                caller_channel:             vacant,
+                blocked_repeat_step_wakers: &mut self.blocked_repeat_step_wakers,
+            }),
+        }
     }
 }
 
@@ -54,7 +87,6 @@ pub enum CallerChannelBlockedReason<T: Transposer<InputStateManager = NoInputMan
     },
     InterpolationFuture {
         interpolation: Interpolation<T, NoInput, DefaultStorage>,
-        forget:        bool,
     },
     Poisioned,
 }

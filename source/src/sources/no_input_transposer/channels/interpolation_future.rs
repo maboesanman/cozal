@@ -1,5 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
-use std::pin::Pin;
+use std::collections::HashMap;
 use std::sync::Weak;
 use std::task::{Context, Poll, Waker};
 
@@ -36,7 +35,6 @@ impl<'a, T: Transposer<InputStateManager = NoInputManager>> InterpolationFuture<
         let poll = match value {
             CallerChannelBlockedReason::InterpolationFuture {
                 interpolation,
-                forget,
             } => {
                 let mut cx = Context::from_waker(one_channel_waker);
                 std::pin::pin!(interpolation).poll(&mut cx)

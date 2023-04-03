@@ -25,7 +25,6 @@ impl<'a, T: Transposer<InputStateManager = NoInputManager>> Free<'a, T> {
     pub fn start_interpolation(
         self,
         interpolation: Interpolation<T, NoInput, DefaultStorage>,
-        forget: bool,
     ) -> InterpolationFuture<'a, T> {
         let Self {
             caller_channel: vacant_channel,
@@ -34,7 +33,6 @@ impl<'a, T: Transposer<InputStateManager = NoInputManager>> Free<'a, T> {
 
         let new_blocked_reason = CallerChannelBlockedReason::InterpolationFuture {
             interpolation,
-            forget,
         };
 
         let occupied_channel = vacant_channel.occupy(new_blocked_reason);
