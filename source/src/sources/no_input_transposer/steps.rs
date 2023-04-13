@@ -174,49 +174,92 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         )
     }
 
+    fn try_next_scheduled(&mut self) {
+        // ensure theres always a saturating or unsaturated step after the time polled.
+        let last_step = &self.steps.back().unwrap().step;
+        if last_step.is_saturated() {
+            if let Some(new_step) = last_step.next_scheduled_unsaturated().unwrap() {
+                self.steps.push_back(StepWrapper {
+                    step: new_step
+                })
+            }
+        }
+    }
+
+    pub fn get_before_or_at_events(
+        &mut self,
+        time: T::Time,
+        pinned_times: &[T::Time],
+    ) -> Result<BeforeStatusEvents<'_, T>, ()> {
+        self.try_next_scheduled();
+
+        let last_step_index = self.max_sequence_number();
+        let last_step = &mut self.steps.back_mut().unwrap().step;
+
+        if time < last_step.get_time() || !last_step.can_produce_events() {
+            let next_time = (last_step.can_produce_events()).then_some(last_step.get_time());
+
+            Ok(BeforeStatusEvents::Ready {
+                next_time,
+            })
+        } else {
+            if last_step.is_unsaturated() {
+                self.saturate(last_step_index, pinned_times);
+            }
+            let last_step = &mut self.steps.back_mut().unwrap().step;
+            Ok(BeforeStatusEvents::Saturating {
+                step:       last_step,
+                step_index: last_step_index,
+            })
+        }
+    }
+
     pub fn get_before_or_at(
         &mut self,
         time: T::Time,
         pinned_times: &[T::Time],
     ) -> Result<BeforeStatus<'_, T>, ()> {
-        Ok(match self.get_before_or_at_internal(time, pinned_times)? {
-            (BeforeStatusInternal::SaturatedReady, i) => {
-                let original_step = self.steps.back().unwrap();
-                let next_time =
-                    (!original_step.step.is_saturated()).then_some(original_step.step.get_time());
+        Ok(
+            match self.get_before_or_at_internal(time, pinned_times, false)? {
+                BeforeStatusInternal::SaturatedReady(i) => {
+                    let original_step = self.steps.back().unwrap();
+                    let next_time = (!original_step.step.is_saturated())
+                        .then_some(original_step.step.get_time());
 
-                BeforeStatus::Saturated {
-                    step: &mut self.steps.get_mut(i).unwrap().step,
-                    next_time,
-                }
-            },
-            (BeforeStatusInternal::Saturating, i) => {
-                let repeat = i + 1 == self.steps.len();
-                let step_index = i + self.num_deleted_steps;
-                let step = &mut self.steps.get_mut(i).unwrap().step;
+                    BeforeStatus::Saturated {
+                        step: &mut self.steps.get_mut(i).unwrap().step,
+                        next_time,
+                    }
+                },
+                BeforeStatusInternal::Saturating(i) => {
+                    let repeat = i + 1 == self.steps.len();
+                    let step_index = i + self.num_deleted_steps;
+                    let step = &mut self.steps.get_mut(i).unwrap().step;
 
-                BeforeStatus::Saturating {
-                    step,
-                    step_index,
-                    repeat,
-                }
+                    BeforeStatus::Saturating {
+                        step,
+                        step_index,
+                    }
+                },
+                _ => panic!(),
             },
-        })
+        )
     }
 
     fn get_before_or_at_internal(
         &mut self,
         time: T::Time,
         pinned_times: &[T::Time],
-    ) -> Result<(BeforeStatusInternal, /* vecdeque index */ usize), ()> {
-        // ensure theres always a saturating or unsaturated step after the time polled.
-        let last_step = &self.steps.back().unwrap().step;
-        if time > last_step.get_time() && last_step.is_saturated() {
-            if let Some(new_step) = last_step.next_scheduled_unsaturated().unwrap() {
-                self.steps.push_back(StepWrapper {
-                    step:             new_step,
-                    first_emitted_id: None,
-                })
+        events_only: bool,
+    ) -> Result<BeforeStatusInternal, ()> {
+        self.try_next_scheduled();
+
+        if events_only {
+            let last_step = &self.steps.back_mut().unwrap().step;
+            if time < last_step.get_time() || !last_step.can_produce_events() {
+                return Ok(BeforeStatusInternal::AllRepeat)
+            } else {
+                return Ok(BeforeStatusInternal::Saturating(self.max_sequence_number()))
             }
         }
 
@@ -233,9 +276,9 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
 
         let step = self.steps.get_mut(vecdeque_index).ok_or(())?;
         if step.step.is_saturated() {
-            return Ok((BeforeStatusInternal::SaturatedReady, vecdeque_index))
+            return Ok(BeforeStatusInternal::SaturatedReady(vecdeque_index))
         } else if step.step.is_saturating() {
-            return Ok((BeforeStatusInternal::Saturating, vecdeque_index))
+            return Ok(BeforeStatusInternal::Saturating(vecdeque_index))
         }
 
         loop {
@@ -246,11 +289,11 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
                 let vecdeque_index = vecdeque_index + 1;
                 let step_to_saturate = vecdeque_index + self.num_deleted_steps;
                 self.saturate(step_to_saturate, pinned_times);
-                return Ok((BeforeStatusInternal::Saturating, vecdeque_index))
+                return Ok(BeforeStatusInternal::Saturating(vecdeque_index))
             }
 
             if step.step.is_saturating() {
-                return Ok((BeforeStatusInternal::Saturating, vecdeque_index))
+                return Ok(BeforeStatusInternal::Saturating(vecdeque_index))
             }
         }
     }
@@ -295,25 +338,33 @@ pub enum BeforeStatus<'a, T: Transposer<InputStateManager = NoInputManager>> {
     Saturating {
         step:       &'a mut Step<T, NoInput>,
         step_index: usize,
-        repeat:     bool,
+    },
+}
+
+pub enum BeforeStatusEvents<'a, T: Transposer<InputStateManager = NoInputManager>> {
+    Ready {
+        next_time: Option<T::Time>,
+    },
+    Saturating {
+        step:       &'a mut Step<T, NoInput>,
+        step_index: usize,
     },
 }
 
 pub enum BeforeStatusInternal {
-    SaturatedReady,
-    Saturating,
+    SaturatedReady(usize),
+    Saturating(usize),
+    AllRepeat,
 }
 
 struct StepWrapper<T: Transposer<InputStateManager = NoInputManager>> {
-    pub step:             Step<T, NoInput>,
-    pub first_emitted_id: Option<usize>,
+    pub step: Step<T, NoInput>,
 }
 
 impl<T: Transposer<InputStateManager = NoInputManager>> StepWrapper<T> {
     pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
         Self {
-            step:             Step::new_init(transposer, rng_seed),
-            first_emitted_id: None,
+            step: Step::new_init(transposer, rng_seed),
         }
     }
 }

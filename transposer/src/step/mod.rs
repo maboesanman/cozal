@@ -13,7 +13,6 @@ mod test;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Waker};
-use std::ops::DerefMut;
 use std::sync::Arc;
 
 use futures_channel::{mpsc, oneshot};
@@ -53,10 +52,11 @@ impl<T: Transposer, S: StorageFamily> Default for StepStatus<T, S> {
 }
 
 pub struct Step<T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStorage> {
-    data:        Arc<StepData<T>>,
-    input_state: S::LazyState<Is>,
-    status:      StepStatus<T, S>,
-    event_count: usize,
+    data:               Arc<StepData<T>>,
+    input_state:        S::LazyState<Is>,
+    status:             StepStatus<T, S>,
+    event_count:        usize,
+    can_produce_events: bool,
 
     #[cfg(debug_assertions)]
     uuid_self: uuid::Uuid,
@@ -134,6 +134,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
             input_state,
             status,
             event_count: 0,
+            can_produce_events: true,
 
             #[cfg(debug_assertions)]
             uuid_self: uuid::Uuid::new_v4(),
@@ -169,10 +170,11 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
         };
 
         Ok(Some(Self {
-            data:        Arc::new(data),
-            input_state: S::LazyState::new(Box::new(Is::new())),
-            status:      StepStatus::Unsaturated,
-            event_count: 0,
+            data:               Arc::new(data),
+            input_state:        S::LazyState::new(Box::new(Is::new())),
+            status:             StepStatus::Unsaturated,
+            event_count:        0,
+            can_produce_events: true,
 
             #[cfg(debug_assertions)]
             uuid_self:                          uuid::Uuid::new_v4(),
@@ -196,10 +198,11 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
         };
 
         Ok(Some(Self {
-            data:        Arc::new(data),
-            input_state: S::LazyState::new(Box::new(Is::new())),
-            status:      StepStatus::Unsaturated,
-            event_count: 0,
+            data:               Arc::new(data),
+            input_state:        S::LazyState::new(Box::new(Is::new())),
+            status:             StepStatus::Unsaturated,
+            event_count:        0,
+            can_produce_events: true,
 
             #[cfg(debug_assertions)]
             uuid_self:                          uuid::Uuid::new_v4(),
@@ -338,6 +341,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
                 self.status = StepStatus::Saturated {
                     wrapped_transposer,
                 };
+                self.can_produce_events = false;
                 return Ok(StepPoll::Ready)
             },
             std::task::Poll::Pending => output_reciever.poll_next_unpin(&mut cx),
@@ -389,6 +393,10 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
 
     pub fn is_saturated(&self) -> bool {
         matches!(self.status, StepStatus::Saturated { .. })
+    }
+
+    pub fn can_produce_events(&self) -> bool {
+        self.can_produce_events
     }
 }
 

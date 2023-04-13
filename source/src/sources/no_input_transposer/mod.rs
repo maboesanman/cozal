@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::task::Poll;
 
-use transposer::step::{NoInput, NoInputManager, Step};
+use transposer::step::{NoInput, NoInputManager, Step, StepPoll};
 use transposer::Transposer;
 
 use self::channels::{interpolation_future, CallerChannelStatus, ChannelStatuses};
@@ -59,18 +59,15 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
                             CallerChannelStatus::InterpolationFuture(interpolation)
                         },
                         steps::BeforeStatus::Saturating {
-                            step: _,
+                            step,
                             step_index,
-                            repeat,
                         } => {
-                            let step_index = repeat.then_some(step_index);
-
-                            if let Some(index) = step_index {
-                                let repeat_entry = free.start_repeat_step(index, time);
-                                CallerChannelStatus::RepeatStepFuture(repeat_entry)
-                            } else {
+                            if step.can_produce_events() {
                                 let original_entry = free.start_original_step(time);
                                 CallerChannelStatus::OriginalStepFuture(original_entry)
+                            } else {
+                                let repeat_entry = free.start_repeat_step(step_index, time);
+                                CallerChannelStatus::RepeatStepFuture(repeat_entry)
                             }
                         },
                     }
@@ -141,7 +138,40 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
         time: Self::Time,
         all_channel_waker: std::task::Waker,
     ) -> TrySourcePoll<Self::Time, Self::Event, (), Self::Error> {
-        todo!()
+        let pinned_times = self.channel_statuses.get_pinned_times();
+
+        let poll = loop {
+            let (poll, time) = match self
+                .steps
+                .get_before_or_at_events(time, &pinned_times)
+                .unwrap()
+            {
+                steps::BeforeStatusEvents::Ready {
+                    next_time,
+                } => {
+                    break SourcePoll::Ready {
+                        state:         (),
+                        next_event_at: next_time,
+                    }
+                },
+                steps::BeforeStatusEvents::Saturating {
+                    step, ..
+                } => (step.poll(&all_channel_waker).unwrap(), step.get_time()),
+            };
+
+            match poll {
+                StepPoll::Emitted(e) => {
+                    break SourcePoll::Interrupt {
+                        time,
+                        interrupt: source_poll::Interrupt::Event(e),
+                    }
+                },
+                StepPoll::Pending => break SourcePoll::Pending,
+                StepPoll::Ready => continue,
+            }
+        };
+
+        Ok(poll)
     }
 
     fn release_channel(&mut self, channel: usize) {
