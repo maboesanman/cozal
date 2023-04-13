@@ -58,24 +58,48 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         self.num_deleted_steps + self.steps.len() - 1
     }
 
-    fn saturate(&mut self, /* index in vecdeq currently */ i: usize, take: bool) {
-        let (previous, step) = self.get_step_and_prev_mut(i);
+    fn saturate(&mut self, step_to_saturate: usize, pinned_times: &[T::Time]) {
+        let to_desaturate = self.sequence_number_to_delete(pinned_times, step_to_saturate);
+
+        let take = match to_desaturate {
+            Some(to_desaturate) => {
+                let adjacent = to_desaturate == step_to_saturate - 1;
+                if !adjacent {
+                    self.desaturate(to_desaturate);
+                }
+
+                adjacent
+            },
+            None => false,
+        };
+
+        self.saturate_adjacent(step_to_saturate, take);
+    }
+
+    fn saturate_adjacent(&mut self, vecdeque_index: usize, take: bool) {
+        let (previous, step) = self.get_step_and_prev_mut(vecdeque_index);
 
         if take {
             step.saturate_take(previous).unwrap();
 
             self.not_unsaturated
-                .remove(&(i + self.num_deleted_steps - 1));
+                .remove(&(vecdeque_index + self.num_deleted_steps - 1));
         } else {
             step.saturate_clone(previous).unwrap();
         }
 
-        self.not_unsaturated.insert(i + self.num_deleted_steps);
+        self.not_unsaturated
+            .insert(vecdeque_index + self.num_deleted_steps);
     }
 
-    fn desaturate(&mut self, /* index in vecdeq currently */ i: usize) {
-        self.steps.get_mut(i).unwrap().step.desaturate();
-        self.not_unsaturated.remove(&(i + self.num_deleted_steps));
+    fn desaturate(&mut self, vecdeque_index: usize) {
+        self.steps
+            .get_mut(vecdeque_index)
+            .unwrap()
+            .step
+            .desaturate();
+        self.not_unsaturated
+            .remove(&(vecdeque_index + self.num_deleted_steps));
     }
 
     fn sequence_number_to_delete(
@@ -95,6 +119,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
             }
         }
 
+        // TODO: don't clone this ideally.
         let mut candidates: Vec<_> = self.not_unsaturated.iter().map(|x| *x).collect();
 
         let mut pinned_steps = vec![self.num_deleted_steps];
@@ -111,7 +136,12 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
             })
             .collect_into(&mut pinned_steps);
 
-        // pinned_steps.sort();
+        // ensure we don't ever drop the last step.
+        pinned_steps.push(self.max_sequence_number());
+
+        // should have gotten this right by construction but we should check...
+        debug_assert!(pinned_steps.is_sorted());
+
         pinned_steps.dedup();
 
         for pinned in pinned_steps.iter().rev() {
@@ -178,7 +208,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         &mut self,
         time: T::Time,
         pinned_times: &[T::Time],
-    ) -> Result<(BeforeStatusInternal, usize), ()> {
+    ) -> Result<(BeforeStatusInternal, /* vecdeque index */ usize), ()> {
         // ensure theres always a saturating or unsaturated step after the time polled.
         let last_step = &self.steps.back().unwrap().step;
         if time > last_step.get_time() && last_step.is_saturated() {
@@ -191,7 +221,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         }
 
         // this is just mimicking partition_point, because vecdeque isn't actually contiguous
-        let mut i = match self
+        let vecdeque_index = match self
             .steps
             .binary_search_by_key(&time, |s| s.step.get_time())
         {
@@ -201,40 +231,26 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
 
         // now i is the index of the latest step before or at time.
 
-        // this is only indexed into in two places. here and in the loop.
-        let step_i = self.steps.get_mut(i).ok_or(())?;
-        if step_i.step.is_saturated() {
-            return Ok((BeforeStatusInternal::SaturatedReady, i))
-        } else if step_i.step.is_saturating() {
-            return Ok((BeforeStatusInternal::Saturating, i))
+        let step = self.steps.get_mut(vecdeque_index).ok_or(())?;
+        if step.step.is_saturated() {
+            return Ok((BeforeStatusInternal::SaturatedReady, vecdeque_index))
+        } else if step.step.is_saturating() {
+            return Ok((BeforeStatusInternal::Saturating, vecdeque_index))
         }
 
         loop {
-            i = i.checked_sub(1).ok_or(())?;
+            let vecdeque_index = vecdeque_index.checked_sub(1).ok_or(())?;
+            let step = self.steps.get_mut(vecdeque_index).ok_or(())?;
 
-            let step_i = self.steps.get_mut(i).ok_or(())?;
+            if step.step.is_saturated() {
+                let vecdeque_index = vecdeque_index + 1;
+                let step_to_saturate = vecdeque_index + self.num_deleted_steps;
+                self.saturate(step_to_saturate, pinned_times);
+                return Ok((BeforeStatusInternal::Saturating, vecdeque_index))
+            }
 
-            if step_i.step.is_saturated() {
-                let to_desaturate =
-                    self.sequence_number_to_delete(pinned_times, i + self.num_deleted_steps);
-
-                let take = match to_desaturate {
-                    Some(to_desaturate) => {
-                        let adjacent = to_desaturate == i + self.num_deleted_steps - 1;
-                        if !adjacent {
-                            self.desaturate(to_desaturate);
-                        }
-
-                        adjacent
-                    },
-                    None => false,
-                };
-
-                self.saturate(i + 1, take);
-
-                return Ok((BeforeStatusInternal::Saturating, i + 1))
-            } else if step_i.step.is_saturating() {
-                return Ok((BeforeStatusInternal::Saturating, i))
+            if step.step.is_saturating() {
+                return Ok((BeforeStatusInternal::Saturating, vecdeque_index))
             }
         }
     }

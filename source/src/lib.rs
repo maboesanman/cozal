@@ -2,6 +2,7 @@
 // TODO: remove this allow
 #![allow(dead_code)]
 #![feature(iter_collect_into)]
+#![feature(is_sorted)]
 
 mod source_poll;
 
