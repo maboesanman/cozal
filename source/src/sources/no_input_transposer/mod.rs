@@ -1,10 +1,9 @@
-use std::collections::VecDeque;
 use std::task::Poll;
 
-use transposer::step::{NoInput, NoInputManager, Step, StepPoll};
+use transposer::step::{NoInputManager, StepPoll};
 use transposer::Transposer;
 
-use self::channels::{interpolation_future, CallerChannelStatus, ChannelStatuses};
+use self::channels::{CallerChannelStatus, ChannelStatuses};
 use self::steps::Steps;
 use crate::source_poll::{self, TrySourcePoll};
 use crate::sources::no_input_transposer::channels::original_step_future::OriginalStepPoll;
@@ -51,8 +50,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
 
                     match self.steps.get_before_or_at(time, &pinned_times).unwrap() {
                         steps::BeforeStatus::Saturated {
-                            step,
-                            next_time,
+                            step, ..
                         } => {
                             let interpolation = step.interpolate(time).unwrap();
                             let interpolation = free.start_interpolation(interpolation, time);
@@ -79,7 +77,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
                         continue
                     }
 
-                    let (new_state, poll) = interpolation.poll(&one_channel_waker);
+                    let (_, poll) = interpolation.poll(&one_channel_waker);
                     return Ok(match poll {
                         Poll::Pending => SourcePoll::Pending,
                         Poll::Ready(state) => SourcePoll::Ready {

@@ -232,7 +232,6 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
                     }
                 },
                 BeforeStatusInternal::Saturating(i) => {
-                    let repeat = i + 1 == self.steps.len();
                     let step_index = i + self.num_deleted_steps;
                     let step = &mut self.steps.get_mut(i).unwrap().step;
 

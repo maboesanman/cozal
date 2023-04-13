@@ -143,7 +143,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
         }
     }
 
-    pub fn next_unsaturated<I: TransposerInput<Base = T>>(
+    pub fn next_unsaturated(
         &self,
         next_inputs: &mut Option<StepInputs<T>>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
@@ -184,31 +184,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
     }
 
     pub fn next_scheduled_unsaturated(&self) -> Result<Option<Self>, NextUnsaturatedErr> {
-        let wrapped_transposer = match &self.status {
-            StepStatus::Saturated {
-                wrapped_transposer,
-            } => wrapped_transposer,
-            _ => return Err(NextUnsaturatedErr::NotSaturated),
-        };
-
-        let next_scheduled_time = wrapped_transposer.metadata.get_next_scheduled_time();
-        let data = match next_scheduled_time {
-            None => return Ok(None),
-            Some(t) => StepData::Scheduled(*t),
-        };
-
-        Ok(Some(Self {
-            data:               Arc::new(data),
-            input_state:        S::LazyState::new(Box::new(Is::new())),
-            status:             StepStatus::Unsaturated,
-            event_count:        0,
-            can_produce_events: true,
-
-            #[cfg(debug_assertions)]
-            uuid_self:                          uuid::Uuid::new_v4(),
-            #[cfg(debug_assertions)]
-            uuid_prev:                          Some(self.uuid_self),
-        }))
+        self.next_unsaturated(&mut None)
     }
 
     pub fn saturate_take(&mut self, prev: &mut Self) -> Result<(), SaturateTakeErr> {
@@ -364,6 +340,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
             _ => return Err(InterpolateErr::NotSaturated),
         };
 
+        #[cfg(debug_assertions)]
         if time < wrapped_transposer.metadata.last_updated.time {
             return Err(InterpolateErr::TimePast)
         }

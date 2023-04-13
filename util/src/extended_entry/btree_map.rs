@@ -1,4 +1,4 @@
-use std::collections::btree_map::{self, BTreeMap, Entry, OccupiedEntry, VacantEntry};
+use std::collections::btree_map::{BTreeMap, Entry, OccupiedEntry, VacantEntry};
 use std::ptr::NonNull;
 
 pub fn get_occupied<K, V>(

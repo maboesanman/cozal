@@ -1,4 +1,3 @@
-use std::num;
 use std::sync::Weak;
 use std::task::{Poll, Waker};
 
