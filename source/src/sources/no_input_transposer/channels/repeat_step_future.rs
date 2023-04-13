@@ -1,3 +1,4 @@
+use std::num;
 use std::sync::Weak;
 use std::task::{Poll, Waker};
 
@@ -8,7 +9,7 @@ use util::extended_entry::hash_map::OccupiedExtEntry as HashMapOccupiedEntry;
 use util::stack_waker::StackWaker;
 
 use super::free::Free;
-use super::CallerChannelBlockedReason;
+use super::{get_pinned_times, CallerChannelBlockedReason};
 
 pub struct RepeatStepFuture<'a, T: Transposer<InputStateManager = NoInputManager>> {
     // entries
@@ -53,5 +54,32 @@ impl<'a, T: Transposer<InputStateManager = NoInputManager>> RepeatStepFuture<'a,
                 })
             },
         }
+    }
+
+    pub fn abandon(self) -> Free<'a, T> {
+        let Self {
+            caller_channel,
+            mut wakers,
+        } = self;
+
+        let (num_blocked_caller_channels, _) = wakers.get_value_mut();
+
+        let blocked_repeat_step_wakers = {
+            if *num_blocked_caller_channels == 1 {
+                wakers.vacate().0.into_collection_mut().0
+            } else {
+                *num_blocked_caller_channels -= 1;
+                wakers.into_collection_mut()
+            }
+        };
+
+        Free {
+            caller_channel: caller_channel.vacate().0,
+            blocked_repeat_step_wakers,
+        }
+    }
+
+    pub fn get_pinned_times(&self) -> Vec<T::Time> {
+        get_pinned_times(self.caller_channel.get_collection_ref())
     }
 }

@@ -9,7 +9,7 @@ use util::extended_entry::hash_map::OccupiedExtEntry as HashMapOccupiedEntry;
 use util::stack_waker::StackWaker;
 
 use super::free::Free;
-use super::CallerChannelBlockedReason;
+use super::{get_pinned_times, CallerChannelBlockedReason};
 
 pub struct OriginalStepFuture<'a, T: Transposer<InputStateManager = NoInputManager>> {
     // entries
@@ -40,6 +40,22 @@ impl<'a, T: Transposer<InputStateManager = NoInputManager>> OriginalStepFuture<'
                 blocked_repeat_step_wakers,
             }),
         }
+    }
+
+    pub fn abandon(self) -> Free<'a, T> {
+        let Self {
+            caller_channel,
+            blocked_repeat_step_wakers,
+        } = self;
+
+        Free {
+            caller_channel: caller_channel.vacate().0,
+            blocked_repeat_step_wakers,
+        }
+    }
+
+    pub fn get_pinned_times(&self) -> Vec<T::Time> {
+        get_pinned_times(self.caller_channel.get_collection_ref())
     }
 }
 

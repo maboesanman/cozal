@@ -10,7 +10,7 @@ use util::stack_waker::StackWaker;
 use super::interpolation_future::InterpolationFuture;
 use super::original_step_future::OriginalStepFuture;
 use super::repeat_step_future::RepeatStepFuture;
-use super::CallerChannelBlockedReason;
+use super::{get_pinned_times, CallerChannelBlockedReason, CallerChannelBlockedReasonInner};
 
 pub struct Free<'a, T: Transposer<InputStateManager = NoInputManager>> {
     // entries
@@ -25,14 +25,16 @@ impl<'a, T: Transposer<InputStateManager = NoInputManager>> Free<'a, T> {
     pub fn start_interpolation(
         self,
         interpolation: Interpolation<T, NoInput, DefaultStorage>,
+        poll_time: T::Time,
     ) -> InterpolationFuture<'a, T> {
         let Self {
             caller_channel: vacant_channel,
             blocked_repeat_step_wakers,
         } = self;
 
-        let new_blocked_reason = CallerChannelBlockedReason::InterpolationFuture {
-            interpolation,
+        let new_blocked_reason = CallerChannelBlockedReason {
+            inner: CallerChannelBlockedReasonInner::InterpolationFuture(interpolation),
+            poll_time,
         };
 
         let occupied_channel = vacant_channel.occupy(new_blocked_reason);
@@ -43,7 +45,7 @@ impl<'a, T: Transposer<InputStateManager = NoInputManager>> Free<'a, T> {
         }
     }
 
-    pub fn start_repeat_step(self, step_id: usize) -> RepeatStepFuture<'a, T> {
+    pub fn start_repeat_step(self, step_id: usize, poll_time: T::Time) -> RepeatStepFuture<'a, T> {
         let Self {
             caller_channel: vacant_channel,
             blocked_repeat_step_wakers,
@@ -57,8 +59,9 @@ impl<'a, T: Transposer<InputStateManager = NoInputManager>> Free<'a, T> {
             Err(vacant) => vacant.occupy((1, Weak::new())),
         };
 
-        let new_blocked_reason = CallerChannelBlockedReason::RepeatStep {
-            step_id,
+        let new_blocked_reason = CallerChannelBlockedReason {
+            inner: CallerChannelBlockedReasonInner::RepeatStep(step_id),
+            poll_time,
         };
 
         let occupied_channel = vacant_channel.occupy(new_blocked_reason);
@@ -69,13 +72,16 @@ impl<'a, T: Transposer<InputStateManager = NoInputManager>> Free<'a, T> {
         }
     }
 
-    pub fn start_original_step(self) -> OriginalStepFuture<'a, T> {
+    pub fn start_original_step(self, poll_time: T::Time) -> OriginalStepFuture<'a, T> {
         let Self {
             caller_channel: vacant_channel,
             blocked_repeat_step_wakers,
         } = self;
 
-        let new_blocked_reason = CallerChannelBlockedReason::OriginalStep;
+        let new_blocked_reason = CallerChannelBlockedReason {
+            inner: CallerChannelBlockedReasonInner::OriginalStep,
+            poll_time,
+        };
 
         let occupied_channel = vacant_channel.occupy(new_blocked_reason);
 
@@ -83,5 +89,9 @@ impl<'a, T: Transposer<InputStateManager = NoInputManager>> Free<'a, T> {
             caller_channel: occupied_channel,
             blocked_repeat_step_wakers,
         }
+    }
+
+    pub fn get_pinned_times(&self) -> Vec<T::Time> {
+        get_pinned_times(self.caller_channel.get_collection_ref())
     }
 }

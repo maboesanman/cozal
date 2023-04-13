@@ -1,6 +1,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 // TODO: remove this allow
 #![allow(dead_code)]
+#![feature(iter_collect_into)]
 
 mod source_poll;
 

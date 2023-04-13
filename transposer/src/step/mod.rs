@@ -378,6 +378,18 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
             StepData::Scheduled(t) => t.time,
         }
     }
+
+    pub fn is_unsaturated(&self) -> bool {
+        matches!(self.status, StepStatus::Unsaturated { .. })
+    }
+
+    pub fn is_saturating(&self) -> bool {
+        matches!(self.status, StepStatus::Saturating { .. })
+    }
+
+    pub fn is_saturated(&self) -> bool {
+        matches!(self.status, StepStatus::Saturated { .. })
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

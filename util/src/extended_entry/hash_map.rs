@@ -115,6 +115,10 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> OccupiedExtEntry<'a, K, V, S> {
         // and does not alias entry because it's dropped.
         unsafe { hash_map.as_mut() }
     }
+
+    pub fn get_collection_ref(&self) -> &HashMap<K, V, S> {
+        unsafe { self.hash_map.as_ref() }
+    }
 }
 
 #[derive(Debug)]
@@ -169,5 +173,9 @@ impl<'a, K: Hash + Eq, V, S: BuildHasher> VacantExtEntry<'a, K, V, S> {
         // SAFETY: this is kept alive by the lifetime 'a,
         // and does not alias entry because it's dropped.
         (unsafe { hash_map.as_mut() }, key)
+    }
+
+    pub fn get_collection_ref(&self) -> &HashMap<K, V, S> {
+        unsafe { self.hash_map.as_ref() }
     }
 }

@@ -1,4 +1,4 @@
-use std::collections::btree_map::{BTreeMap, Entry, OccupiedEntry, VacantEntry};
+use std::collections::btree_map::{self, BTreeMap, Entry, OccupiedEntry, VacantEntry};
 use std::ptr::NonNull;
 
 pub fn get_occupied<K, V>(
@@ -21,6 +21,20 @@ where
             entry,
         }),
     }
+}
+
+pub fn get_first_occupied_mut<K: Ord, V>(
+    collection: &mut BTreeMap<K, V>,
+) -> Option<OccupiedExtEntry<'_, K, V>> {
+    let btree_map: NonNull<_> = collection.into();
+    let entry = collection.first_entry()?;
+
+    let entry = OccupiedExtEntry {
+        btree_map,
+        entry,
+    };
+
+    Some(entry)
 }
 
 #[derive(Debug)]
@@ -100,6 +114,10 @@ impl<'a, K: Ord, V> OccupiedExtEntry<'a, K, V> {
         // and does not alias entry because it's dropped.
         unsafe { btree_map.as_mut() }
     }
+
+    pub fn get_collection_ref(&self) -> &BTreeMap<K, V> {
+        unsafe { self.btree_map.as_ref() }
+    }
 }
 
 #[derive(Debug)]
@@ -157,6 +175,10 @@ impl<'a, K: Ord, V> VacantExtEntry<'a, K, V> {
         // SAFETY: this is kept alive by the lifetime 'a,
         // and does not alias entry because it's dropped.
         (unsafe { btree_map.as_mut() }, key)
+    }
+
+    pub fn get_collection_ref(&self) -> &BTreeMap<K, V> {
+        unsafe { self.btree_map.as_ref() }
     }
 }
 
