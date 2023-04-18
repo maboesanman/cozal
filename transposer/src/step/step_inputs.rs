@@ -42,7 +42,7 @@ impl<T: Transposer> StepInputsEntry<T> {
                 let set = unsafe { set.get::<I::InputEvent>() };
                 Box::pin(async move {
                     for i in set.iter() {
-                        T::handle_input(t, time, i, cx).await
+                        T::handle_input(t, i, cx).await
                     }
                 })
             },

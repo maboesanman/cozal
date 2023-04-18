@@ -11,6 +11,7 @@ use crate::Transposer;
 
 #[derive(Clone)]
 pub struct TransposerMetaData<T: Transposer, S: StorageFamily> {
+    // this has index 0 while processing inputs, which is technically wrong, but should never be accessible.
     pub last_updated: SubStepTime<T::Time>,
 
     pub schedule: S::OrdMap<ScheduledTime<T::Time>, T::Scheduled>,
@@ -35,7 +36,10 @@ impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
             <S::OrdMap<ScheduledTime<T::Time>, ExpireHandle> as OrdMapStorage<_, _>>::new();
 
         Self {
-            last_updated: SubStepTime::new_init(start_time),
+            last_updated: SubStepTime {
+                index: 0,
+                time:  start_time,
+            },
             schedule,
             expire_handles_forward,
             expire_handles_backward,

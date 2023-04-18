@@ -100,35 +100,24 @@ impl Transposer for TestTransposer {
 
     async fn handle_scheduled(
         &mut self,
-        time: Self::Time,
         payload: Self::Scheduled,
         cx: &mut dyn HandleScheduleContext<'_, Self>,
     ) {
-        let record = HandleRecord::Scheduled(time, payload);
+        let record = HandleRecord::Scheduled(cx.current_time(), payload);
         self.handle_record.push_back((record, cx.get_rng().gen()));
 
         let state = cx.get_input_state::<TestTransposerInput1>().await;
         cx.emit_event(*state);
     }
 
-    async fn interpolate(
-        &self,
-        _base_time: Self::Time,
-        _interpolated_time: Self::Time,
-        _cx: &mut dyn InterpolateContext<'_, Self>,
-    ) -> Self::OutputState {
+    async fn interpolate(&self, _cx: &mut dyn InterpolateContext<'_, Self>) -> Self::OutputState {
         self.handle_record.clone().into_iter().collect()
     }
 }
 
 impl TransposerInputEventHandler<TestTransposerInput2> for TestTransposer {
-    async fn handle_input(
-        &mut self,
-        time: Self::Time,
-        input: &usize,
-        cx: &mut dyn HandleInputContext<'_, Self>,
-    ) {
-        let record = HandleRecord::Input(time, *input);
+    async fn handle_input(&mut self, input: &usize, cx: &mut dyn HandleInputContext<'_, Self>) {
+        let record = HandleRecord::Input(cx.current_time(), *input);
         self.handle_record.push_back((record, cx.get_rng().gen()));
 
         let state = cx.get_input_state::<TestTransposerInput1>().await;

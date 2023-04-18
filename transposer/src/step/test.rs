@@ -32,22 +32,16 @@ impl Transposer for TestTransposer {
 
     async fn handle_scheduled(
         &mut self,
-        time: Self::Time,
         _payload: Self::Scheduled,
         cx: &mut dyn HandleScheduleContext<'_, Self>,
     ) {
-        cx.schedule_event(time + 1, ()).unwrap();
+        cx.schedule_event(cx.current_time() + 1, ()).unwrap();
 
         self.counter += 1;
         cx.emit_event(()).await;
     }
 
-    async fn interpolate(
-        &self,
-        _base_time: Self::Time,
-        _interpolated_time: Self::Time,
-        _cx: &mut dyn InterpolateContext<'_, Self>,
-    ) -> Self::OutputState {
+    async fn interpolate(&self, _cx: &mut dyn InterpolateContext<'_, Self>) -> Self::OutputState {
         self.counter
     }
 }

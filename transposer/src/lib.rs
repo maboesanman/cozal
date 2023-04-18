@@ -68,7 +68,6 @@ pub trait Transposer: Clone {
     /// For more information on `cx` see the [`UpdateContext`] documentation.
     async fn handle_scheduled(
         &mut self,
-        _time: Self::Time,
         _payload: Self::Scheduled,
         _cx: &mut dyn HandleScheduleContext<'_, Self>,
     ) {
@@ -82,12 +81,7 @@ pub trait Transposer: Clone {
     /// `base_time` is the time of the `self` parameter
     /// `interpolated_time` is the time being requested `self`
     /// `cx is a context object for performing additional operations like requesting state.
-    async fn interpolate(
-        &self,
-        base_time: Self::Time,
-        interpolated_time: Self::Time,
-        cx: &mut dyn InterpolateContext<'_, Self>,
-    ) -> Self::OutputState;
+    async fn interpolate(&self, cx: &mut dyn InterpolateContext<'_, Self>) -> Self::OutputState;
 }
 
 pub trait TransposerInput: 'static + Sized {
@@ -113,7 +107,6 @@ pub trait TransposerInputEventHandler<I: TransposerInput<Base = Self>>: Transpos
     /// For more information on `cx` see the [`UpdateContext`] documentation.
     async fn handle_input(
         &mut self,
-        _time: Self::Time,
         _events: &I::InputEvent,
         _cx: &mut dyn HandleInputContext<'_, Self>,
     ) {

@@ -1,5 +1,7 @@
 use super::sub_step_update_context::SubStepUpdateContext;
+use super::time::SubStepTime;
 use super::transposer_metadata::TransposerMetaData;
+use crate::context::LastUpdatedTimeContext;
 use crate::schedule_storage::{RefCounted, StorageFamily};
 use crate::step::step_inputs::StepInputs;
 use crate::step::InputState;
@@ -27,6 +29,7 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
         let mut metadata = TransposerMetaData::new(rng_seed, start_time);
         let input_state_provider = input_state.get_provider();
         let mut context = SubStepUpdateContext::new(
+            SubStepTime::new_init(start_time),
             &mut metadata,
             input_state_provider,
             outputs_to_swallow,
@@ -64,15 +67,20 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
         )>,
     ) {
         let input_state_provider = input_state.get_provider();
+
+        let time = SubStepTime {
+            index: self.metadata.last_updated.index + 1,
+            time:  input.time,
+        };
+
         let mut context = SubStepUpdateContext::new(
+            time,
             &mut self.metadata,
             input_state_provider,
             outputs_to_swallow,
             output_sender,
         );
 
-        context.metadata.last_updated.time = input.time();
-        context.metadata.last_updated.index += 1;
         input.handle(&mut self.transposer, &mut context).await;
 
         let SubStepUpdateContext {
@@ -80,6 +88,8 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
             outputs_to_swallow,
             ..
         } = context;
+
+        self.metadata.last_updated = time;
 
         self.handle_scheduled(input.time(), input_state, outputs_to_swallow, output_sender)
             .await;
@@ -97,20 +107,25 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
         )>,
     ) {
         let input_state_provider = input_state.get_provider();
+
+        let mut time = SubStepTime {
+            index: self.metadata.last_updated.index + 1,
+            time,
+        };
+
         let mut context = SubStepUpdateContext::new(
+            time,
             &mut self.metadata,
             input_state_provider,
             outputs_to_swallow,
             output_sender,
         );
 
-        while context.metadata.get_next_scheduled_time().map(|s| s.time) == Some(time) {
-            context.metadata.last_updated.time = time;
-            context.metadata.last_updated.index += 1;
+        while context.metadata.get_next_scheduled_time().map(|s| s.time) == Some(time.time) {
             let (t, e) = context.metadata.pop_first_event().unwrap();
-            self.transposer
-                .handle_scheduled(t.time, e, &mut context)
-                .await;
+            self.transposer.handle_scheduled(e, &mut context).await;
+            context.metadata.last_updated = time;
+            time.index += 1;
         }
     }
 }

@@ -9,12 +9,17 @@ use super::Transposer;
 use crate::{StateRetriever, TransposerInput};
 
 pub trait InitContext<'a, T: Transposer>:
-    InputStateContext<'a, T> + ScheduleEventContext<T> + EmitEventContext<T> + RngContext
+    CurrentTimeContext<T>
+    + InputStateContext<'a, T>
+    + ScheduleEventContext<T>
+    + EmitEventContext<T>
+    + RngContext
 {
 }
 
 pub trait HandleInputContext<'a, T: Transposer>:
-    InputStateContext<'a, T>
+    CurrentTimeContext<T>
+    + InputStateContext<'a, T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
@@ -23,7 +28,8 @@ pub trait HandleInputContext<'a, T: Transposer>:
 }
 
 pub trait HandleScheduleContext<'a, T: Transposer>:
-    InputStateContext<'a, T>
+    CurrentTimeContext<T>
+    + InputStateContext<'a, T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
     + EmitEventContext<T>
@@ -31,7 +37,18 @@ pub trait HandleScheduleContext<'a, T: Transposer>:
 {
 }
 
-pub trait InterpolateContext<'a, T: Transposer>: InputStateContext<'a, T> {}
+pub trait InterpolateContext<'a, T: Transposer>:
+    CurrentTimeContext<T> + LastUpdatedTimeContext<T> + InputStateContext<'a, T>
+{
+}
+
+pub trait CurrentTimeContext<T: Transposer> {
+    fn current_time(&self) -> T::Time;
+}
+
+pub trait LastUpdatedTimeContext<T: Transposer> {
+    fn last_updated_time(&self) -> T::Time;
+}
 
 pub trait InputStateContext<'a, T: Transposer> {
     #[doc(hidden)]

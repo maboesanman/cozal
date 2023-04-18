@@ -1,6 +1,7 @@
 use core::future::Future;
 use core::pin::Pin;
 
+use super::time::SubStepTime;
 use super::transposer_metadata::TransposerMetaData;
 use crate::context::*;
 use crate::expire_handle::ExpireHandle;
@@ -12,6 +13,7 @@ use crate::Transposer;
 /// the primary features are scheduling and expiring events,
 /// though there are more methods to interact with the engine.
 pub struct SubStepUpdateContext<'update, T: Transposer, S: StorageFamily> {
+    time:         SubStepTime<T::Time>,
     // these are pointers because this is stored next to the targets.
     pub metadata: &'update mut TransposerMetaData<T, S>,
 
@@ -41,6 +43,7 @@ impl<'update, T: Transposer, S: StorageFamily> HandleScheduleContext<'update, T>
 impl<'update, T: Transposer, S: StorageFamily> SubStepUpdateContext<'update, T, S> {
     // SAFETY: need to gurantee the metadata pointer outlives this object.
     pub fn new(
+        time: SubStepTime<T::Time>,
         metadata: &'update mut TransposerMetaData<T, S>,
         input_state: &'update T::InputStateManager,
         outputs_to_swallow: usize,
@@ -50,6 +53,7 @@ impl<'update, T: Transposer, S: StorageFamily> SubStepUpdateContext<'update, T, 
         )>,
     ) -> Self {
         Self {
+            time,
             metadata,
             input_state,
             current_emission_index: 0,
@@ -75,14 +79,11 @@ impl<'update, T: Transposer, S: StorageFamily> ScheduleEventContext<T>
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<(), ScheduleEventError> {
-        if time < self.metadata.last_updated.raw_time() {
+        if time < self.time.time {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
-        let time = self
-            .metadata
-            .last_updated
-            .spawn_scheduled(time, self.current_emission_index);
+        let time = self.time.spawn_scheduled(time, self.current_emission_index);
 
         self.metadata.schedule_event(time, payload);
         self.current_emission_index += 1;
@@ -95,14 +96,11 @@ impl<'update, T: Transposer, S: StorageFamily> ScheduleEventContext<T>
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<ExpireHandle, ScheduleEventError> {
-        if time < self.metadata.last_updated.raw_time() {
+        if time < self.time.time {
             return Err(ScheduleEventError::NewEventBeforeCurrent)
         }
 
-        let time = self
-            .metadata
-            .last_updated
-            .spawn_scheduled(time, self.current_emission_index);
+        let time = self.time.spawn_scheduled(time, self.current_emission_index);
 
         let handle = self.metadata.schedule_event_expireable(time, payload);
         self.current_emission_index += 1;
@@ -147,5 +145,13 @@ impl<'update, T: Transposer, S: StorageFamily> EmitEventContext<T>
 impl<'update, T: Transposer, S: StorageFamily> RngContext for SubStepUpdateContext<'update, T, S> {
     fn get_rng(&mut self) -> &mut dyn rand::RngCore {
         &mut self.metadata.rng
+    }
+}
+
+impl<'update, T: Transposer, S: StorageFamily> CurrentTimeContext<T>
+    for SubStepUpdateContext<'update, T, S>
+{
+    fn current_time(&self) -> <T as Transposer>::Time {
+        self.time.time
     }
 }
