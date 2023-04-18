@@ -1,7 +1,6 @@
 use super::sub_step_update_context::SubStepUpdateContext;
 use super::time::SubStepTime;
 use super::transposer_metadata::TransposerMetaData;
-use crate::context::LastUpdatedTimeContext;
 use crate::schedule_storage::{RefCounted, StorageFamily};
 use crate::step::step_inputs::StepInputs;
 use crate::step::InputState;
@@ -58,7 +57,7 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
     /// handle an input, and all scheduled events that occur at the same time.
     pub async fn handle_input<Is: InputState<T>>(
         &mut self,
-        input: &StepInputs<T>,
+        input: &StepInputs<T, S>,
         input_state: S::LazyState<Is>,
         outputs_to_swallow: usize,
         output_sender: futures_channel::mpsc::Sender<(
@@ -122,7 +121,7 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
         );
 
         while context.metadata.get_next_scheduled_time().map(|s| s.time) == Some(time.time) {
-            let (t, e) = context.metadata.pop_first_event().unwrap();
+            let (_, e) = context.metadata.pop_first_event().unwrap();
             self.transposer.handle_scheduled(e, &mut context).await;
             context.metadata.last_updated = time;
             time.index += 1;

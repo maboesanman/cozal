@@ -19,6 +19,7 @@ pub trait InitContext<'a, T: Transposer>:
 
 pub trait HandleInputContext<'a, T: Transposer>:
     CurrentTimeContext<T>
+    + LastUpdatedTimeContext<T>
     + InputStateContext<'a, T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>
@@ -29,6 +30,7 @@ pub trait HandleInputContext<'a, T: Transposer>:
 
 pub trait HandleScheduleContext<'a, T: Transposer>:
     CurrentTimeContext<T>
+    + LastUpdatedTimeContext<T>
     + InputStateContext<'a, T>
     + ScheduleEventContext<T>
     + ExpireEventContext<T>

@@ -5,31 +5,32 @@ use std::pin::Pin;
 use futures_core::Future;
 use type_erased_vec::TypeErasedVec;
 
-use crate::context::HandleInputContext;
+use super::sub_step_update_context::SubStepUpdateContext;
+use crate::schedule_storage::StorageFamily;
 use crate::{Transposer, TransposerInput, TransposerInputEventHandler};
 
-pub struct StepInputs<T: Transposer> {
+pub struct StepInputs<T: Transposer, S: StorageFamily> {
     pub time: T::Time,
 
     // these btreesets are all of different values. they are transmuted before use.
-    inputs: BTreeMap<u64, StepInputsEntry<T>>,
+    inputs: BTreeMap<u64, StepInputsEntry<T, S>>,
 }
 
-type HandlerFunction<T> = for<'a> fn(
+type HandlerFunction<T, S> = for<'a> fn(
     time: <T as Transposer>::Time,
     &'a mut T,
-    &'a mut dyn HandleInputContext<'_, T>,
+    &'a mut SubStepUpdateContext<'_, T, S>,
     &'a TypeErasedVec,
 ) -> Pin<Box<dyn 'a + Future<Output = ()>>>;
 
-struct StepInputsEntry<T: Transposer> {
+struct StepInputsEntry<T: Transposer, S: StorageFamily> {
     // keep this sorted
     values:        TypeErasedVec,
     input_type_id: TypeId,
-    handler:       HandlerFunction<T>,
+    handler:       HandlerFunction<T, S>,
 }
 
-impl<T: Transposer> StepInputsEntry<T> {
+impl<T: Transposer, S: StorageFamily> StepInputsEntry<T, S> {
     fn new<I: TransposerInput<Base = T>>() -> Self
     where
         T: TransposerInputEventHandler<I>,
@@ -42,7 +43,9 @@ impl<T: Transposer> StepInputsEntry<T> {
                 let set = unsafe { set.get::<I::InputEvent>() };
                 Box::pin(async move {
                     for i in set.iter() {
-                        T::handle_input(t, i, cx).await
+                        T::handle_input(t, i, cx).await;
+                        cx.metadata.last_updated.time = time;
+                        cx.metadata.last_updated.index += 1;
                     }
                 })
             },
@@ -67,8 +70,8 @@ impl<T: Transposer> StepInputsEntry<T> {
     }
 }
 
-impl<T: Transposer> StepInputs<T> {
-    pub async fn handle(&self, transposer: &mut T, cx: &mut dyn HandleInputContext<'_, T>) {
+impl<T: Transposer, S: StorageFamily> StepInputs<T, S> {
+    pub async fn handle(&self, transposer: &mut T, cx: &mut SubStepUpdateContext<'_, T, S>) {
         for (_, i) in self.inputs.iter() {
             (i.handler)(self.time, transposer, cx, &i.values).await;
         }

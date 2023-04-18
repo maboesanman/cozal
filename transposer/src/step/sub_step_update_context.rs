@@ -155,3 +155,11 @@ impl<'update, T: Transposer, S: StorageFamily> CurrentTimeContext<T>
         self.time.time
     }
 }
+
+impl<'update, T: Transposer, S: StorageFamily> LastUpdatedTimeContext<T>
+    for SubStepUpdateContext<'update, T, S>
+{
+    fn last_updated_time(&self) -> <T as Transposer>::Time {
+        self.metadata.last_updated.time
+    }
+}

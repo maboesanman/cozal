@@ -25,9 +25,9 @@ use wrapped_transposer::WrappedTransposer;
 use crate::schedule_storage::{DefaultStorage, RefCounted, StorageFamily};
 use crate::Transposer;
 
-enum StepData<T: Transposer> {
+enum StepData<T: Transposer, S: StorageFamily> {
     Init(T::Time),
-    Input(StepInputs<T>),
+    Input(StepInputs<T, S>),
     Scheduled(ScheduledTime<T::Time>),
 }
 
@@ -52,7 +52,7 @@ impl<T: Transposer, S: StorageFamily> Default for StepStatus<T, S> {
 }
 
 pub struct Step<T: Transposer, Is: InputState<T>, S: StorageFamily = DefaultStorage> {
-    data:               Arc<StepData<T>>,
+    data:               Arc<StepData<T, S>>,
     input_state:        S::LazyState<Is>,
     status:             StepStatus<T, S>,
     event_count:        usize,
@@ -146,7 +146,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
 
     pub fn next_unsaturated(
         &self,
-        next_inputs: &mut Option<StepInputs<T>>,
+        next_inputs: &mut Option<StepInputs<T, S>>,
     ) -> Result<Option<Self>, NextUnsaturatedErr> {
         let wrapped_transposer = match &self.status {
             StepStatus::Saturated {
@@ -248,7 +248,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
 
         self.status = StepStatus::Saturating {
             future: match self.data.as_ref() {
-                StepData::Init(start_time) => panic!(),
+                StepData::Init(_) => panic!(),
                 StepData::Input(_) => {
                     let input_state = self.input_state.clone();
                     let event_count = self.event_count;
