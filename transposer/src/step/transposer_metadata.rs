@@ -24,7 +24,7 @@ pub struct TransposerMetaData<T: Transposer, S: StorageFamily> {
 }
 
 impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
-    pub fn new(rng_seed: [u8; 32]) -> Self {
+    pub fn new(rng_seed: [u8; 32], start_time: T::Time) -> Self {
         // this works around a GAT compiler issue
         // maybe fix someday...
         let schedule =
@@ -35,7 +35,7 @@ impl<T: Transposer, S: StorageFamily> TransposerMetaData<T, S> {
             <S::OrdMap<ScheduledTime<T::Time>, ExpireHandle> as OrdMapStorage<_, _>>::new();
 
         Self {
-            last_updated: SubStepTime::new_init(),
+            last_updated: SubStepTime::new_init(start_time),
             schedule,
             expire_handles_forward,
             expire_handles_backward,

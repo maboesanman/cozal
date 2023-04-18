@@ -12,11 +12,11 @@ pub struct Steps<T: Transposer<InputStateManager = NoInputManager>> {
 }
 
 impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
-    pub fn new(transposer: T, rng_seed: [u8; 32]) -> Self {
+    pub fn new(transposer: T, start_time: T::Time, rng_seed: [u8; 32]) -> Self {
         let mut steps = VecDeque::new();
         let mut not_unsaturated = BTreeSet::new();
 
-        steps.push_back(StepWrapper::new_init(transposer, rng_seed));
+        steps.push_back(StepWrapper::new_init(transposer, start_time, rng_seed));
         not_unsaturated.insert(0);
 
         Self {
@@ -361,9 +361,9 @@ struct StepWrapper<T: Transposer<InputStateManager = NoInputManager>> {
 }
 
 impl<T: Transposer<InputStateManager = NoInputManager>> StepWrapper<T> {
-    pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
+    pub fn new_init(transposer: T, start_time: T::Time, rng_seed: [u8; 32]) -> Self {
         Self {
-            step: Step::new_init(transposer, rng_seed),
+            step: Step::new_init(transposer, start_time, rng_seed),
         }
     }
 }

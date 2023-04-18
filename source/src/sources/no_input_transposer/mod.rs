@@ -13,6 +13,9 @@ use crate::{Source, SourcePoll};
 mod channels;
 mod steps;
 
+// #[cfg(test)]
+// mod test;
+
 pub struct NoInputTransposerSource<T: Transposer<InputStateManager = NoInputManager>> {
     steps: Steps<T>,
 
@@ -99,7 +102,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
                         OriginalStepPoll::OutputEvent(event) => {
                             return Ok(SourcePoll::Interrupt {
                                 time:      step.get_time(),
-                                interrupt: crate::source_poll::Interrupt::Event(event),
+                                interrupt: crate::source_poll::Interrupt::FinalizedEvent(event),
                             })
                         },
                         OriginalStepPoll::Pending => return Ok(SourcePoll::Pending),
@@ -161,7 +164,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
                 StepPoll::Emitted(e) => {
                     break SourcePoll::Interrupt {
                         time,
-                        interrupt: source_poll::Interrupt::Event(e),
+                        interrupt: source_poll::Interrupt::FinalizedEvent(e),
                     }
                 },
                 StepPoll::Pending => break SourcePoll::Pending,

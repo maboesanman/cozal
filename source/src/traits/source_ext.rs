@@ -1,4 +1,9 @@
+use std::time::Instant;
+
+use futures_core::Future;
+
 use super::Source;
+use crate::adapters::interrupt_stream::InterruptStream;
 // use crate::adapters::MutexSource;
 
 impl<S> SourceExt for S where S: Source {}
@@ -48,4 +53,14 @@ pub trait SourceExt: Source + Sized {
     // fn concurrent(self) -> MutexSource<Self> {
     //     MutexSource::new(self)
     // }
+
+    fn interrupt_stream<Fut: Future<Output = ()>>(
+        self,
+        wait_fn: fn(Instant) -> Fut,
+    ) -> InterruptStream<Self, Fut>
+    where
+        Self: Source<Time = Instant>,
+    {
+        InterruptStream::new(self, wait_fn)
+    }
 }

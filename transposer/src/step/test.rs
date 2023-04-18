@@ -59,7 +59,7 @@ fn next_scheduled_unsaturated_take() {
     };
     let rng_seed = rand::thread_rng().gen();
 
-    let mut step = Step::<_, NoInput>::new_init(transposer, rng_seed);
+    let mut step = Step::<_, NoInput>::new_init(transposer, 0, rng_seed);
 
     let waker = DummyWaker::dummy();
     Pin::new(&mut step).poll(&waker).unwrap();
@@ -85,7 +85,7 @@ fn next_scheduled_unsaturated_clone() {
     };
     let rng_seed = rand::thread_rng().gen();
 
-    let mut step = Step::<_, NoInput>::new_init(transposer, rng_seed);
+    let mut step = Step::<_, NoInput>::new_init(transposer, 0, rng_seed);
 
     let waker = DummyWaker::dummy();
     Pin::new(&mut step).poll(&waker).unwrap();
@@ -111,7 +111,7 @@ fn next_scheduled_unsaturated_desaturate() {
     };
     let rng_seed = rand::thread_rng().gen();
 
-    let mut init = Step::<_, NoInput>::new_init(transposer, rng_seed);
+    let mut init = Step::<_, NoInput>::new_init(transposer, 0, rng_seed);
 
     let waker = DummyWaker::dummy();
     Pin::new(&mut init).poll(&waker).unwrap();

@@ -3,10 +3,11 @@
 #![allow(dead_code)]
 #![feature(iter_collect_into)]
 #![feature(is_sorted)]
+#![feature(async_fn_in_trait)]
 
 mod source_poll;
 
-// pub mod adapters;
+pub mod adapters;
 pub mod sources;
 pub mod traits;
 

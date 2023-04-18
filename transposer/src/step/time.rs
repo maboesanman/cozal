@@ -1,5 +1,5 @@
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct SubStepTime<T: Ord + Copy + Default> {
+pub struct SubStepTime<T: Ord + Copy> {
     // the canonical order that this time occured
     pub index: usize,
 
@@ -8,21 +8,21 @@ pub struct SubStepTime<T: Ord + Copy + Default> {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ScheduledTime<T: Ord + Copy + Default> {
+pub struct ScheduledTime<T: Ord + Copy> {
     pub time:           T,
     pub parent_index:   usize,
     pub emission_index: usize,
 }
 
-impl<T: Ord + Copy + Default> SubStepTime<T> {
+impl<T: Ord + Copy> SubStepTime<T> {
     pub fn index(&self) -> usize {
         self.index
     }
 
-    pub fn new_init() -> Self {
+    pub fn new_init(time: T) -> Self {
         SubStepTime {
             index: 0,
-            time:  T::default(),
+            time,
         }
     }
 

@@ -16,6 +16,7 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
     pub async fn init<Is: InputState<T>>(
         mut transposer: T,
         rng_seed: [u8; 32],
+        start_time: T::Time,
         input_state: S::LazyState<Is>,
         outputs_to_swallow: usize,
         output_sender: futures_channel::mpsc::Sender<(
@@ -23,7 +24,7 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
             futures_channel::oneshot::Sender<()>,
         )>,
     ) -> S::Transposer<Self> {
-        let mut metadata = TransposerMetaData::new(rng_seed);
+        let mut metadata = TransposerMetaData::new(rng_seed, start_time);
         let input_state_provider = input_state.get_provider();
         let mut context = SubStepUpdateContext::new(
             &mut metadata,
@@ -45,13 +46,8 @@ impl<T: Transposer, S: StorageFamily> WrappedTransposer<T, S> {
             metadata,
         };
 
-        new.handle_scheduled(
-            T::Time::default(),
-            input_state,
-            outputs_to_swallow,
-            output_sender,
-        )
-        .await;
+        new.handle_scheduled(start_time, input_state, outputs_to_swallow, output_sender)
+            .await;
 
         S::Transposer::new(Box::new(new))
     }

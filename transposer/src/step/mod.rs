@@ -23,10 +23,10 @@ use time::ScheduledTime;
 use wrapped_transposer::WrappedTransposer;
 
 use crate::schedule_storage::{DefaultStorage, RefCounted, StorageFamily};
-use crate::{Transposer, TransposerInput};
+use crate::Transposer;
 
 enum StepData<T: Transposer> {
-    Init,
+    Init(T::Time),
     Input(StepInputs<T>),
     Scheduled(ScheduledTime<T::Time>),
 }
@@ -109,12 +109,13 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Drop for Step<T, Is, S>
 }
 
 impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
-    pub fn new_init(transposer: T, rng_seed: [u8; 32]) -> Self {
+    pub fn new_init(transposer: T, start_time: T::Time, rng_seed: [u8; 32]) -> Self {
         let input_state = S::LazyState::new(Box::new(Is::new()));
         let (output_sender, output_reciever) = mpsc::channel(1);
         let future = WrappedTransposer::<T, S>::init::<Is>(
             transposer,
             rng_seed,
+            start_time,
             input_state.clone(),
             0,
             output_sender,
@@ -130,7 +131,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
         };
 
         Step {
-            data: Arc::new(StepData::Init),
+            data: Arc::new(StepData::Init(start_time)),
             input_state,
             status,
             event_count: 0,
@@ -247,7 +248,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
 
         self.status = StepStatus::Saturating {
             future: match self.data.as_ref() {
-                StepData::Init => panic!(),
+                StepData::Init(start_time) => panic!(),
                 StepData::Input(_) => {
                     let input_state = self.input_state.clone();
                     let event_count = self.event_count;
@@ -354,7 +355,7 @@ impl<T: Transposer, Is: InputState<T>, S: StorageFamily> Step<T, Is, S> {
 
     pub fn get_time(&self) -> T::Time {
         match self.data.as_ref() {
-            StepData::Init => T::Time::default(),
+            StepData::Init(time) => *time,
             StepData::Input(i) => i.time,
             StepData::Scheduled(t) => t.time,
         }

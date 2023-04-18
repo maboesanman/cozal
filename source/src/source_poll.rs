@@ -27,7 +27,13 @@ pub enum SourcePoll<T, E, S> {
 pub enum Interrupt<E> {
     /// A new event is available.
     Event(E),
-    // FinalEvent(E)
+
+    /// An event followed by a finalize, for convenience.
+    /// This should be identical to returning an event then a finalize for the same time.
+    /// Useful for sources which never emit Rollbacks, so they can simply emit this interrupt
+    /// for every event and nothing else.
+    FinalizedEvent(E),
+
     /// All events before at or after time T must be discarded.
     Rollback,
     /// No event will ever be emitted before time T again.
