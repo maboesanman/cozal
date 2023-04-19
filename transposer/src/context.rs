@@ -79,12 +79,14 @@ impl<'a, T: Transposer, C: InputStateContext<'a, T> + ?Sized> InputStateContextE
 }
 
 pub trait ScheduleEventContext<T: Transposer> {
+    #[must_use]
     fn schedule_event(
         &mut self,
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<(), ScheduleEventError>;
 
+    #[must_use]
     fn schedule_event_expireable(
         &mut self,
         time: T::Time,
@@ -99,6 +101,7 @@ pub enum ScheduleEventError {
 }
 
 pub trait ExpireEventContext<T: Transposer> {
+    #[must_use]
     fn expire_event(
         &mut self,
         handle: ExpireHandle,
@@ -112,14 +115,17 @@ pub enum ExpireEventError {
 }
 
 pub trait EmitEventContext<T: Transposer> {
+    #[must_use]
     fn emit_event(&mut self, payload: T::OutputEvent) -> Pin<Box<dyn '_ + Future<Output = ()>>>;
 }
 
 pub trait RngContext {
+    #[must_use]
     fn get_rng(&mut self) -> &mut dyn RngCore;
 }
 
 trait TransposerInputStateProvider<I: TransposerInput + ?Sized> {
+    #[must_use]
     async fn get_input_state<'a>(&'a self) -> &'a I::InputState
     where
         I::InputState: 'a;

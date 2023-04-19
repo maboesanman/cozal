@@ -5,7 +5,7 @@
 #![feature(is_sorted)]
 #![feature(async_fn_in_trait)]
 
-mod source_poll;
+pub mod source_poll;
 
 pub mod adapters;
 pub mod sources;

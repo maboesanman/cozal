@@ -10,6 +10,7 @@ use crate::Source;
 pub struct InterruptStream<Src: Source<Time = Instant>, Fut: Future<Output = ()>> {
     source:               Box<Src>,
     current_polling_time: Option<Instant>,
+    current_wait:         Option<(Instant, Pin<Box<Fut>>)>,
     wait_fn:              fn(Instant) -> Fut,
 }
 
@@ -18,6 +19,7 @@ impl<Src: Source<Time = Instant>, Fut: Future<Output = ()>> InterruptStream<Src,
         Self {
             source: Box::new(source),
             current_polling_time: None,
+            current_wait: None,
             wait_fn,
         }
     }
@@ -27,7 +29,8 @@ impl<Src: Source<Time = Instant>, Fut: Future<Output = ()>> Stream for Interrupt
     type Item = (Instant, Interrupt<Src::Event>);
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let poll_time = self.current_polling_time.unwrap_or_else(Instant::now);
+        // let poll_time = self.current_polling_time.unwrap_or_else(Instant::now);
+        let poll_time = Instant::now();
         let this = self.get_mut();
         let poll = this.source.poll_events(poll_time, cx.waker().clone());
 
@@ -53,10 +56,17 @@ impl<Src: Source<Time = Instant>, Fut: Future<Output = ()>> Stream for Interrupt
             None => return Poll::Pending,
         };
 
-        let wait_fut = (this.wait_fn)(next_event_at);
+        if this.current_wait.is_none() {
+            this.current_wait = Some((next_event_at, Box::pin((this.wait_fn)(next_event_at))));
+        }
 
-        match pin!(wait_fut).poll(cx) {
-            Poll::Ready(()) => Pin::new(this).poll_next(cx),
+        let (_, fut) = this.current_wait.as_mut().unwrap();
+
+        match fut.as_mut().poll(cx) {
+            Poll::Ready(()) => {
+                this.current_wait = None;
+                Pin::new(this).poll_next(cx)
+            },
             Poll::Pending => Poll::Pending,
         }
     }

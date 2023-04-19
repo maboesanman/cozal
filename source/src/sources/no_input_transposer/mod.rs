@@ -13,16 +13,20 @@ use crate::{Source, SourcePoll};
 mod channels;
 mod steps;
 
-// #[cfg(test)]
-// mod test;
-
 pub struct NoInputTransposerSource<T: Transposer<InputStateManager = NoInputManager>> {
     steps: Steps<T>,
 
     channel_statuses: ChannelStatuses<T>,
 }
 
-impl<T: Transposer<InputStateManager = NoInputManager>> NoInputTransposerSource<T> {}
+impl<T: Transposer<InputStateManager = NoInputManager>> NoInputTransposerSource<T> {
+    pub fn new(transposer: T, start_time: T::Time, rng_seed: [u8; 32]) -> Self {
+        Self {
+            steps:            Steps::new(transposer, start_time, rng_seed),
+            channel_statuses: ChannelStatuses::new(),
+        }
+    }
+}
 
 impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransposerSource<T> {
     type Time = T::Time;

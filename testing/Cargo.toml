@@ -1,0 +1,20 @@
+[package]
+name = "testing"
+version = "0.0.1"
+authors = ["Mason Boeman <masonboeman@gmail.com>"]
+edition = "2021"
+repository = "https://github.com/maboesanman/cozal.git"
+description = "deterministic game event pipeline with isolated configurable components"
+license = "MIT"
+
+[dependencies]
+util = { path = "../util"}
+cozal = { path = "../source"}
+transposer = { path = "../transposer"}
+tokio = { version = "1", features = ["full"] }
+futures = "0.3.28"
+
+[dev-dependencies]
+matches = "0.1.8"
+futures-test = "0.3"
+futures-executor = "0.3"

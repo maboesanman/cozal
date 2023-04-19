@@ -3,6 +3,7 @@
 // mod multiplex;
 // mod transpose;
 // mod concurrent;
+// pub mod interrupt_iterator;
 pub mod interrupt_stream;
 
 // pub use self::duplicate::Duplicate;
