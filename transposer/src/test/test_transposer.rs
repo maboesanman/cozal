@@ -107,7 +107,7 @@ impl Transposer for TestTransposer {
         self.handle_record.push_back((record, cx.get_rng().gen()));
 
         let state = cx.get_input_state::<TestTransposerInput1>().await;
-        cx.emit_event(*state);
+        cx.emit_event(*state).await;
     }
 
     async fn interpolate(&self, _cx: &mut dyn InterpolateContext<'_, Self>) -> Self::OutputState {
@@ -122,6 +122,6 @@ impl TransposerInputEventHandler<TestTransposerInput2> for TestTransposer {
 
         let state = cx.get_input_state::<TestTransposerInput1>().await;
 
-        cx.emit_event(*state);
+        cx.emit_event(*state).await;
     }
 }

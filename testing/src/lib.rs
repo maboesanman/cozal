@@ -4,8 +4,7 @@ use std::time::{Duration, Instant};
 
 use cozal::sources::no_input_transposer::NoInputTransposerSource;
 use cozal::traits::SourceExt;
-use futures::stream::{Stream, StreamExt};
-use tokio::runtime::Runtime;
+use futures::StreamExt;
 use transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
 use transposer::step::NoInputManager;
 use transposer::Transposer;

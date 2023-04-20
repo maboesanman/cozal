@@ -59,6 +59,8 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
     }
 
     fn saturate(&mut self, step_to_saturate: usize, pinned_times: &[T::Time]) {
+        // println!("{:?}", step_to_saturate);
+
         let to_desaturate = self.sequence_number_to_delete(pinned_times, step_to_saturate);
 
         let take = match to_desaturate {
@@ -107,6 +109,18 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         pinned_times: &[T::Time],
         newly_saturated: usize,
     ) -> Option<usize> {
+        // this cannot be:
+        // - the earliest not-unsaturated step
+        // - the latest not-unsaturated step (either the second to last step if its unsaturated, or else the last step)
+        // - the latest not-unsaturated step before or at each pinned time
+        // or else the "make progress" gurantees of the source will not be upheld.
+        //
+        // of the remaining, the minimum i by:
+        // 1: the number of trailing zeroes of i
+        // 2: i
+        //
+        // the effect is we try to preserve equally spaced checkpoints, so we don't have to recalculate too much.
+
         if self.number_of_checkpoints > self.not_unsaturated.len() {
             return None
         }
