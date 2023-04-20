@@ -69,7 +69,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
             Some(to_desaturate) => {
                 let adjacent = to_desaturate == step_to_saturate - 1;
                 if !adjacent {
-                    self.desaturate(to_desaturate);
+                    self.desaturate(to_desaturate - self.num_deleted_steps);
                 }
 
                 adjacent
@@ -77,7 +77,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
             None => false,
         };
 
-        self.saturate_adjacent(step_to_saturate, take);
+        self.saturate_adjacent(step_to_saturate - self.num_deleted_steps, take);
     }
 
     fn saturate_adjacent(&mut self, vecdeque_index: usize, take: bool) {
@@ -434,7 +434,7 @@ fn basic_test() {
     let mut steps = Steps::new(transposer, 0, [0; 32]);
     let dummy = DummyWaker::dummy();
     for _ in 0..200 {
-        let poll = match steps.get_before_or_at_events(100000, &[]).unwrap() {
+        let _ = match steps.get_before_or_at_events(100000, &[]).unwrap() {
             BeforeStatusEvents::Ready {
                 ..
             } => panic!(),
@@ -442,13 +442,30 @@ fn basic_test() {
                 step, ..
             } => step.poll(&dummy).unwrap(),
         };
-
-        // match poll {
-        //     transposer::step::StepPoll::Emitted(e) => println!("{:?}", e),
-        //     transposer::step::StepPoll::Pending => println!("pending"),
-        //     transposer::step::StepPoll::Ready => println!("ready"),
-        // }
     }
 
-    println!("{:?}", steps.not_unsaturated);
+    let output = format!("{:?}", steps.not_unsaturated);
+    assert_eq!(output, "{0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 86, 88, 90, 92, 94, 96, 98, 99}");
+
+    steps.delete_before(30);
+
+    let output = format!("{:?}", steps.not_unsaturated);
+    assert_eq!(
+        output,
+        "{60, 64, 68, 72, 76, 80, 84, 86, 88, 90, 92, 94, 96, 98, 99}"
+    );
+
+    for _ in 0..200 {
+        let _ = match steps.get_before_or_at_events(100000, &[]).unwrap() {
+            BeforeStatusEvents::Ready {
+                ..
+            } => panic!(),
+            BeforeStatusEvents::Saturating {
+                step, ..
+            } => step.poll(&dummy).unwrap(),
+        };
+    }
+
+    let output = format!("{:?}", steps.not_unsaturated);
+    assert_eq!( output, "{60, 64, 72, 80, 88, 96, 104, 112, 116, 120, 124, 128, 132, 136, 140, 144, 148, 152, 156, 160, 164, 168, 172, 176, 180, 184, 188, 192, 196, 199}");
 }
