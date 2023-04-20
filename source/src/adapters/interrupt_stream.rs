@@ -30,6 +30,7 @@ impl<Src: Source<Time = Instant>, Fut: Future<Output = ()>> Stream for Interrupt
         let this = self.get_mut();
         let poll_time = Instant::now();
         let poll = this.source.poll_events(poll_time, cx.waker().clone());
+        // this.source.advance(poll_time);
 
         let poll = match poll {
             Ok(poll) => poll,

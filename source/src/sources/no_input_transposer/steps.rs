@@ -1,7 +1,9 @@
 use std::collections::{BTreeSet, VecDeque};
 
+use transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
 use transposer::step::{NoInput, NoInputManager, Step};
 use transposer::Transposer;
+use util::dummy_waker::DummyWaker;
 
 pub struct Steps<T: Transposer<InputStateManager = NoInputManager>> {
     steps:                 VecDeque<StepWrapper<T>>,
@@ -104,8 +106,22 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
             .remove(&(vecdeque_index + self.num_deleted_steps));
     }
 
+    fn get_not_unsaturated_before_or_at_time(&self, time: T::Time) -> usize {
+        let step_before = match self
+            .steps
+            .binary_search_by_key(&time, |s| s.step.get_time())
+        {
+            Ok(i) => i,
+            Err(i) => i - 1,
+        };
+
+        let before_or_at_time = self.not_unsaturated.range(..=step_before);
+
+        *before_or_at_time.last().unwrap()
+    }
+
     fn sequence_number_to_delete(
-        &mut self,
+        &self,
         pinned_times: &[T::Time],
         newly_saturated: usize,
     ) -> Option<usize> {
@@ -125,47 +141,29 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
             return None
         }
 
-        if let Some(step) = self.get_by_sequence_number(newly_saturated) {
-            if let Some(deleted_before) = self.deleted_before {
-                if step.get_time() <= deleted_before {
-                    return Some(newly_saturated - 1)
-                }
-            }
+        let mut needed_steps = Vec::new();
+        needed_steps.push(*self.not_unsaturated.first().unwrap());
+
+        let last = *self.not_unsaturated.last().unwrap();
+        if last + 1 != newly_saturated {
+            needed_steps.push(*self.not_unsaturated.last().unwrap());
         }
-
-        // TODO: don't clone this ideally.
-        let mut candidates: Vec<_> = self.not_unsaturated.iter().map(|x| *x).collect();
-
-        let mut pinned_steps = vec![self.num_deleted_steps];
 
         pinned_times
             .iter()
-            .map(|t| {
-                match candidates.binary_search_by_key(t, |c| {
-                    self.get_by_sequence_number(*c).unwrap().get_time()
-                }) {
-                    Ok(i) => i,
-                    Err(i) => i - 1,
-                }
-            })
-            .collect_into(&mut pinned_steps);
+            .map(|t| self.get_not_unsaturated_before_or_at_time(*t))
+            .collect_into(&mut needed_steps);
 
-        // ensure we don't ever drop the last step.
-        pinned_steps.push(self.max_sequence_number());
+        needed_steps.sort();
+        needed_steps.dedup();
 
-        // should have gotten this right by construction but we should check...
-        debug_assert!(pinned_steps.is_sorted());
-
-        pinned_steps.dedup();
-
-        for pinned in pinned_steps.iter().rev() {
-            candidates.remove(*pinned);
-        }
-
-        candidates
+        let candidates = self
+            .not_unsaturated
             .iter()
-            .min_by_key(|i| i.trailing_zeros())
-            .map(|x| *x)
+            .map(|i| *i)
+            .filter(|i| needed_steps.binary_search(i).is_err());
+
+        candidates.min_by_key(|i| (i.trailing_zeros(), *i))
     }
 
     fn get_step_and_prev_mut(
@@ -380,4 +378,77 @@ impl<T: Transposer<InputStateManager = NoInputManager>> StepWrapper<T> {
             step: Step::new_init(transposer, start_time, rng_seed),
         }
     }
+}
+
+#[derive(Clone)]
+pub(crate) struct CollatzTransposer {
+    value: usize,
+}
+
+impl CollatzTransposer {
+    pub fn new(value: usize) -> Self {
+        Self {
+            value,
+        }
+    }
+}
+
+impl Transposer for CollatzTransposer {
+    type Time = usize;
+
+    type OutputState = ();
+
+    type Scheduled = ();
+
+    type OutputEvent = usize;
+
+    // set up with macro
+    type InputStateManager = NoInputManager;
+
+    async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>) {
+        cx.schedule_event(cx.current_time(), ()).unwrap();
+    }
+
+    async fn handle_scheduled(
+        &mut self,
+        _payload: Self::Scheduled,
+        cx: &mut dyn HandleScheduleContext<'_, Self>,
+    ) {
+        cx.emit_event(self.value).await;
+
+        if self.value % 2 == 0 {
+            self.value = self.value / 2;
+        } else {
+            self.value = self.value * 3 + 1;
+        }
+
+        cx.schedule_event(cx.current_time() + 1, ()).unwrap();
+    }
+
+    async fn interpolate(&self, _cx: &mut dyn InterpolateContext<'_, Self>) -> Self::OutputState {}
+}
+
+#[test]
+fn basic_test() {
+    let transposer = CollatzTransposer::new(27);
+    let mut steps = Steps::new(transposer, 0, [0; 32]);
+    let dummy = DummyWaker::dummy();
+    for _ in 0..200 {
+        let poll = match steps.get_before_or_at_events(100000, &[]).unwrap() {
+            BeforeStatusEvents::Ready {
+                ..
+            } => panic!(),
+            BeforeStatusEvents::Saturating {
+                step, ..
+            } => step.poll(&dummy).unwrap(),
+        };
+
+        // match poll {
+        //     transposer::step::StepPoll::Emitted(e) => println!("{:?}", e),
+        //     transposer::step::StepPoll::Pending => println!("pending"),
+        //     transposer::step::StepPoll::Ready => println!("ready"),
+        // }
+    }
+
+    println!("{:?}", steps.not_unsaturated);
 }
