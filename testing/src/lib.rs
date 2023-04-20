@@ -52,7 +52,7 @@ impl Transposer for CollatzTransposer {
             self.value = self.value * 3 + 1;
         }
 
-        cx.schedule_event(cx.current_time() + Duration::from_millis(500), ())
+        cx.schedule_event(cx.current_time() + Duration::from_millis(100), ())
             .unwrap();
     }
 
@@ -65,20 +65,7 @@ async fn test() {
 
     let source = NoInputTransposerSource::new(transposer, Instant::now(), [0; 32]);
 
-    let stream = source.interrupt_stream(|time| {
-        let now = Instant::now();
-
-        async move {
-            if time > now {
-                println!("1");
-                tokio::time::sleep(time - now).await;
-                println!("2");
-            }
-        }
-    });
-    // println!("hi");
-    // // tokio::time::sleep(Duration::from_secs(2)).await;
-    // println!("h2");
+    let stream = source.interrupt_stream(|i| tokio::time::sleep_until(i.into()));
 
     stream
         .for_each(|(_, i)| {
