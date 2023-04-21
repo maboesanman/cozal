@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use std::collections::{BTreeSet, VecDeque};
 
 use transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
@@ -14,6 +15,14 @@ pub struct Steps<T: Transposer<InputStateManager = NoInputManager>> {
 }
 
 impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
+    #[cfg(debug_assertions)]
+    fn debug_assertions(&self) {
+        assert_eq!(
+            self.num_deleted_steps,
+            *self.not_unsaturated.first().unwrap()
+        )
+    }
+
     pub fn new(transposer: T, start_time: T::Time, rng_seed: [u8; 32]) -> Self {
         let mut steps = VecDeque::new();
         let mut not_unsaturated = BTreeSet::new();
@@ -78,6 +87,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         };
 
         self.saturate_adjacent(step_to_saturate - self.num_deleted_steps, take);
+        self.ensure_first_step_is_not_unsaturated();
     }
 
     fn saturate_adjacent(&mut self, vecdeque_index: usize, take: bool) {
@@ -113,11 +123,18 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         {
             Ok(i) => i,
             Err(i) => i - 1,
-        };
+        } + self.num_deleted_steps;
 
         let before_or_at_time = self.not_unsaturated.range(..=step_before);
 
         *before_or_at_time.last().unwrap()
+    }
+
+    fn ensure_first_step_is_not_unsaturated(&mut self) {
+        while self.steps.front().unwrap().step.is_unsaturated() {
+            self.steps.pop_front();
+            self.num_deleted_steps += 1;
+        }
     }
 
     fn sequence_number_to_delete(
@@ -126,7 +143,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         newly_saturated: usize,
     ) -> Option<usize> {
         // this cannot be:
-        // - the earliest not-unsaturated step
+        // - the earliest not-unsaturated step, if the next step is after "deleted_before"
         // - the latest not-unsaturated step (either the second to last step if its unsaturated, or else the last step)
         // - the latest not-unsaturated step before or at each pinned time
         // or else the "make progress" gurantees of the source will not be upheld.
@@ -137,12 +154,20 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         //
         // the effect is we try to preserve equally spaced checkpoints, so we don't have to recalculate too much.
 
+        let first = *self.not_unsaturated.first().unwrap();
+        let first_time = self.steps.front().unwrap().step.get_time();
+        if let Some(deleted_before) = self.deleted_before {
+            if first_time < deleted_before && first + 1 == newly_saturated {
+                return Some(first)
+            }
+        }
+
         if self.number_of_checkpoints > self.not_unsaturated.len() {
             return None
         }
 
         let mut needed_steps = Vec::new();
-        needed_steps.push(*self.not_unsaturated.first().unwrap());
+        needed_steps.push(first);
 
         let last = *self.not_unsaturated.last().unwrap();
         if last + 1 != newly_saturated {
@@ -203,6 +228,9 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         time: T::Time,
         pinned_times: &[T::Time],
     ) -> Result<BeforeStatusEvents<'_, T>, ()> {
+        #[cfg(debug_assertions)]
+        self.debug_assertions();
+
         self.try_next_scheduled();
 
         let last_step_index = self.max_sequence_number();
@@ -231,6 +259,9 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         time: T::Time,
         pinned_times: &[T::Time],
     ) -> Result<BeforeStatus<'_, T>, ()> {
+        #[cfg(debug_assertions)]
+        self.debug_assertions();
+
         Ok(
             match self.get_before_or_at_internal(time, pinned_times, false)? {
                 BeforeStatusInternal::SaturatedReady(i) => {
@@ -310,6 +341,9 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
     }
 
     pub fn delete_before(&mut self, time: T::Time) {
+        #[cfg(debug_assertions)]
+        self.debug_assertions();
+
         if let Some(t) = self.deleted_before {
             if time <= t {
                 return
@@ -318,26 +352,15 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
 
         self.deleted_before = Some(time);
 
-        // this is just mimicking partition_point, because vecdeque isn't actually contiguous
-        let i = match self
-            .steps
-            .binary_search_by_key(&time, |s| s.step.get_time())
-        {
-            Ok(i) => i,
-            Err(i) => match i.checked_sub(1) {
-                Some(i) => i,
-                None => return,
-            },
-        };
+        let sequence_number = self.get_not_unsaturated_before_or_at_time(time);
+        let i = sequence_number - self.num_deleted_steps;
 
         // now i is the index of the latest step we need to keep.
         let to_retain = self.steps.split_off(i);
         self.num_deleted_steps += self.steps.len();
         self.steps = to_retain;
 
-        let sequence_number = i + self.num_deleted_steps;
-        let to_retain = self.not_unsaturated.split_off(&sequence_number);
-        self.not_unsaturated = to_retain;
+        self.not_unsaturated = self.not_unsaturated.split_off(&sequence_number);
     }
 }
 
@@ -370,6 +393,21 @@ pub enum BeforeStatusInternal {
 
 struct StepWrapper<T: Transposer<InputStateManager = NoInputManager>> {
     pub step: Step<T, NoInput>,
+}
+
+impl<T: Transposer<InputStateManager = NoInputManager>> Debug for StepWrapper<T>
+where
+    T::Time: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.step.is_saturated() {
+            f.write_str(&format!("[{:?}]", self.step.get_time()))
+        } else if self.step.is_saturating() {
+            f.write_str(&format!("({:?})", self.step.get_time()))
+        } else {
+            f.write_str(&format!("_{:?}_", self.step.get_time()))
+        }
+    }
 }
 
 impl<T: Transposer<InputStateManager = NoInputManager>> StepWrapper<T> {
@@ -452,7 +490,7 @@ fn basic_test() {
     let output = format!("{:?}", steps.not_unsaturated);
     assert_eq!(
         output,
-        "{60, 64, 68, 72, 76, 80, 84, 86, 88, 90, 92, 94, 96, 98, 99}"
+        "{28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 86, 88, 90, 92, 94, 96, 98, 99}"
     );
 
     for _ in 0..200 {
@@ -467,5 +505,54 @@ fn basic_test() {
     }
 
     let output = format!("{:?}", steps.not_unsaturated);
-    assert_eq!( output, "{60, 64, 72, 80, 88, 96, 104, 112, 116, 120, 124, 128, 132, 136, 140, 144, 148, 152, 156, 160, 164, 168, 172, 176, 180, 184, 188, 192, 196, 199}");
+    assert_eq!( output, "{28, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 148, 152, 156, 160, 164, 168, 172, 176, 180, 184, 188, 192, 196, 199}");
+}
+
+#[test]
+fn polling_after_advance_same_time_test() {
+    let transposer = CollatzTransposer::new(27);
+    let mut steps = Steps::new(transposer, 0, [0; 32]);
+    let dummy = DummyWaker::dummy();
+    for t in 0..200 {
+        if t != 0 {
+            assert_eq!(steps.num_deleted_steps, t - 1);
+            assert_eq!(steps.steps.len(), 2);
+            assert_eq!(steps.steps.front().unwrap().step.get_time(), t - 1);
+            assert!(steps.steps.front().unwrap().step.is_saturated());
+            assert!(steps.steps.back().unwrap().step.is_unsaturated());
+            assert_eq!(steps.not_unsaturated.len(), 1);
+            assert_eq!(*steps.not_unsaturated.first().unwrap(), t - 1);
+        }
+
+        steps.delete_before(t);
+
+        if t != 0 {
+            assert_eq!(steps.num_deleted_steps, t - 1);
+            assert_eq!(steps.steps.len(), 2);
+            assert_eq!(steps.steps.front().unwrap().step.get_time(), t - 1);
+            assert!(steps.steps.front().unwrap().step.is_saturated());
+            assert!(steps.steps.back().unwrap().step.is_unsaturated());
+            assert_eq!(steps.not_unsaturated.len(), 1);
+            assert_eq!(*steps.not_unsaturated.first().unwrap(), t - 1);
+        }
+        loop {
+            let _ = match steps.get_before_or_at_events(t, &[]).unwrap() {
+                BeforeStatusEvents::Ready {
+                    ..
+                } => break,
+                BeforeStatusEvents::Saturating {
+                    step, ..
+                } => step.poll(&dummy).unwrap(),
+            };
+        }
+        if t != 0 {
+            assert_eq!(steps.num_deleted_steps, t);
+            assert_eq!(steps.steps.len(), 2);
+            assert_eq!(steps.steps.front().unwrap().step.get_time(), t);
+            assert!(steps.steps.front().unwrap().step.is_saturated());
+            assert!(steps.steps.back().unwrap().step.is_unsaturated());
+            assert_eq!(steps.not_unsaturated.len(), 1);
+            assert_eq!(*steps.not_unsaturated.first().unwrap(), t);
+        }
+    }
 }

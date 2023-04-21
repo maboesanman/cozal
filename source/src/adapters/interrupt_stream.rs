@@ -29,8 +29,8 @@ impl<Src: Source<Time = Instant>, Fut: Future<Output = ()>> Stream for Interrupt
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
         let poll_time = Instant::now();
+        this.source.advance(poll_time);
         let poll = this.source.poll_events(poll_time, cx.waker().clone());
-        // this.source.advance(poll_time);
 
         let poll = match poll {
             Ok(poll) => poll,

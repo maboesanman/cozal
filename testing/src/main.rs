@@ -58,8 +58,8 @@ impl Transposer for CollatzTransposer {
     async fn interpolate(&self, _cx: &mut dyn InterpolateContext<'_, Self>) -> Self::OutputState {}
 }
 
-#[tokio::test]
-async fn test() {
+#[tokio::main]
+async fn main() {
     let transposer = CollatzTransposer::new(27);
 
     let source = NoInputTransposerSource::new(transposer, Instant::now(), [0; 32]);
