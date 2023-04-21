@@ -1,6 +1,6 @@
+#![allow(incomplete_features)]
 #![deny(unsafe_op_in_unsafe_fn)]
 // TODO: remove this allow
-#![allow(dead_code)]
 #![feature(iter_collect_into)]
 #![feature(is_sorted)]
 #![feature(async_fn_in_trait)]

@@ -79,14 +79,12 @@ impl<'a, T: Transposer, C: InputStateContext<'a, T> + ?Sized> InputStateContextE
 }
 
 pub trait ScheduleEventContext<T: Transposer> {
-    #[must_use]
     fn schedule_event(
         &mut self,
         time: T::Time,
         payload: T::Scheduled,
     ) -> Result<(), ScheduleEventError>;
 
-    #[must_use]
     fn schedule_event_expireable(
         &mut self,
         time: T::Time,
@@ -101,7 +99,6 @@ pub enum ScheduleEventError {
 }
 
 pub trait ExpireEventContext<T: Transposer> {
-    #[must_use]
     fn expire_event(
         &mut self,
         handle: ExpireHandle,

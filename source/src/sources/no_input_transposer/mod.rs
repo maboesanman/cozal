@@ -133,7 +133,6 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
 
                     CallerChannelStatus::Free(free)
                 },
-                CallerChannelStatus::Limbo => panic!(),
             };
         }
     }
@@ -187,7 +186,6 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
             CallerChannelStatus::InterpolationFuture(i) => i.abandon(),
             CallerChannelStatus::OriginalStepFuture(o) => o.abandon(),
             CallerChannelStatus::RepeatStepFuture(r) => r.abandon(),
-            CallerChannelStatus::Limbo => panic!(),
         };
     }
 

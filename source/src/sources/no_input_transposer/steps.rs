@@ -1,10 +1,8 @@
 use core::fmt::Debug;
 use std::collections::{BTreeSet, VecDeque};
 
-use transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
 use transposer::step::{NoInput, NoInputManager, Step};
 use transposer::Transposer;
-use util::dummy_waker::DummyWaker;
 
 pub struct Steps<T: Transposer<InputStateManager = NoInputManager>> {
     steps:                 VecDeque<StepWrapper<T>>,
@@ -37,12 +35,6 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
             deleted_before: None,
             number_of_checkpoints: 30,
         }
-    }
-
-    pub fn get_by_sequence_number(&self, i: usize) -> Option<&Step<T, NoInput>> {
-        let i = i.checked_sub(self.num_deleted_steps)?;
-
-        self.steps.get(i).map(|s| &s.step)
     }
 
     pub fn get_mut_by_sequence_number(&mut self, i: usize) -> Option<&mut Step<T, NoInput>> {
@@ -185,7 +177,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Steps<T> {
         let candidates = self
             .not_unsaturated
             .iter()
-            .map(|i| *i)
+            .copied()
             .filter(|i| needed_steps.binary_search(i).is_err());
 
         candidates.min_by_key(|i| (i.trailing_zeros(), *i))
@@ -418,141 +410,156 @@ impl<T: Transposer<InputStateManager = NoInputManager>> StepWrapper<T> {
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct CollatzTransposer {
-    value: usize,
-}
+#[cfg(test)]
+mod test {
 
-impl CollatzTransposer {
-    pub fn new(value: usize) -> Self {
-        Self {
-            value,
+    use transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};
+    use transposer::step::NoInputManager;
+    use transposer::Transposer;
+    #[cfg(test)]
+    use util::dummy_waker::DummyWaker;
+
+    use crate::sources::no_input_transposer::steps::{BeforeStatusEvents, Steps};
+    #[derive(Clone)]
+    pub(crate) struct CollatzTransposer {
+        value: usize,
+    }
+
+    impl CollatzTransposer {
+        pub fn new(value: usize) -> Self {
+            Self {
+                value,
+            }
         }
     }
-}
 
-impl Transposer for CollatzTransposer {
-    type Time = usize;
+    impl Transposer for CollatzTransposer {
+        type Time = usize;
 
-    type OutputState = ();
+        type OutputState = ();
 
-    type Scheduled = ();
+        type Scheduled = ();
 
-    type OutputEvent = usize;
+        type OutputEvent = usize;
 
-    // set up with macro
-    type InputStateManager = NoInputManager;
+        // set up with macro
+        type InputStateManager = NoInputManager;
 
-    async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>) {
-        cx.schedule_event(cx.current_time(), ()).unwrap();
-    }
-
-    async fn handle_scheduled(
-        &mut self,
-        _payload: Self::Scheduled,
-        cx: &mut dyn HandleScheduleContext<'_, Self>,
-    ) {
-        cx.emit_event(self.value).await;
-
-        if self.value % 2 == 0 {
-            self.value = self.value / 2;
-        } else {
-            self.value = self.value * 3 + 1;
+        async fn init(&mut self, cx: &mut dyn InitContext<'_, Self>) {
+            cx.schedule_event(cx.current_time(), ()).unwrap();
         }
 
-        cx.schedule_event(cx.current_time() + 1, ()).unwrap();
-    }
+        async fn handle_scheduled(
+            &mut self,
+            _payload: Self::Scheduled,
+            cx: &mut dyn HandleScheduleContext<'_, Self>,
+        ) {
+            cx.emit_event(self.value).await;
 
-    async fn interpolate(&self, _cx: &mut dyn InterpolateContext<'_, Self>) -> Self::OutputState {}
-}
+            if self.value % 2 == 0 {
+                self.value /= 2;
+            } else {
+                self.value = self.value * 3 + 1;
+            }
 
-#[test]
-fn basic_test() {
-    let transposer = CollatzTransposer::new(27);
-    let mut steps = Steps::new(transposer, 0, [0; 32]);
-    let dummy = DummyWaker::dummy();
-    for _ in 0..200 {
-        let _ = match steps.get_before_or_at_events(100000, &[]).unwrap() {
-            BeforeStatusEvents::Ready {
-                ..
-            } => panic!(),
-            BeforeStatusEvents::Saturating {
-                step, ..
-            } => step.poll(&dummy).unwrap(),
-        };
-    }
-
-    let output = format!("{:?}", steps.not_unsaturated);
-    assert_eq!(output, "{0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 86, 88, 90, 92, 94, 96, 98, 99}");
-
-    steps.delete_before(30);
-
-    let output = format!("{:?}", steps.not_unsaturated);
-    assert_eq!(
-        output,
-        "{28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 86, 88, 90, 92, 94, 96, 98, 99}"
-    );
-
-    for _ in 0..200 {
-        let _ = match steps.get_before_or_at_events(100000, &[]).unwrap() {
-            BeforeStatusEvents::Ready {
-                ..
-            } => panic!(),
-            BeforeStatusEvents::Saturating {
-                step, ..
-            } => step.poll(&dummy).unwrap(),
-        };
-    }
-
-    let output = format!("{:?}", steps.not_unsaturated);
-    assert_eq!( output, "{28, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 148, 152, 156, 160, 164, 168, 172, 176, 180, 184, 188, 192, 196, 199}");
-}
-
-#[test]
-fn polling_after_advance_same_time_test() {
-    let transposer = CollatzTransposer::new(27);
-    let mut steps = Steps::new(transposer, 0, [0; 32]);
-    let dummy = DummyWaker::dummy();
-    for t in 0..200 {
-        if t != 0 {
-            assert_eq!(steps.num_deleted_steps, t - 1);
-            assert_eq!(steps.steps.len(), 2);
-            assert_eq!(steps.steps.front().unwrap().step.get_time(), t - 1);
-            assert!(steps.steps.front().unwrap().step.is_saturated());
-            assert!(steps.steps.back().unwrap().step.is_unsaturated());
-            assert_eq!(steps.not_unsaturated.len(), 1);
-            assert_eq!(*steps.not_unsaturated.first().unwrap(), t - 1);
+            cx.schedule_event(cx.current_time() + 1, ()).unwrap();
         }
 
-        steps.delete_before(t);
-
-        if t != 0 {
-            assert_eq!(steps.num_deleted_steps, t - 1);
-            assert_eq!(steps.steps.len(), 2);
-            assert_eq!(steps.steps.front().unwrap().step.get_time(), t - 1);
-            assert!(steps.steps.front().unwrap().step.is_saturated());
-            assert!(steps.steps.back().unwrap().step.is_unsaturated());
-            assert_eq!(steps.not_unsaturated.len(), 1);
-            assert_eq!(*steps.not_unsaturated.first().unwrap(), t - 1);
+        async fn interpolate(
+            &self,
+            _cx: &mut dyn InterpolateContext<'_, Self>,
+        ) -> Self::OutputState {
         }
-        loop {
-            let _ = match steps.get_before_or_at_events(t, &[]).unwrap() {
+    }
+
+    #[test]
+    fn basic_test() {
+        let transposer = CollatzTransposer::new(27);
+        let mut steps = Steps::new(transposer, 0, [0; 32]);
+        let dummy = DummyWaker::dummy();
+        for _ in 0..200 {
+            let _ = match steps.get_before_or_at_events(100000, &[]).unwrap() {
                 BeforeStatusEvents::Ready {
                     ..
-                } => break,
+                } => panic!(),
                 BeforeStatusEvents::Saturating {
                     step, ..
                 } => step.poll(&dummy).unwrap(),
             };
         }
-        if t != 0 {
-            assert_eq!(steps.num_deleted_steps, t);
-            assert_eq!(steps.steps.len(), 2);
-            assert_eq!(steps.steps.front().unwrap().step.get_time(), t);
-            assert!(steps.steps.front().unwrap().step.is_saturated());
-            assert!(steps.steps.back().unwrap().step.is_unsaturated());
-            assert_eq!(steps.not_unsaturated.len(), 1);
-            assert_eq!(*steps.not_unsaturated.first().unwrap(), t);
+
+        let output = format!("{:?}", steps.not_unsaturated);
+        assert_eq!(output, "{0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 86, 88, 90, 92, 94, 96, 98, 99}");
+
+        steps.delete_before(30);
+
+        let output = format!("{:?}", steps.not_unsaturated);
+        assert_eq!(
+        output,
+        "{28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 86, 88, 90, 92, 94, 96, 98, 99}"
+    );
+
+        for _ in 0..200 {
+            let _ = match steps.get_before_or_at_events(100000, &[]).unwrap() {
+                BeforeStatusEvents::Ready {
+                    ..
+                } => panic!(),
+                BeforeStatusEvents::Saturating {
+                    step, ..
+                } => step.poll(&dummy).unwrap(),
+            };
+        }
+
+        let output = format!("{:?}", steps.not_unsaturated);
+        assert_eq!( output, "{28, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 148, 152, 156, 160, 164, 168, 172, 176, 180, 184, 188, 192, 196, 199}");
+    }
+
+    #[test]
+    fn polling_after_advance_same_time_test() {
+        let transposer = CollatzTransposer::new(27);
+        let mut steps = Steps::new(transposer, 0, [0; 32]);
+        let dummy = DummyWaker::dummy();
+        for t in 0..200 {
+            if t != 0 {
+                assert_eq!(steps.num_deleted_steps, t - 1);
+                assert_eq!(steps.steps.len(), 2);
+                assert_eq!(steps.steps.front().unwrap().step.get_time(), t - 1);
+                assert!(steps.steps.front().unwrap().step.is_saturated());
+                assert!(steps.steps.back().unwrap().step.is_unsaturated());
+                assert_eq!(steps.not_unsaturated.len(), 1);
+                assert_eq!(*steps.not_unsaturated.first().unwrap(), t - 1);
+            }
+
+            steps.delete_before(t);
+
+            if t != 0 {
+                assert_eq!(steps.num_deleted_steps, t - 1);
+                assert_eq!(steps.steps.len(), 2);
+                assert_eq!(steps.steps.front().unwrap().step.get_time(), t - 1);
+                assert!(steps.steps.front().unwrap().step.is_saturated());
+                assert!(steps.steps.back().unwrap().step.is_unsaturated());
+                assert_eq!(steps.not_unsaturated.len(), 1);
+                assert_eq!(*steps.not_unsaturated.first().unwrap(), t - 1);
+            }
+            loop {
+                let _ = match steps.get_before_or_at_events(t, &[]).unwrap() {
+                    BeforeStatusEvents::Ready {
+                        ..
+                    } => break,
+                    BeforeStatusEvents::Saturating {
+                        step, ..
+                    } => step.poll(&dummy).unwrap(),
+                };
+            }
+            if t != 0 {
+                assert_eq!(steps.num_deleted_steps, t);
+                assert_eq!(steps.steps.len(), 2);
+                assert_eq!(steps.steps.front().unwrap().step.get_time(), t);
+                assert!(steps.steps.front().unwrap().step.is_saturated());
+                assert!(steps.steps.back().unwrap().step.is_unsaturated());
+                assert_eq!(steps.not_unsaturated.len(), 1);
+                assert_eq!(*steps.not_unsaturated.first().unwrap(), t);
+            }
         }
     }
 }

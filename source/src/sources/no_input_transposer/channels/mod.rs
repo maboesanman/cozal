@@ -74,7 +74,6 @@ impl<T: Transposer<InputStateManager = NoInputManager>> ChannelStatuses<T> {
                         blocked_repeat_step_wakers: &mut self.blocked_repeat_step_wakers,
                     })
                 },
-                CallerChannelBlockedReasonInner::Poisioned => panic!(),
             },
             Err(vacant) => CallerChannelStatus::Free(Free {
                 caller_channel:             vacant,
@@ -93,7 +92,6 @@ pub enum CallerChannelBlockedReasonInner<T: Transposer<InputStateManager = NoInp
     OriginalStep,
     RepeatStep(usize),
     InterpolationFuture(Interpolation<T, NoInput, DefaultStorage>),
-    Poisioned,
 }
 
 impl<T: Transposer<InputStateManager = NoInputManager>> CallerChannelBlockedReason<T> {
@@ -113,11 +111,6 @@ impl<T: Transposer<InputStateManager = NoInputManager>> CallerChannelBlockedReas
     }
 }
 
-struct InterpolationWrapper<T: Transposer<InputStateManager = NoInputManager>> {
-    source_channel: usize,
-    interpolation:  Interpolation<T, NoInput, DefaultStorage>,
-}
-
 /// this enum represents the current blocked status for a given channel.
 /// it can move between statuses under various circumstances,
 /// like being provided a source state, or a future polling ready.
@@ -126,7 +119,6 @@ pub enum CallerChannelStatus<'a, T: Transposer<InputStateManager = NoInputManage
     InterpolationFuture(interpolation_future::InterpolationFuture<'a, T>),
     OriginalStepFuture(original_step_future::OriginalStepFuture<'a, T>),
     RepeatStepFuture(repeat_step_future::RepeatStepFuture<'a, T>),
-    Limbo,
 }
 
 pub fn get_pinned_times<T: Transposer<InputStateManager = NoInputManager>>(

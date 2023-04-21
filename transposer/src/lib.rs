@@ -1,3 +1,4 @@
+#![allow(incomplete_features)]
 #![feature(async_fn_in_trait)]
 #![deny(unsafe_op_in_unsafe_fn)]
 

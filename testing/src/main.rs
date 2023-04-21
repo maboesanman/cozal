@@ -1,3 +1,4 @@
+#![allow(incomplete_features)]
 #![feature(async_fn_in_trait)]
 
 use std::time::{Duration, Instant};
@@ -46,7 +47,7 @@ impl Transposer for CollatzTransposer {
         cx.emit_event(self.value).await;
 
         if self.value % 2 == 0 {
-            self.value = self.value / 2;
+            self.value /= 2;
         } else {
             self.value = self.value * 3 + 1;
         }
@@ -76,7 +77,7 @@ async fn main() {
 
             println!("{:?}", e);
 
-            async { () }
+            async {}
         })
         .await;
 }

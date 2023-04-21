@@ -8,7 +8,7 @@ use util::extended_entry::hash_map::OccupiedExtEntry as HashMapOccupiedEntry;
 use util::stack_waker::StackWaker;
 
 use super::free::Free;
-use super::{get_pinned_times, CallerChannelBlockedReason};
+use super::CallerChannelBlockedReason;
 
 pub struct RepeatStepFuture<'a, T: Transposer<InputStateManager = NoInputManager>> {
     // entries
@@ -76,9 +76,5 @@ impl<'a, T: Transposer<InputStateManager = NoInputManager>> RepeatStepFuture<'a,
             caller_channel: caller_channel.vacate().0,
             blocked_repeat_step_wakers,
         }
-    }
-
-    pub fn get_pinned_times(&self) -> Vec<T::Time> {
-        get_pinned_times(self.caller_channel.get_collection_ref())
     }
 }

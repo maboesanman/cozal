@@ -40,31 +40,6 @@ pub enum Interrupt<E> {
     Finalize,
 }
 
-impl<T, E, S> SourcePoll<T, E, S>
-where
-    T: Ord + Copy,
-{
-    pub(crate) fn supress_state(self) -> SourcePoll<T, E, ()> {
-        match self {
-            Self::Ready {
-                state: _,
-                next_event_at,
-            } => SourcePoll::Ready {
-                state: (),
-                next_event_at,
-            },
-            Self::Interrupt {
-                time,
-                interrupt: interrupt_type,
-            } => SourcePoll::Interrupt {
-                time,
-                interrupt: interrupt_type,
-            },
-            Self::Pending => SourcePoll::Pending,
-        }
-    }
-}
-
 #[non_exhaustive]
 pub enum SourcePollErr<T, Err> {
     OutOfBoundsChannel,
