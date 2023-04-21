@@ -190,7 +190,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
     }
 
     fn advance(&mut self, time: Self::Time) {
-        self.steps.delete_before(time)
+        self.steps.delete_before(time);
     }
 
     fn max_channel(&self) -> std::num::NonZeroUsize {
