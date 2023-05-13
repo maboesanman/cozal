@@ -431,7 +431,7 @@ mod test {
     #[cfg(test)]
     use util::dummy_waker::DummyWaker;
 
-    use crate::sources::no_input_transposer::steps::{BeforeStatus, BeforeStatusEvents, Steps};
+    use crate::sources::transposer::steps::{BeforeStatus, BeforeStatusEvents, Steps};
     #[derive(Clone)]
     pub(crate) struct CollatzTransposer {
         value: usize,

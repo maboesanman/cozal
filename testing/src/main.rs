@@ -3,7 +3,7 @@
 
 use std::time::{Duration, Instant};
 
-use cozal::sources::no_input_transposer::NoInputTransposerSource;
+use cozal::sources::transposer::no_input_transposer::NoInputTransposerSource;
 use cozal::traits::SourceExt;
 use futures::StreamExt;
 use transposer::context::{HandleScheduleContext, InitContext, InterpolateContext};

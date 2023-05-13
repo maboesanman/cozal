@@ -9,7 +9,7 @@ use util::extended_entry::hash_map::OccupiedExtEntry as HashMapOccupiedEntry;
 use util::stack_waker::StackWaker;
 
 use super::{CallerChannelBlockedReason, CallerChannelBlockedReasonInner, CallerChannelStatus};
-use crate::sources::no_input_transposer::channels::free::Free;
+use crate::sources::transposer::channels::free::Free;
 
 pub struct InterpolationFuture<'a, T: Transposer<InputStateManager = NoInputManager>> {
     // entries

@@ -3,15 +3,13 @@ use std::task::Poll;
 use transposer::step::{NoInputManager, StepPoll};
 use transposer::Transposer;
 
-use self::channels::{CallerChannelStatus, ChannelStatuses};
-use self::steps::Steps;
+use super::channels::free::Free;
+use super::channels::{CallerChannelStatus, ChannelStatuses};
+use super::steps::{BeforeStatus, BeforeStatusEvents, Steps};
 use crate::source_poll::{self, TrySourcePoll};
-use crate::sources::no_input_transposer::channels::original_step_future::OriginalStepPoll;
+use crate::sources::transposer::channels::original_step_future::OriginalStepPoll;
 use crate::traits::SourceContext;
 use crate::{Source, SourcePoll};
-
-mod channels;
-mod steps;
 
 pub struct NoInputTransposerSource<T: Transposer<InputStateManager = NoInputManager>> {
     steps: Steps<T>,
@@ -56,14 +54,14 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
                     let pinned_times = free.get_pinned_times();
 
                     match self.steps.get_before_or_at(time, &pinned_times).unwrap() {
-                        steps::BeforeStatus::Saturated {
+                        BeforeStatus::Saturated {
                             step, ..
                         } => {
                             let interpolation = step.interpolate(time).unwrap();
                             let interpolation = free.start_interpolation(interpolation, time);
                             CallerChannelStatus::InterpolationFuture(interpolation)
                         },
-                        steps::BeforeStatus::Saturating {
+                        BeforeStatus::Saturating {
                             step,
                             step_index,
                         } => {
@@ -150,7 +148,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
                 .get_before_or_at_events(time, &pinned_times)
                 .unwrap()
             {
-                steps::BeforeStatusEvents::Ready {
+                BeforeStatusEvents::Ready {
                     next_time,
                 } => {
                     break SourcePoll::Ready {
@@ -158,7 +156,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
                         next_event_at: next_time,
                     }
                 },
-                steps::BeforeStatusEvents::Saturating {
+                BeforeStatusEvents::Saturating {
                     step, ..
                 } => (step.poll(&all_channel_waker).unwrap(), step.get_time()),
             };
@@ -181,7 +179,7 @@ impl<T: Transposer<InputStateManager = NoInputManager>> Source for NoInputTransp
     fn release_channel(&mut self, channel: usize) {
         let current_state = self.channel_statuses.get_channel_status(channel);
 
-        let _: channels::free::Free<T> = match current_state {
+        let _: Free<T> = match current_state {
             CallerChannelStatus::Free(f) => f,
             CallerChannelStatus::InterpolationFuture(i) => i.abandon(),
             CallerChannelStatus::OriginalStepFuture(o) => o.abandon(),
