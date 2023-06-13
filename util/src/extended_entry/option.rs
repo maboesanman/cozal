@@ -53,12 +53,9 @@ impl<'a, T> OccupiedExtEntry<'a, T> {
 
     pub fn into_collection_mut(self) -> &'a mut Option<T> {
         let Self {
-            inner,
+            inner: _,
             mut option,
         } = self;
-
-        #[allow(clippy::drop_ref)]
-        drop(inner);
 
         // SAFETY: this is kept alive by the lifetime 'a,
         // and does not alias entry because it's dropped.
